@@ -1,0 +1,66 @@
+"use strict";
+
+require("dotenv").config();
+
+var express = require("express");
+var cors = require("cors");
+var cookieParser = require("cookie-parser");
+
+var connectDatabase = require("./config/db");
+var parseToken = require("./utils/parseToken");
+
+var authRoutes = require("./routes/auth");
+var applicationRoutes = require("./routes/applications");
+var adminRoutes = require("./routes/admin");
+
+var app = express();
+
+// --- Core middleware --------------------------------------------------------
+app.use(
+  cors({
+    origin: process.env.CLIENT_ORIGIN || "http://localhost:3000",
+    credentials: true,
+  })
+);
+app.use(express.json());
+app.use(cookieParser());
+
+// --- Global JWT parsing -----------------------------------------------------
+// Mounted at the very top of the middleware stack: every incoming request is
+// checked for a JWT, which is handed to jwt.verify to decode. The decoded
+// payload is placed on `req.user` (or null when there is no valid token) so
+// that downstream routes and the isAuthenticated / isAdmin guards can read it.
+app.use(parseToken);
+
+// --- Routes -----------------------------------------------------------------
+app.get("/api/health", function health(_req, res) {
+  res.status(200).json({ ok: true });
+});
+
+app.use("/api/auth", authRoutes);
+app.use("/api/applications", applicationRoutes);
+app.use("/api/admin", adminRoutes);
+
+// --- Fallback error handler (Express 4 signature: err, req, res, next) ------
+app.use(function errorHandler(err, _req, res, _next) {
+  console.error("Unhandled error:", err);
+  res.status(500).json({ error: "Internal server error." });
+});
+
+// --- Startup ----------------------------------------------------------------
+var PORT = process.env.PORT || 4000;
+var MONGODB_URI = process.env.MONGODB_URI || "";
+
+connectDatabase(MONGODB_URI)
+  .then(function afterConnect() {
+    console.log("Connected to MongoDB.");
+    app.listen(PORT, function onListen() {
+      console.log("HackUMass backend listening on port " + PORT + ".");
+    });
+  })
+  .catch(function onError(err) {
+    console.error("Failed to start server:", err);
+    process.exit(1);
+  });
+
+module.exports = app;
