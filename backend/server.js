@@ -8,10 +8,12 @@ var cookieParser = require("cookie-parser");
 
 var connectDatabase = require("./config/db");
 var parseToken = require("./utils/parseToken");
+var passportUtil = require("./utils/passport");
 
 var authRoutes = require("./routes/auth");
 var applicationRoutes = require("./routes/applications");
 var adminRoutes = require("./routes/admin");
+var metaRoutes = require("./routes/meta");
 
 var app = express();
 
@@ -24,6 +26,10 @@ app.use(
 );
 app.use(express.json());
 app.use(cookieParser());
+
+// --- Passport (Google OAuth, stateless — we sign our own JWT) ----------------
+passportUtil.configurePassport();
+app.use(passportUtil.passport.initialize());
 
 // --- Global JWT parsing -----------------------------------------------------
 // Mounted at the very top of the middleware stack: every incoming request is
@@ -40,6 +46,7 @@ app.get("/api/health", function health(_req, res) {
 app.use("/api/auth", authRoutes);
 app.use("/api/applications", applicationRoutes);
 app.use("/api/admin", adminRoutes);
+app.use("/api/meta", metaRoutes);
 
 // --- Fallback error handler (Express 4 signature: err, req, res, next) ------
 app.use(function errorHandler(err, _req, res, _next) {

@@ -1,0 +1,45 @@
+"use strict";
+
+var mongoose = require("mongoose");
+
+var Schema = mongoose.Schema;
+
+/**
+ * Organization-wide settings. Stored as a single document (a singleton). Admins
+ * edit these from the settings panel. Values here can override environment
+ * defaults at runtime (e.g. turning Google sign-in off without a redeploy).
+ */
+
+var orgSettingsSchema = new Schema(
+  {
+    // Singleton guard: always the string "default" so findOneAndUpdate upserts
+    // exactly one document.
+    key: {
+      type: String,
+      default: "default",
+      unique: true,
+    },
+    // Admin override for Google OAuth. When false, Google sign-in is disabled
+    // even if credentials are configured. Defaults to true; effective
+    // availability also requires the env credentials to be present.
+    googleAuthEnabled: {
+      type: Boolean,
+      default: true,
+    },
+  },
+  { timestamps: true }
+);
+
+/**
+ * Load the singleton settings document, creating it with defaults if missing.
+ * @returns {Promise<object>} The settings document.
+ */
+orgSettingsSchema.statics.getSingleton = function getSingleton() {
+  return this.findOneAndUpdate(
+    { key: "default" },
+    { $setOnInsert: { key: "default" } },
+    { new: true, upsert: true, setDefaultsOnInsert: true }
+  );
+};
+
+module.exports = mongoose.model("OrgSettings", orgSettingsSchema);

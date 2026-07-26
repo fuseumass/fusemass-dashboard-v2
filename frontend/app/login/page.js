@@ -1,18 +1,28 @@
 "use client";
 
-// Simplistic login page — intentionally plain HTML.
-// The team will layer the real HackUMass design on top of this.
-
 import Link from "next/link";
-import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { Suspense, useState } from "react";
+import AuthShell from "@/components/AuthShell";
+import GoogleButton from "@/components/GoogleButton";
 import { apiFetch, saveToken } from "@/lib/api";
 
 export default function LoginPage() {
+  return (
+    <Suspense fallback={null}>
+      <LoginInner />
+    </Suspense>
+  );
+}
+
+function LoginInner() {
   const router = useRouter();
+  const params = useSearchParams();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [error, setError] = useState("");
+  const [error, setError] = useState(
+    params.get("error") === "google" ? "Google sign-in failed. Try again." : "",
+  );
   const [submitting, setSubmitting] = useState(false);
 
   async function handleSubmit(event) {
@@ -34,40 +44,83 @@ export default function LoginPage() {
   }
 
   return (
-    <main>
-      <h1>Log in</h1>
+    <AuthShell
+      title="Welcome back"
+      subtitle="Log in to continue your application"
+    >
+      <GoogleButton label="Continue with Google" withDivider />
 
-      <form onSubmit={handleSubmit}>
-        <label>
-          Email
+      <form
+        onSubmit={handleSubmit}
+        style={{ display: "flex", flexDirection: "column", gap: "0.9rem" }}
+      >
+        <div>
+          <label className="field-label" htmlFor="email">
+            Email
+          </label>
           <input
+            id="email"
             type="email"
+            className="input"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
             required
           />
-        </label>
+        </div>
 
-        <label>
-          Password
+        <div>
+          <div
+            style={{
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "baseline",
+            }}
+          >
+            <label className="field-label" htmlFor="password">
+              Password
+            </label>
+            <Link
+              href="/forgot-password"
+              className="link"
+              style={{ fontSize: "0.8rem" }}
+            >
+              Forgot password?
+            </Link>
+          </div>
           <input
+            id="password"
             type="password"
+            className="input"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
             required
           />
-        </label>
+        </div>
 
-        {error ? <p role="alert">{error}</p> : null}
+        {error
+          ? <div className="alert-error" role="alert">
+              {error}
+            </div>
+          : null}
 
-        <button type="submit" disabled={submitting}>
-          {submitting ? "Logging in..." : "Log in"}
+        <button type="submit" className="btn btn-primary" disabled={submitting}>
+          {submitting ? "Logging in…" : "Log in"}
         </button>
       </form>
 
-      <p>
-        Don&apos;t have an account? <Link href="/signup">Sign up</Link>
+      <p
+        className="muted"
+        style={{
+          textAlign: "center",
+          marginTop: "1.25rem",
+          fontSize: "0.9rem",
+        }}
+      >
+        Don&apos;t have an account?{" "}
+        <Link href="/signup" className="link">
+          Sign up
+        </Link>
       </p>
-    </main>
+    </AuthShell>
   );
 }

@@ -6,17 +6,12 @@ var bcrypt = require("bcryptjs");
 var Schema = mongoose.Schema;
 
 /**
- * The two roles in the system. Everyone who registers is an "applicant" by
- * default; an existing admin can promote a user to "admin".
- * @typedef {"applicant" | "admin"} UserRole
- */
-
-/**
- * @typedef {Object} UserAttrs
- * @property {string} name        - Display name of the user.
- * @property {string} email       - Unique, lowercased email used to log in.
- * @property {string} passwordHash - Bcrypt hash of the password. Never the plain password.
- * @property {UserRole} role      - Access level.
+ * Roles in the system:
+ *   - "applicant": default on register; can only apply.
+ *   - "moderator": can review applications (approve/reject) and (later) see
+ *     hardware data and judging progress. Cannot change org setup.
+ *   - "admin": full access, including organization setup (settings, rounds,
+ *     promoting users, editing the application form).
  */
 
 var userSchema = new Schema(
@@ -34,23 +29,40 @@ var userSchema = new Schema(
       trim: true,
       index: true,
     },
+    // Optional: Google-authenticated users never set a local password.
     passwordHash: {
       type: String,
-      required: true,
+    },
+    // Set when the account is linked to a Google identity.
+    googleId: {
+      type: String,
+      index: true,
+      sparse: true,
+    },
+    // URL of the user's Google profile photo, if any.
+    avatarUrl: {
+      type: String,
     },
     role: {
       type: String,
-      enum: ["applicant", "admin"],
+      enum: ["applicant", "moderator", "admin"],
       default: "applicant",
+    },
+    // Password-reset flow (nodemailer). The token stored here is a SHA-256 hash
+    // of the value emailed to the user, so a database leak can't be used to
+    // reset passwords.
+    resetPasswordToken: {
+      type: String,
+    },
+    resetPasswordExpires: {
+      type: Date,
     },
   },
   { timestamps: true }
 );
 
 /**
- * Hash a plain-text password with bcrypt. Static helper so callers never hand a
- * plain password to the model directly.
- *
+ * Hash a plain-text password with bcrypt.
  * @param {string} plain - Plain-text password.
  * @returns {Promise<string>} The bcrypt hash to store in `passwordHash`.
  */
@@ -60,19 +72,22 @@ userSchema.statics.hashPassword = function hashPassword(plain) {
 
 /**
  * Compare a candidate password against this user's stored hash.
- *
- * @this {mongoose.Document & UserAttrs}
  * @param {string} candidate - Plain-text password to verify.
  * @returns {Promise<boolean>} True when the password matches.
  */
 userSchema.methods.verifyPassword = function verifyPassword(candidate) {
+  if (!this.passwordHash) {
+    return Promise.resolve(false);
+  }
   return bcrypt.compare(candidate, this.passwordHash);
 };
 
-// Strip the password hash whenever a user document is serialized to JSON.
+// Strip sensitive fields whenever a user document is serialized to JSON.
 userSchema.set("toJSON", {
   transform: function transform(_doc, ret) {
     delete ret.passwordHash;
+    delete ret.resetPasswordToken;
+    delete ret.resetPasswordExpires;
     return ret;
   },
 });

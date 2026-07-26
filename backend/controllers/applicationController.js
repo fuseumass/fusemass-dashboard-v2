@@ -1,20 +1,71 @@
 "use strict";
 
 var Application = require("../schemas/application");
-var Team = require("../schemas/team");
+var ApplicationRound = require("../schemas/applicationRound");
+var azureBlob = require("../utils/azureBlob");
+
+/**
+ * Parse a form field that may arrive as a JSON string (multipart form data
+ * sends everything as strings, so the frontend JSON-encodes nested objects and
+ * arrays). Falls back to the provided default when absent or unparseable.
+ * @param {*} value - Raw field value.
+ * @param {*} fallback - Value to use when parsing fails.
+ * @returns {*}
+ */
+function parseMaybeJson(value, fallback) {
+  if (value === undefined || value === null || value === "") {
+    return fallback;
+  }
+  if (typeof value !== "string") {
+    return value;
+  }
+  try {
+    return JSON.parse(value);
+  } catch (err) {
+    return fallback;
+  }
+}
+
+/**
+ * Find the round applications are currently being accepted for.
+ * @returns {Promise<object|null>} The open ApplicationRound, or null.
+ */
+function findOpenRound() {
+  return ApplicationRound.findOne({ isOpen: true }).sort({ order: 1 });
+}
+
+/**
+ * Build the profile fields to persist from a (multipart) request body.
+ * @param {object} body - req.body
+ * @returns {object}
+ */
+function buildProfile(body) {
+  return {
+    name: body.name,
+    phone: body.phone,
+    age: body.age ? Number(body.age) : undefined,
+    gender: body.gender,
+    pronouns: body.pronouns,
+    education: body.education,
+    university: body.university,
+    major: body.major,
+    allergies: body.allergies || "",
+    tshirtSize: body.tshirtSize || "",
+    socials: parseMaybeJson(body.socials, {}),
+    experience: parseMaybeJson(body.experience, {}),
+    programmingSkills: parseMaybeJson(body.programmingSkills, []),
+    hardwareSkills: parseMaybeJson(body.hardwareSkills, []),
+    otherSkills: parseMaybeJson(body.otherSkills, []),
+  };
+}
 
 /**
  * POST /api/applications
- * Submit the current applicant's application. This is the single action an
- * applicant can take after registering (the "Apply" button on the frontend).
+ * Create or update the current applicant's application for the open round.
+ * Accepts multipart/form-data so a resume file can be uploaded alongside the
+ * profile fields (nested objects/arrays are JSON-encoded strings).
  *
- * Body: {
- *   type: "individual" | "group" | "team",
- *   groupMembers?: string[],   // when type === "group"
- *   teamName?: string          // when type === "team"
- * }
- *
- * @param {object} req - Express request.
+ * @param {object} req - Express request (req.user set by parseToken; req.file by multer).
  * @param {object} res - Express response.
  * @returns {Promise<void>}
  */
@@ -25,50 +76,44 @@ function apply(req, res) {
     return Promise.resolve();
   }
 
-  var type = req.body && req.body.type;
-  if (type !== "individual" && type !== "group" && type !== "team") {
-    res.status(400).json({ error: "type must be 'individual', 'group' or 'team'." });
-    return Promise.resolve();
-  }
-
-  return Application.findOne({ applicant: claims.id })
-    .then(function afterLookup(existing) {
-      if (existing) {
-        res.status(409).json({ error: "You have already submitted an application." });
+  return findOpenRound()
+    .then(function afterRound(round) {
+      if (!round) {
+        res.status(400).json({ error: "Applications are not open right now." });
         return null;
       }
 
-      // For a team application, create the Team first, then link it.
-      if (type === "team") {
-        var teamName = req.body && req.body.teamName;
-        if (!teamName) {
-          res.status(400).json({ error: "teamName is required for a team application." });
+      var profile = buildProfile(req.body || {});
+      var status = req.body && req.body.status === "draft" ? "draft" : "pending";
+
+      // Upload the resume first (if provided), then persist the application.
+      var resumeStep = Promise.resolve(undefined);
+      if (req.file) {
+        if (!azureBlob.isAzureConfigured()) {
+          res.status(501).json({ error: "Resume upload is not configured yet." });
           return null;
         }
-        return Team.create({
-          name: teamName,
-          leader: claims.id,
-          members: [claims.id],
-        }).then(function afterTeam(team) {
-          return Application.create({
-            applicant: claims.id,
-            type: "team",
-            team: team._id,
-          });
-        });
+        resumeStep = azureBlob.uploadResume(req.file, claims.id);
       }
 
-      return Application.create({
-        applicant: claims.id,
-        type: type,
-        groupMembers: type === "group" ? req.body.groupMembers || [] : undefined,
+      return resumeStep.then(function afterResume(resumeUrl) {
+        var update = Object.assign({}, profile, {
+          applicant: claims.id,
+          round: round._id,
+          status: status,
+        });
+        if (resumeUrl) {
+          update.resumeUrl = resumeUrl;
+        }
+
+        return Application.findOneAndUpdate(
+          { applicant: claims.id, round: round._id },
+          { $set: update },
+          { new: true, upsert: true, setDefaultsOnInsert: true }
+        ).then(function afterSave(application) {
+          res.status(200).json({ application: application.toJSON() });
+        });
       });
-    })
-    .then(function afterCreate(application) {
-      if (!application) {
-        return; // conflict or validation already handled
-      }
-      res.status(201).json({ application: application.toJSON() });
     })
     .catch(function onError(err) {
       console.error("apply failed:", err);
@@ -78,9 +123,8 @@ function apply(req, res) {
 
 /**
  * GET /api/applications/me
- * Return the current applicant's application (or null if they have not applied).
- * The frontend uses this to decide whether to show the "Apply" button or the
- * application's status.
+ * Return the open round and the applicant's application for it (or null). The
+ * frontend uses this to decide whether to show the form or the status.
  *
  * @param {object} req - Express request.
  * @param {object} res - Express response.
@@ -93,10 +137,21 @@ function getMine(req, res) {
     return Promise.resolve();
   }
 
-  return Application.findOne({ applicant: claims.id })
-    .populate("team")
-    .then(function afterLookup(application) {
-      res.status(200).json({ application: application ? application.toJSON() : null });
+  return findOpenRound()
+    .then(function afterRound(round) {
+      if (!round) {
+        res.status(200).json({ round: null, application: null });
+        return null;
+      }
+      return Application.findOne({
+        applicant: claims.id,
+        round: round._id,
+      }).then(function afterLookup(application) {
+        res.status(200).json({
+          round: round,
+          application: application ? application.toJSON() : null,
+        });
+      });
     })
     .catch(function onError(err) {
       console.error("getMine failed:", err);

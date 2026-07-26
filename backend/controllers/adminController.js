@@ -1,12 +1,16 @@
 "use strict";
 
 var Application = require("../schemas/application");
+var ApplicationRound = require("../schemas/applicationRound");
 var User = require("../schemas/user");
+
+var DECISIONS = ["accepted", "rejected", "waitlisted", "pending"];
 
 /**
  * GET /api/admin/applications
- * List every application for the review dashboard. Supports an optional
- * `?status=pending|accepted|rejected` filter.
+ * List applications for the review dashboard. Optional filters:
+ *   ?status=draft|pending|accepted|rejected|waitlisted
+ *   ?round=<roundId>
  *
  * @param {object} req - Express request.
  * @param {object} res - Express response.
@@ -15,13 +19,17 @@ var User = require("../schemas/user");
 function listApplications(req, res) {
   var filter = {};
   var status = req.query && req.query.status;
-  if (status === "pending" || status === "accepted" || status === "rejected") {
+  var validStatus = ["draft", "pending", "accepted", "rejected", "waitlisted"];
+  if (status && validStatus.indexOf(status) !== -1) {
     filter.status = status;
+  }
+  if (req.query && req.query.round) {
+    filter.round = req.query.round;
   }
 
   return Application.find(filter)
     .populate("applicant", "name email role")
-    .populate("team")
+    .populate("round", "name")
     .sort({ createdAt: -1 })
     .then(function afterFind(applications) {
       res.status(200).json({ applications: applications });
@@ -34,9 +42,9 @@ function listApplications(req, res) {
 
 /**
  * PATCH /api/admin/applications/:id
- * Accept or reject a single application.
+ * Set an application's review status.
  *
- * Body: { decision: "accepted" | "rejected" }
+ * Body: { decision: "accepted" | "rejected" | "waitlisted" | "pending" }
  *
  * @param {object} req - Express request.
  * @param {object} res - Express response.
@@ -50,8 +58,8 @@ function decideApplication(req, res) {
   }
 
   var decision = req.body && req.body.decision;
-  if (decision !== "accepted" && decision !== "rejected") {
-    res.status(400).json({ error: "decision must be 'accepted' or 'rejected'." });
+  if (DECISIONS.indexOf(decision) === -1) {
+    res.status(400).json({ error: "decision must be one of " + DECISIONS.join(", ") + "." });
     return Promise.resolve();
   }
 
@@ -78,10 +86,39 @@ function decideApplication(req, res) {
 }
 
 /**
- * PATCH /api/admin/users/:id/role
- * Assign or revoke admin access for a user.
+ * GET /api/admin/users?q=...
+ * Search users by name or email (case-insensitive) so an admin can promote
+ * them. Returns up to 25 matches; with no query, the most recent users.
  *
- * Body: { role: "applicant" | "admin" }
+ * @param {object} req - Express request.
+ * @param {object} res - Express response.
+ * @returns {Promise<void>}
+ */
+function searchUsers(req, res) {
+  var q = req.query && req.query.q ? String(req.query.q).trim() : "";
+  var filter = {};
+  if (q) {
+    var rx = new RegExp(q.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "i");
+    filter = { $or: [{ name: rx }, { email: rx }] };
+  }
+
+  return User.find(filter)
+    .sort({ createdAt: -1 })
+    .limit(25)
+    .then(function afterFind(users) {
+      res.status(200).json({ users: users.map(function toJson(u) { return u.toJSON(); }) });
+    })
+    .catch(function onError(err) {
+      console.error("searchUsers failed:", err);
+      res.status(500).json({ error: "Could not search users." });
+    });
+}
+
+/**
+ * PATCH /api/admin/users/:id/role
+ * Set a user's role. Admin only (mounted behind isAdmin).
+ *
+ * Body: { role: "applicant" | "moderator" | "admin" }
  *
  * @param {object} req - Express request.
  * @param {object} res - Express response.
@@ -89,8 +126,9 @@ function decideApplication(req, res) {
  */
 function setRole(req, res) {
   var role = req.body && req.body.role;
-  if (role !== "applicant" && role !== "admin") {
-    res.status(400).json({ error: "role must be 'applicant' or 'admin'." });
+  var validRoles = ["applicant", "moderator", "admin"];
+  if (validRoles.indexOf(role) === -1) {
+    res.status(400).json({ error: "role must be one of " + validRoles.join(", ") + "." });
     return Promise.resolve();
   }
 
@@ -108,8 +146,116 @@ function setRole(req, res) {
     });
 }
 
+// ---- Application rounds -----------------------------------------------------
+
+/**
+ * GET /api/admin/rounds — list all rounds (open and closed).
+ * @param {object} _req
+ * @param {object} res
+ * @returns {Promise<void>}
+ */
+function listRounds(_req, res) {
+  return ApplicationRound.find({})
+    .sort({ order: 1, createdAt: 1 })
+    .then(function afterFind(rounds) {
+      res.status(200).json({ rounds: rounds });
+    })
+    .catch(function onError(err) {
+      console.error("listRounds failed:", err);
+      res.status(500).json({ error: "Could not load rounds." });
+    });
+}
+
+/**
+ * POST /api/admin/rounds — create a new application round.
+ * Body: { name, description?, isOpen?, opensAt?, closesAt?, order? }
+ * @param {object} req
+ * @param {object} res
+ * @returns {Promise<void>}
+ */
+function createRound(req, res) {
+  var name = req.body && req.body.name;
+  if (!name) {
+    res.status(400).json({ error: "name is required." });
+    return Promise.resolve();
+  }
+
+  return ApplicationRound.create({
+    name: name,
+    description: req.body.description || "",
+    isOpen: Boolean(req.body.isOpen),
+    opensAt: req.body.opensAt || undefined,
+    closesAt: req.body.closesAt || undefined,
+    order: req.body.order ? Number(req.body.order) : 0,
+    formConfig: req.body.formConfig || [],
+  })
+    .then(function afterCreate(round) {
+      res.status(201).json({ round: round });
+    })
+    .catch(function onError(err) {
+      console.error("createRound failed:", err);
+      res.status(500).json({ error: "Could not create round." });
+    });
+}
+
+/**
+ * PATCH /api/admin/rounds/:id — update a round (rename, open/close, reschedule).
+ * Body: any of { name, description, isOpen, opensAt, closesAt, order }
+ * @param {object} req
+ * @param {object} res
+ * @returns {Promise<void>}
+ */
+function updateRound(req, res) {
+  var allowed = ["name", "description", "isOpen", "opensAt", "closesAt", "order", "formConfig"];
+  var update = {};
+  allowed.forEach(function pick(key) {
+    if (req.body && req.body[key] !== undefined) {
+      update[key] = req.body[key];
+    }
+  });
+
+  return ApplicationRound.findByIdAndUpdate(req.params.id, { $set: update }, { new: true })
+    .then(function afterUpdate(round) {
+      if (!round) {
+        res.status(404).json({ error: "Round not found." });
+        return;
+      }
+      res.status(200).json({ round: round });
+    })
+    .catch(function onError(err) {
+      console.error("updateRound failed:", err);
+      res.status(500).json({ error: "Could not update round." });
+    });
+}
+
+/**
+ * DELETE /api/admin/rounds/:id — remove a round.
+ * @param {object} req
+ * @param {object} res
+ * @returns {Promise<void>}
+ */
+function deleteRound(req, res) {
+  return ApplicationRound.findByIdAndDelete(req.params.id)
+    .then(function afterDelete(round) {
+      if (!round) {
+        res.status(404).json({ error: "Round not found." });
+        return;
+      }
+      res.status(200).json({ ok: true });
+    })
+    .catch(function onError(err) {
+      console.error("deleteRound failed:", err);
+      res.status(500).json({ error: "Could not delete round." });
+    });
+}
+
 module.exports = {
   listApplications: listApplications,
   decideApplication: decideApplication,
+  searchUsers: searchUsers,
   setRole: setRole,
+  listRounds: listRounds,
+  createRound: createRound,
+  updateRound: updateRound,
+  deleteRound: deleteRound,
 };

@@ -1,18 +1,7 @@
-// Simplistic landing page — entry point into the auth flow.
-// The team will replace this with the real HackUMass marketing/home design.
+import { redirect } from "next/navigation";
 
-import Link from "next/link";
-
+// The root URL sends visitors straight to the login page (which offers signup
+// at the bottom), as requested for apply.<hackathon>.com.
 export default function Home() {
-  return (
-    <main>
-      <h1>HackUMass Dashboard</h1>
-      <p>Register or log in to apply.</p>
-      <nav>
-        <Link href="/signup">Sign up</Link>
-        {" | "}
-        <Link href="/login">Log in</Link>
-      </nav>
-    </main>
-  );
+  redirect("/login");
 }

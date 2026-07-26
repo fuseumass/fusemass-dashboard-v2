@@ -1,281 +1,99 @@
 "use client";
 
-// Simplistic dashboard — intentionally plain HTML. The team will design this.
-//
-// It serves two audiences based on the logged-in user's role:
-//   - applicant: sees only the "Apply" flow (individual / group / team) and,
-//     once applied, their application status.
-//   - admin: sees the review panel to accept/reject applications.
+import Link from "next/link";
+import { useEffect, useState } from "react";
+import { apiFetch } from "@/lib/api";
+import { config } from "@/lib/config";
+import { useUser } from "@/lib/userContext";
 
-import { useRouter } from "next/navigation";
-import { useCallback, useEffect, useState } from "react";
-import { apiFetch, clearToken, getToken } from "@/lib/api";
+const STATUS_LABELS = {
+  draft: "Draft — not submitted",
+  pending: "Submitted — under review",
+  accepted: "Accepted 🎉",
+  rejected: "Not accepted",
+  waitlisted: "Waitlisted",
+};
 
-export default function DashboardPage() {
-  const router = useRouter();
-  const [user, setUser] = useState(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
-
-  useEffect(() => {
-    if (!getToken()) {
-      router.replace("/login");
-      return;
-    }
-    apiFetch("/api/auth/me")
-      .then((data) => setUser(data.user))
-      .catch((err) => {
-        setError(err.message);
-        clearToken();
-        router.replace("/login");
-      })
-      .finally(() => setLoading(false));
-  }, [router]);
-
-  function handleLogout() {
-    clearToken();
-    router.replace("/login");
-  }
-
-  if (loading) {
-    return (
-      <main>
-        <p>Loading...</p>
-      </main>
-    );
-  }
-
-  if (error) {
-    return (
-      <main>
-        <p role="alert">{error}</p>
-      </main>
-    );
-  }
-
-  return (
-    <main>
-      <header>
-        <h1>HackUMass Dashboard</h1>
-        <p>
-          Signed in as {user.name} ({user.role}){" "}
-          <button type="button" onClick={handleLogout}>
-            Log out
-          </button>
-        </p>
-      </header>
-
-      {user.role === "admin" ? <AdminPanel /> : <ApplicantPanel />}
-    </main>
-  );
-}
-
-// --- Applicant view ---------------------------------------------------------
-
-function ApplicantPanel() {
-  const [application, setApplication] = useState(null);
-  const [loading, setLoading] = useState(true);
-  const [type, setType] = useState("individual");
-  const [teamName, setTeamName] = useState("");
-  const [groupMembers, setGroupMembers] = useState("");
-  const [error, setError] = useState("");
-  const [submitting, setSubmitting] = useState(false);
+export default function DashboardHome() {
+  const user = useUser();
+  const [state, setState] = useState({
+    loading: true,
+    round: null,
+    application: null,
+  });
 
   useEffect(() => {
     apiFetch("/api/applications/me")
-      .then((data) => setApplication(data.application))
-      .catch((err) => setError(err.message))
-      .finally(() => setLoading(false));
+      .then((data) =>
+        setState({
+          loading: false,
+          round: data.round,
+          application: data.application,
+        }),
+      )
+      .catch(() =>
+        setState({ loading: false, round: null, application: null }),
+      );
   }, []);
 
-  async function handleApply(event) {
-    event.preventDefault();
-    setError("");
-    setSubmitting(true);
-    try {
-      const body = { type };
-      if (type === "team") {
-        body.teamName = teamName;
-      }
-      if (type === "group") {
-        body.groupMembers = groupMembers
-          .split(",")
-          .map((m) => m.trim())
-          .filter(Boolean);
-      }
-      const data = await apiFetch("/api/applications", {
-        method: "POST",
-        body: JSON.stringify(body),
-      });
-      setApplication(data.application);
-    } catch (err) {
-      setError(err.message);
-    } finally {
-      setSubmitting(false);
-    }
-  }
-
-  if (loading) {
-    return <p>Loading your application...</p>;
-  }
-
-  // Already applied: show status only.
-  if (application) {
-    return (
-      <section>
-        <h2>Your application</h2>
-        <p>Type: {application.type}</p>
-        <p>Status: {application.status}</p>
-      </section>
-    );
-  }
-
-  // Not applied yet: the applicant only sees the Apply flow.
   return (
-    <section>
-      <h2>Apply to HackUMass</h2>
-      <form onSubmit={handleApply}>
-        <fieldset>
-          <legend>Apply as</legend>
-          <label>
-            <input
-              type="radio"
-              name="type"
-              value="individual"
-              checked={type === "individual"}
-              onChange={(e) => setType(e.target.value)}
-            />
-            Individual
-          </label>
-          <label>
-            <input
-              type="radio"
-              name="type"
-              value="group"
-              checked={type === "group"}
-              onChange={(e) => setType(e.target.value)}
-            />
-            Group
-          </label>
-          <label>
-            <input
-              type="radio"
-              name="type"
-              value="team"
-              checked={type === "team"}
-              onChange={(e) => setType(e.target.value)}
-            />
-            Team
-          </label>
-        </fieldset>
+    <div>
+      <h1
+        style={{ fontSize: "1.6rem", fontWeight: 700, marginBottom: "0.35rem" }}
+      >
+        Welcome, {user.name.split(" ")[0]}
+      </h1>
+      <p className="muted" style={{ marginBottom: "1.5rem" }}>
+        Your {config.orgName} dashboard.
+      </p>
 
-        {type === "team"
-          ? <label>
-              Team name
-              <input
-                type="text"
-                value={teamName}
-                onChange={(e) => setTeamName(e.target.value)}
-                required
-              />
-            </label>
-          : null}
+      <div className="card" style={{ padding: "1.5rem", maxWidth: 560 }}>
+        <h2
+          style={{
+            fontSize: "1.05rem",
+            fontWeight: 600,
+            marginBottom: "0.75rem",
+          }}
+        >
+          Application
+        </h2>
 
-        {type === "group"
-          ? <label>
-              Group members (comma-separated emails)
-              <input
-                type="text"
-                value={groupMembers}
-                onChange={(e) => setGroupMembers(e.target.value)}
-              />
-            </label>
-          : null}
-
-        {error ? <p role="alert">{error}</p> : null}
-
-        <button type="submit" disabled={submitting}>
-          {submitting ? "Submitting..." : "Apply"}
-        </button>
-      </form>
-    </section>
-  );
-}
-
-// --- Admin view -------------------------------------------------------------
-
-function AdminPanel() {
-  const [applications, setApplications] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
-
-  const load = useCallback(() => {
-    setLoading(true);
-    apiFetch("/api/admin/applications")
-      .then((data) => setApplications(data.applications))
-      .catch((err) => setError(err.message))
-      .finally(() => setLoading(false));
-  }, []);
-
-  useEffect(() => {
-    load();
-  }, [load]);
-
-  async function decide(id, decision) {
-    setError("");
-    try {
-      await apiFetch(`/api/admin/applications/${id}`, {
-        method: "PATCH",
-        body: JSON.stringify({ decision }),
-      });
-      load();
-    } catch (err) {
-      setError(err.message);
-    }
-  }
-
-  if (loading) {
-    return <p>Loading applications...</p>;
-  }
-
-  return (
-    <section>
-      <h2>Applications</h2>
-      {error ? <p role="alert">{error}</p> : null}
-      {applications.length === 0 ? <p>No applications yet.</p> : null}
-      <table>
-        <thead>
-          <tr>
-            <th>Applicant</th>
-            <th>Type</th>
-            <th>Status</th>
-            <th>Actions</th>
-          </tr>
-        </thead>
-        <tbody>
-          {applications.map((app) => (
-            <tr key={app._id}>
-              <td>{app.applicant ? app.applicant.name : "Unknown"}</td>
-              <td>{app.type}</td>
-              <td>{app.status}</td>
-              <td>
-                <button
-                  type="button"
-                  onClick={() => decide(app._id, "accepted")}
-                >
-                  Accept
-                </button>
-                <button
-                  type="button"
-                  onClick={() => decide(app._id, "rejected")}
-                >
-                  Reject
-                </button>
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </section>
+        {state.loading
+          ? <p className="muted">Loading…</p>
+          : !state.round
+            ? <p className="muted">
+                Applications aren&apos;t open right now. Check back soon.
+              </p>
+            : !state.application
+              ? <>
+                  <p className="muted" style={{ marginBottom: "1rem" }}>
+                    The <strong>{state.round.name}</strong> round is open. You
+                    haven&apos;t applied yet.
+                  </p>
+                  <Link
+                    href="/dashboard/application"
+                    className="btn btn-primary"
+                    style={{ maxWidth: 220 }}
+                  >
+                    Start your application
+                  </Link>
+                </>
+              : <>
+                  <p style={{ marginBottom: "0.5rem" }}>
+                    Round: <strong>{state.round.name}</strong>
+                  </p>
+                  <p style={{ marginBottom: "1rem" }}>
+                    Status:{" "}
+                    <strong>
+                      {STATUS_LABELS[state.application.status] ||
+                        state.application.status}
+                    </strong>
+                  </p>
+                  <Link href="/dashboard/application" className="link">
+                    View or edit your application →
+                  </Link>
+                </>}
+      </div>
+    </div>
   );
 }

@@ -5,26 +5,41 @@ var mongoose = require("mongoose");
 var Schema = mongoose.Schema;
 
 /**
- * How the applicant is applying.
- * @typedef {"individual" | "group" | "team"} ApplicationType
+ * A hackathon application. Holds the full applicant profile collected by the
+ * standard application form, plus review status. One application per applicant
+ * per round.
+ *
+ * Review status starts "pending"; an admin moves it to "accepted"/"rejected"
+ * (or "waitlisted"). While still being filled out it can be saved as "draft".
  */
 
-/**
- * Review status. Applications start "pending" and an admin moves them to
- * "accepted" or "rejected".
- * @typedef {"pending" | "accepted" | "rejected"} ApplicationStatus
- */
+// Sub-shape for the social links section. All optional.
+var socialsSchema = new Schema(
+  {
+    linkedin: { type: String, trim: true, default: "" },
+    github: { type: String, trim: true, default: "" },
+    website: { type: String, trim: true, default: "" },
+    // Any additional links the applicant wants to add, e.g. Devpost, Twitter.
+    other: [
+      {
+        label: { type: String, trim: true },
+        url: { type: String, trim: true },
+      },
+    ],
+  },
+  { _id: false }
+);
 
-/**
- * @typedef {Object} ApplicationAttrs
- * @property {mongoose.Types.ObjectId} applicant - User who submitted the application.
- * @property {ApplicationType} type              - Individual, group, or team.
- * @property {mongoose.Types.ObjectId} [team]    - Team reference when type is "team".
- * @property {string[]} [groupMembers]           - Free-text member names/emails when type is "group".
- * @property {ApplicationStatus} status          - Review status.
- * @property {mongoose.Types.ObjectId} [reviewedBy] - Admin who made the decision.
- * @property {Date} [reviewedAt]                 - When the decision was made.
- */
+// Prior hackathon experience.
+var experienceSchema = new Schema(
+  {
+    attendedBefore: { type: Boolean, default: false },
+    hackathonsAttended: { type: Number, default: 0, min: 0 },
+    // Whether they've attended THIS hackathon (ORG_NAME) before.
+    attendedThisBefore: { type: Boolean, default: false },
+  },
+  { _id: false }
+);
 
 var applicationSchema = new Schema(
   {
@@ -34,26 +49,49 @@ var applicationSchema = new Schema(
       required: true,
       index: true,
     },
-    type: {
-      type: String,
-      enum: ["individual", "group", "team"],
-      required: true,
-    },
-    // Set when `type === "team"`.
-    team: {
+    round: {
       type: Schema.Types.ObjectId,
-      ref: "Team",
+      ref: "ApplicationRound",
+      index: true,
     },
-    // Set when `type === "group"`: lightweight list of collaborators.
-    groupMembers: [
-      {
-        type: String,
-        trim: true,
-      },
-    ],
+
+    // ---- Personal ----------------------------------------------------------
+    name: { type: String, trim: true },
+    phone: { type: String, trim: true },
+    age: { type: Number, min: 0 },
+    gender: { type: String, trim: true },
+    pronouns: { type: String, trim: true },
+
+    // ---- Education ---------------------------------------------------------
+    education: { type: String, trim: true }, // e.g. "Undergraduate", "High School"
+    university: { type: String, trim: true }, // autofilled from colleges.csv
+    major: { type: String, trim: true },
+
+    // ---- Logistics ---------------------------------------------------------
+    allergies: { type: String, trim: true, default: "" },
+    tshirtSize: {
+      type: String,
+      enum: ["XS", "S", "M", "L", "XL", "XXL", ""],
+      default: "",
+    },
+    // URL of the resume in Azure Blob Storage.
+    resumeUrl: { type: String, default: "" },
+
+    // ---- Socials -----------------------------------------------------------
+    socials: { type: socialsSchema, default: function () { return {}; } },
+
+    // ---- Experience --------------------------------------------------------
+    experience: { type: experienceSchema, default: function () { return {}; } },
+
+    // ---- Skills ------------------------------------------------------------
+    programmingSkills: [{ type: String, trim: true }],
+    hardwareSkills: [{ type: String, trim: true }],
+    otherSkills: [{ type: String, trim: true }],
+
+    // ---- Review ------------------------------------------------------------
     status: {
       type: String,
-      enum: ["pending", "accepted", "rejected"],
+      enum: ["draft", "pending", "accepted", "rejected", "waitlisted"],
       default: "pending",
       index: true,
     },
@@ -68,7 +106,7 @@ var applicationSchema = new Schema(
   { timestamps: true }
 );
 
-// One applicant may only have a single application in the system.
-applicationSchema.index({ applicant: 1 }, { unique: true });
+// One application per applicant per round.
+applicationSchema.index({ applicant: 1, round: 1 }, { unique: true });
 
 module.exports = mongoose.model("Application", applicationSchema);

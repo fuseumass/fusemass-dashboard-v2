@@ -3,12 +3,62 @@
 var express = require("express");
 var authController = require("../controllers/authController");
 var isAuthenticated = require("../utils/isAuthenticated");
+var passportUtil = require("../utils/passport");
+var googleStatus = require("../utils/googleStatus");
 
+var passport = passportUtil.passport;
 var router = express.Router();
 
-// Public: create an account / log in.
+// Public: email/password.
 router.post("/register", authController.register);
 router.post("/login", authController.login);
+
+// Public: password reset (nodemailer).
+router.post("/forgot-password", authController.forgotPassword);
+router.post("/reset-password", authController.resetPassword);
+
+// One-time first-admin bootstrap, gated by the SETUP_ADMIN env var.
+router.post("/setup-admin", authController.setupAdmin);
+
+// Public: Google OAuth. Availability depends on env credentials, the env flag,
+// AND the admin org setting — all checked via googleStatus.isGoogleEnabled().
+router.get("/google", function startGoogle(req, res, next) {
+  googleStatus
+    .isGoogleEnabled()
+    .then(function afterCheck(enabled) {
+      if (!enabled) {
+        res.status(501).json({ error: "Google sign-in is not available." });
+        return;
+      }
+      passport.authenticate("google", { scope: ["profile", "email"], session: false })(
+        req,
+        res,
+        next
+      );
+    })
+    .catch(next);
+});
+
+router.get(
+  "/google/callback",
+  function handleGoogle(req, res, next) {
+    var clientOrigin = process.env.CLIENT_ORIGIN || "http://localhost:3000";
+    googleStatus
+      .isGoogleEnabled()
+      .then(function afterCheck(enabled) {
+        if (!enabled) {
+          res.redirect(clientOrigin + "/login?error=google");
+          return;
+        }
+        passport.authenticate("google", {
+          session: false,
+          failureRedirect: clientOrigin + "/login?error=google",
+        })(req, res, next);
+      })
+      .catch(next);
+  },
+  authController.googleCallback
+);
 
 // Requires a valid token.
 router.get("/me", isAuthenticated, authController.me);

@@ -1,0 +1,11 @@
+// White-label configuration, read from NEXT_PUBLIC_* env vars with sensible
+// fallbacks so the platform works before a hackathon customizes it.
+// NEXT_PUBLIC_* vars are inlined at build time, so these are safe on the client.
+
+export const config = {
+  apiUrl: process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000",
+  orgName: process.env.NEXT_PUBLIC_ORG_NAME || "Hackathon",
+  logo: process.env.NEXT_PUBLIC_LOGO || "",
+  logoV2: process.env.NEXT_PUBLIC_LOGO_V2 || process.env.NEXT_PUBLIC_LOGO || "",
+  brandColor: process.env.NEXT_PUBLIC_BRAND_COLOR || "#4f46e5",
+};

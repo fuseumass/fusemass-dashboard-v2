@@ -1,8 +1,31 @@
-# HackUMass Dashboard — Design & Code Practices
+# Hackathon Dashboard — Design & Code Practices
 
 This document is the single source of truth for **how we write code** in this
 repository. Read it before opening a PR. It is deliberately opinionated so that
 the whole team produces code that looks and behaves consistently.
+
+This is a **white-label** platform: it is not tied to any single hackathon.
+Branding (name, logos, colors) comes from environment variables so any hackathon
+can deploy it. See §8 and the `.env.example` files.
+
+---
+
+## 0. Git workflow — branch + PR only (hard rule)
+
+**Never commit directly to `main`.** All work happens on a branch and lands
+through a **pull request** that is reviewed and passes checks.
+
+1. Branch off `main`: `git checkout -b feature/<short-name>`.
+2. Commit to your branch and push it.
+3. Open a pull request into `main`. Get it reviewed; let CI (lint +
+   `node --check`) pass; then merge.
+
+> **Enforcement:** committing directly to `main` is a violation. Anyone who
+> pushes to `main` will be moved to a **restricted state** and will lose the
+> ability to commit to `main` in the future (branch protection + revoked direct
+> push access). When in doubt, open a PR.
+
+`main` is protected. Treat a red CI check as a blocker, not a suggestion.
 
 ---
 
@@ -47,9 +70,11 @@ Dashboard/
 │  ├─ app/                  # routes: login, signup, dashboard, ...
 │  └─ lib/api.js            # fetch wrapper + JWT storage
 │
-├─ design.md                # this file
+├─ README.md                # this file (design & practices)
 ├─ AGENTS.md                # rules for AI agents / contributors
-└─ issues.md                # backlog to turn into GitHub issues
+├─ backend-tasks.md         # backend backlog (B# tasks)
+├─ frontend-tasks.md        # frontend backlog (F# tasks)
+└─ testing-tasks.md         # testing/QA backlog (T# tasks)
 ```
 
 **Layering on the backend:** `routes → controllers → schemas`. Routes only wire
@@ -181,11 +206,17 @@ holding the token.
 - One route per folder under `app/` with a `page.js`.
 - Pages that use state, effects, or event handlers must start with
   `"use client"`.
-- All network access goes through `lib/api.js` so the JWT header is attached
-  consistently.
-- The login/signup/dashboard pages committed here are **intentionally plain
-  HTML**. Styling is a separate task (see `issues.md`); keep the markup
-  semantic so design work is easy to layer on.
+- All network access goes through `lib/api.js` (`apiFetch` for JSON, `apiUpload`
+  for multipart/resume) so the JWT header is attached consistently.
+- Anything a `useSearchParams()` reads must be wrapped in a `<Suspense>`
+  boundary (Next 16 requirement) — see the auth pages for the pattern.
+- Styling uses Tailwind v4 plus a small design-system layer of component classes
+  in `app/globals.css` (`.card`, `.input`, `.btn`, `.field-label`, …). The brand
+  accent is the `--brand` CSS variable, set from `NEXT_PUBLIC_BRAND_COLOR`.
+- White-label branding is read via `lib/config.js` (org name + logos + color).
+  Reusable pieces live in `components/` (`Logo`, `Sidebar`, `GoogleButton`,
+  `Autocomplete`, `TagAutocomplete`, `AuthShell`). Further visual polish is a
+  task (see `frontend-tasks.md`, F0).
 - Import with the `@/` alias (configured in `jsconfig.json`).
 
 ---

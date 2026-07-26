@@ -1,0 +1,56 @@
+"use strict";
+
+var mongoose = require("mongoose");
+
+var Schema = mongoose.Schema;
+
+/**
+ * An application round / cycle. A hackathon can run several rounds (e.g. an
+ * "Early Bird" round, then "General Admission", then "Waitlist"). Admins create
+ * and open/close rounds from the admin dashboard; applicants submit against
+ * whichever round is currently open.
+ */
+
+var applicationRoundSchema = new Schema(
+  {
+    name: {
+      type: String,
+      required: true,
+      trim: true,
+    },
+    description: {
+      type: String,
+      trim: true,
+      default: "",
+    },
+    // Only one round should typically be open at a time, but we don't force it.
+    isOpen: {
+      type: Boolean,
+      default: false,
+    },
+    opensAt: {
+      type: Date,
+    },
+    closesAt: {
+      type: Date,
+    },
+    // Controls display order in the admin dashboard.
+    order: {
+      type: Number,
+      default: 0,
+    },
+    // Per-round application form customization, edited by admins (not
+    // moderators). Left flexible on purpose — the form builder is a later task;
+    // for now it holds arbitrary field definitions the frontend can interpret.
+    // Example: [{ key, label, type, required, options }]
+    formConfig: {
+      type: Schema.Types.Mixed,
+      default: function () {
+        return [];
+      },
+    },
+  },
+  { timestamps: true }
+);
+
+module.exports = mongoose.model("ApplicationRound", applicationRoundSchema);
