@@ -44,7 +44,7 @@ available `{{placeholders}}` and a preview.
 
 ## Check-in (event day)
 
-### F2. First check-in UI (moderators + admins)
+### F2. First check-in UI (moderators + admins) - Jeng-Aun Chou
 A staff page to look up an accepted applicant (search by name/email) and mark
 them checked in; show who/when. Visible to moderators and admins.
 - **Depends on:** B5. **Related:** T2.
