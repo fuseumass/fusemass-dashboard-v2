@@ -19,7 +19,7 @@ colleges/skills autocomplete endpoints.
 
 ## Email notifications (editable templates)
 
-### B1. Email template storage + CRUD
+### B1. Email template storage + CRUD - Jeffrey Deng
 Add an `EmailTemplate` schema (key, subject, body with placeholders like
 `{{name}}`, `{{status}}`) and admin-only CRUD routes under `/api/admin/email-templates`.
 Seed defaults for `application_received`, `application_accepted`,
