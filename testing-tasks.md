@@ -34,7 +34,7 @@ Test template CRUD (B1), received email on submit (B2), decision emails (B3),
 placeholder rendering (B4), and idempotency (no duplicate decision emails).
 - **Depends on:** B1–B4, F1.
 
-## T2. First check-in
+## T2. First check-in - Jeng-Aun Chou
 Test the check-in endpoint + UI: moderators and admins can check in; applicants
 cannot; double check-in is handled.
 - **Depends on:** B5, F2.
