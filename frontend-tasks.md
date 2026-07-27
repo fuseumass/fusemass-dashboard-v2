@@ -34,7 +34,7 @@ Mobile layout for the sidebar (collapsible), keyboard nav, ARIA, contrast.
 
 ## Email templates
 
-### F1. Admin email-template editor
+### F1. Admin email-template editor - Jeffrey Deng
 Settings sub-page (admins only) to edit the subject/body of the
 `application_received` / `accepted` / `rejected` emails, with a list of
 available `{{placeholders}}` and a preview.
