@@ -45,7 +45,7 @@ Small `utils/renderTemplate.js` that substitutes `{{placeholders}}` safely
 
 ## Check-in (event day)
 
-### B5. First check-in model + endpoint
+### B5. First check-in model + endpoint - Jeng-Aun Chou
 Add check-in fields (e.g. `checkedInAt`, `checkedInBy`) — on the `User` or a
 dedicated `CheckIn` record keyed to an accepted application. Endpoint
 `POST /api/staff/checkin` (mark) and `GET /api/staff/checkin/:userId` (status),
