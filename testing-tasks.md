@@ -29,7 +29,7 @@ and/or run manual QA:
 - User search + promote to moderator/admin; role change reflected in the sidebar.
 - **Depends on:** the built features. **Related:** everything above.
 
-## T1. Email notifications
+## T1. Email notifications - Jeffrey Deng
 Test template CRUD (B1), received email on submit (B2), decision emails (B3),
 placeholder rendering (B4), and idempotency (no duplicate decision emails).
 - **Depends on:** B1–B4, F1.
