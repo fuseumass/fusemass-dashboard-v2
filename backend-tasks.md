@@ -52,7 +52,7 @@ dedicated `CheckIn` record keyed to an accepted application. Endpoint
 guarded by `isModerator` (moderators **and** admins).
 - **Depends on:** none (uses existing roles). **Related:** F2, T2.
 
-### B6. Meal service setup (admin)
+### B6. Meal service setup (admin) - Noah
 Add a `MealService` schema (name e.g. "Saturday Lunch", startsAt, endsAt,
 active). Admin-only CRUD under `/api/admin/meals`.
 - **Depends on:** none. **Related:** F3, T3.
