@@ -2,6 +2,7 @@
 
 var Application = require("../schemas/application");
 var ApplicationRound = require("../schemas/applicationRound");
+var MealService = require("../schemas/mealService");
 var User = require("../schemas/user");
 
 var DECISIONS = ["accepted", "rejected", "waitlisted", "pending"];
@@ -249,6 +250,117 @@ function deleteRound(req, res) {
     });
 }
 
+/**
+ * GET /api/admin/meals — list meal services.
+ * @param {object} _req
+ * @param {object} res
+ * @returns {Promise<void>}
+ */
+function listMeals(_req, res) {
+  return MealService.find({})
+    .sort({ startsAt: 1, createdAt: 1 })
+    .then(function afterFind(meals) {
+      res.status(200).json({ meals: meals });
+    })
+    .catch(function onError(err) {
+      console.error("listMeals failed:", err);
+      res.status(500).json({ error: "Could not load meal services." });
+    });
+}
+
+/**
+ * POST /api/admin/meals — create a meal service.
+ * Body: { name, startsAt, endsAt, active? }
+ * @param {object} req
+ * @param {object} res
+ * @returns {Promise<void>}
+ */
+function createMeal(req, res) {
+  var name = req.body && req.body.name;
+  var startsAt = req.body && req.body.startsAt;
+  var endsAt = req.body && req.body.endsAt;
+
+  if (!name) {
+    res.status(400).json({ error: "name is required." });
+    return Promise.resolve();
+  }
+  if (!startsAt || !endsAt) {
+    res.status(400).json({ error: "startsAt and endsAt are required." });
+    return Promise.resolve();
+  }
+
+  return MealService.create({
+    name: name,
+    startsAt: new Date(startsAt),
+    endsAt: new Date(endsAt),
+    active: req.body.active !== undefined ? Boolean(req.body.active) : true,
+  })
+    .then(function afterCreate(meal) {
+      res.status(201).json({ meal: meal });
+    })
+    .catch(function onError(err) {
+      console.error("createMeal failed:", err);
+      res.status(500).json({ error: "Could not create meal service." });
+    });
+}
+
+/**
+ * PATCH /api/admin/meals/:id — update a meal service.
+ * Body: { name?, startsAt?, endsAt?, active? }
+ * @param {object} req
+ * @param {object} res
+ * @returns {Promise<void>}
+ */
+function updateMeal(req, res) {
+  var update = {};
+  if (req.body && req.body.name !== undefined) {
+    update.name = req.body.name;
+  }
+  if (req.body && req.body.startsAt !== undefined) {
+    update.startsAt = new Date(req.body.startsAt);
+  }
+  if (req.body && req.body.endsAt !== undefined) {
+    update.endsAt = new Date(req.body.endsAt);
+  }
+  if (req.body && req.body.active !== undefined) {
+    update.active = Boolean(req.body.active);
+  }
+
+  return MealService.findByIdAndUpdate(req.params.id, { $set: update }, { new: true })
+    .then(function afterUpdate(meal) {
+      if (!meal) {
+        res.status(404).json({ error: "Meal service not found." });
+        return;
+      }
+      res.status(200).json({ meal: meal });
+    })
+    .catch(function onError(err) {
+      console.error("updateMeal failed:", err);
+      res.status(500).json({ error: "Could not update meal service." });
+    });
+}
+
+/**
+ * DELETE /api/admin/meals/:id — remove a meal service.
+ * @param {object} req
+ * @param {object} res
+ * @returns {Promise<void>}
+ */
+function deleteMeal(req, res) {
+  return MealService.findByIdAndDelete(req.params.id)
+    .then(function afterDelete(meal) {
+      if (!meal) {
+        res.status(404).json({ error: "Meal service not found." });
+        return;
+      }
+      res.status(200).json({ ok: true });
+    })
+    .catch(function onError(err) {
+      console.error("deleteMeal failed:", err);
+      res.status(500).json({ error: "Could not delete meal service." });
+    });
+}
+
 module.exports = {
   listApplications: listApplications,
   decideApplication: decideApplication,
@@ -258,4 +370,8 @@ module.exports = {
   createRound: createRound,
   updateRound: updateRound,
   deleteRound: deleteRound,
+  listMeals: listMeals,
+  createMeal: createMeal,
+  updateMeal: updateMeal,
+  deleteMeal: deleteMeal,
 };

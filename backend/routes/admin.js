@@ -28,4 +28,10 @@ router.delete("/rounds/:id", isAdmin, adminController.deleteRound);
 router.get("/settings", isAdmin, settingsController.getSettings);
 router.patch("/settings", isAdmin, settingsController.updateSettings);
 
+// Meal services (event-day food service administration).
+router.get("/meals", isAdmin, adminController.listMeals);
+router.post("/meals", isAdmin, adminController.createMeal);
+router.patch("/meals/:id", isAdmin, adminController.updateMeal);
+router.delete("/meals/:id", isAdmin, adminController.deleteMeal);
+
 module.exports = router;
