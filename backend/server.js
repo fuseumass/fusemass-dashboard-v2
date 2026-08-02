@@ -9,6 +9,7 @@ var cookieParser = require("cookie-parser");
 var connectDatabase = require("./config/db");
 var parseToken = require("./utils/parseToken");
 var passportUtil = require("./utils/passport");
+var EmailTemplate = require("./schemas/emailTemplate");
 
 var authRoutes = require("./routes/auth");
 var applicationRoutes = require("./routes/applications");
@@ -61,6 +62,11 @@ var MONGODB_URI = process.env.MONGODB_URI || "";
 connectDatabase(MONGODB_URI)
   .then(function afterConnect() {
     console.log("Connected to MongoDB.");
+    return EmailTemplate.seedDefaults().then(function afterSeed() {
+      console.log("Email templates seeded.");
+    });
+  })
+  .then(function afterSeed() {
     app.listen(PORT, function onListen() {
       console.log("HackUMass backend listening on port " + PORT + ".");
     });
