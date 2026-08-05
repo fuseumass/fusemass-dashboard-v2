@@ -97,17 +97,15 @@ function sendTemplateEmail(to, templateKey, values) {
 
       var orgName = process.env.ORG_NAME || "the hackathon";
       var from = process.env.MAIL_FROM || process.env.SMTP_USER;
-      var renderValues = Object.assign({}, values, { orgName: orgName });
-      var renderedSubject = renderTemplate(template.subject, renderValues);
-      var renderedText = renderTemplate(template.body, renderValues);
-      var renderedHtml = renderTemplate(template.body, renderValues, { escapeHtml: true });
+      var renderedSubject = renderTemplate(template.subject, Object.assign({}, values, { orgName: orgName }));
+      var renderedBody = renderTemplate(template.body, Object.assign({}, values, { orgName: orgName }));
 
       return buildTransport().sendMail({
         from: from,
         to: to,
         subject: renderedSubject,
-        text: renderedText,
-        html: renderedHtml.replace(/\n/g, "<br />"),
+        text: renderedBody,
+        html: renderedBody.replace(/\n/g, "<br />"),
       });
     })
     .then(function afterSend() {
