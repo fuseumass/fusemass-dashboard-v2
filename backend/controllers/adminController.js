@@ -5,6 +5,7 @@ var ApplicationRound = require("../schemas/applicationRound");
 var EmailTemplate = require("../schemas/emailTemplate");
 var User = require("../schemas/user");
 var mailer = require("../utils/mailer");
+var formConfigUtil = require("../utils/formConfig");
 
 var DECISIONS = ["accepted", "rejected", "waitlisted", "pending"];
 
@@ -209,6 +210,12 @@ function createRound(req, res) {
     return Promise.resolve();
   }
 
+  var formConfigCheck = formConfigUtil.validateFormConfigShape(req.body.formConfig);
+  if (formConfigCheck.errors.length) {
+    res.status(400).json({ error: formConfigCheck.errors.join(" ") });
+    return Promise.resolve();
+  }
+
   return ApplicationRound.create({
     name: name,
     description: req.body.description || "",
@@ -242,6 +249,12 @@ function updateRound(req, res) {
       update[key] = req.body[key];
     }
   });
+
+  var formConfigCheck = formConfigUtil.validateFormConfigShape(update.formConfig);
+  if (formConfigCheck.errors.length) {
+    res.status(400).json({ error: formConfigCheck.errors.join(" ") });
+    return Promise.resolve();
+  }
 
   return ApplicationRound.findByIdAndUpdate(req.params.id, { $set: update }, { new: true })
     .then(function afterUpdate(round) {
