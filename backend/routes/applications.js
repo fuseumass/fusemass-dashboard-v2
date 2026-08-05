@@ -18,14 +18,42 @@ var upload = multer({
       "application/msword",
       "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
     ];
-    cb(null, ok.indexOf(file.mimetype) !== -1);
+    if (ok.indexOf(file.mimetype) === -1) {
+      cb(new Error("Resume must be a PDF or Word document."));
+      return;
+    }
+    cb(null, true);
   },
 });
+
+/**
+ * Translate multer's upload errors (oversized file, rejected type from
+ * fileFilter above) into a clean 400 instead of falling through to the
+ * generic 500 handler. Express 4 error middleware: 4 args is what makes it
+ * an error handler, so this must stay right after upload.single() below.
+ *
+ * @param {Error} err - Error from multer (or fileFilter's custom Error).
+ * @param {object} _req - Express request.
+ * @param {object} res - Express response.
+ * @param {function} next - Express next callback.
+ * @returns {void}
+ */
+function handleUploadError(err, _req, res, next) {
+  if (!err) {
+    next();
+    return;
+  }
+  if (err.code === "LIMIT_FILE_SIZE") {
+    res.status(400).json({ error: "Resume must be 5 MB or smaller." });
+    return;
+  }
+  res.status(400).json({ error: err.message || "Could not process the uploaded file." });
+}
 
 // Every application route requires the caller to be logged in.
 // `upload.single("resume")` parses multipart/form-data: the file lands on
 // req.file and the other fields on req.body.
-router.post("/", isAuthenticated, upload.single("resume"), applicationController.apply);
+router.post("/", isAuthenticated, upload.single("resume"), handleUploadError, applicationController.apply);
 router.get("/me", isAuthenticated, applicationController.getMine);
 
 module.exports = router;
