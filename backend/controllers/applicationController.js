@@ -4,6 +4,7 @@ var Application = require("../schemas/application");
 var ApplicationRound = require("../schemas/applicationRound");
 var azureBlob = require("../utils/azureBlob");
 var mailer = require("../utils/mailer");
+var formConfigUtil = require("../utils/formConfig");
 
 /**
  * Parse a form field that may arrive as a JSON string (multipart form data
@@ -86,6 +87,15 @@ function apply(req, res) {
 
       var profile = buildProfile(req.body || {});
       var status = req.body && req.body.status === "draft" ? "draft" : "pending";
+      var answersInput = parseMaybeJson(req.body && req.body.answers, {});
+      var answersCheck = formConfigUtil.validateAnswers(round.formConfig, answersInput);
+
+      // Drafts can be incomplete; a real submission must satisfy the round's
+      // required dynamic fields (and any options constraints).
+      if (status !== "draft" && answersCheck.errors.length) {
+        res.status(400).json({ error: answersCheck.errors.join(" ") });
+        return null;
+      }
 
       // Upload the resume first (if provided), then persist the application.
       var resumeStep = Promise.resolve(undefined);
@@ -102,6 +112,7 @@ function apply(req, res) {
           applicant: claims.id,
           round: round._id,
           status: status,
+          answers: answersCheck.answers,
         });
         if (resumeUrl) {
           update.resumeUrl = resumeUrl;
