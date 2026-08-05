@@ -227,15 +227,53 @@ function RoundsManager() {
   );
 }
 
+const FIELD_TYPES = ["text", "textarea", "number", "select", "checkbox", "date"];
+
+function fieldFromConfig(f) {
+  return {
+    _uid: crypto.randomUUID(),
+    key: f?.key || "",
+    label: f?.label || "",
+    type: FIELD_TYPES.includes(f?.type) ? f.type : "text",
+    required: Boolean(f?.required),
+    options: Array.isArray(f?.options) ? f.options : [],
+  };
+}
+
+function emptyField() {
+  return fieldFromConfig(null);
+}
+
 function RoundRow({ round, onChanged }) {
   const [opensAt, setOpensAt] = useState(toLocalInput(round.opensAt));
   const [closesAt, setClosesAt] = useState(toLocalInput(round.closesAt));
   const [showForm, setShowForm] = useState(false);
-  const [formConfig, setFormConfig] = useState(
-    JSON.stringify(round.formConfig || [], null, 2),
+  const [fields, setFields] = useState(
+    (round.formConfig || []).map(fieldFromConfig),
   );
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
+
+  function updateField(index, patchObj) {
+    setFields((fs) =>
+      fs.map((f, i) => (i === index ? { ...f, ...patchObj } : f)),
+    );
+  }
+  function addField() {
+    setFields((fs) => [...fs, emptyField()]);
+  }
+  function removeField(index) {
+    setFields((fs) => fs.filter((_, i) => i !== index));
+  }
+  function moveField(index, dir) {
+    setFields((fs) => {
+      const target = index + dir;
+      if (target < 0 || target >= fs.length) return fs;
+      const next = [...fs];
+      [next[index], next[target]] = [next[target], next[index]];
+      return next;
+    });
+  }
 
   async function patch(body) {
     setSaving(true);
@@ -261,14 +299,14 @@ function RoundRow({ round, onChanged }) {
   }
 
   async function saveForm() {
-    let parsed;
-    try {
-      parsed = JSON.parse(formConfig);
-    } catch {
-      setError("Form config must be valid JSON.");
-      return;
-    }
-    await patch({ formConfig: parsed });
+    const payload = fields.map((f) => ({
+      key: f.key,
+      label: f.label,
+      type: f.type,
+      required: f.required,
+      options: f.options,
+    }));
+    await patch({ formConfig: payload });
   }
 
   async function remove() {
@@ -384,31 +422,59 @@ function RoundRow({ round, onChanged }) {
 
       {showForm
         ? <div style={{ marginTop: "0.75rem" }}>
-            <label style={{ display: "block" }}>
-              <span className="field-label">
-                Per-round form config (JSON) — advanced; full form builder is a
-                later task
-              </span>
-              <textarea
-                className="textarea"
-                style={{
-                  minHeight: 140,
-                  fontFamily: "var(--font-mono), monospace",
-                  fontSize: "0.82rem",
-                }}
-                value={formConfig}
-                onChange={(e) => setFormConfig(e.target.value)}
-              />
-            </label>
-            <button
-              type="button"
-              className="btn btn-ghost"
-              style={{ width: "auto", marginTop: 6 }}
-              disabled={saving}
-              onClick={saveForm}
+            <p
+              className="muted"
+              style={{ fontSize: "0.82rem", marginBottom: "0.75rem" }}
             >
-              Save form config
-            </button>
+              Extra questions applicants answer for this round, alongside the
+              standard fields.
+            </p>
+
+            {fields.length === 0
+              ? <p className="muted" style={{ marginBottom: "0.75rem" }}>
+                  No extra fields yet.
+                </p>
+              : <div
+                  style={{
+                    display: "flex",
+                    flexDirection: "column",
+                    gap: "0.75rem",
+                    marginBottom: "0.75rem",
+                  }}
+                >
+                  {fields.map((field, index) => (
+                    <FormFieldEditor
+                      key={field._uid}
+                      field={field}
+                      isFirst={index === 0}
+                      isLast={index === fields.length - 1}
+                      onChange={(patchObj) => updateField(index, patchObj)}
+                      onMoveUp={() => moveField(index, -1)}
+                      onMoveDown={() => moveField(index, 1)}
+                      onRemove={() => removeField(index)}
+                    />
+                  ))}
+                </div>}
+
+            <div style={{ display: "flex", gap: 8 }}>
+              <button
+                type="button"
+                className="btn btn-ghost"
+                style={{ width: "auto" }}
+                onClick={addField}
+              >
+                + Add field
+              </button>
+              <button
+                type="button"
+                className="btn btn-ghost"
+                style={{ width: "auto" }}
+                disabled={saving}
+                onClick={saveForm}
+              >
+                Save form config
+              </button>
+            </div>
           </div>
         : null}
 
@@ -417,6 +483,137 @@ function RoundRow({ round, onChanged }) {
             {error}
           </div>
         : null}
+    </div>
+  );
+}
+
+function FormFieldEditor({
+  field,
+  isFirst,
+  isLast,
+  onChange,
+  onMoveUp,
+  onMoveDown,
+  onRemove,
+}) {
+  const optionsText = (field.options || []).join(", ");
+
+  function setOptionsFromText(text) {
+    const options = text
+      .split(",")
+      .map((s) => s.trim())
+      .filter(Boolean);
+    onChange({ options });
+  }
+
+  return (
+    <div
+      style={{
+        border: "1px solid var(--border)",
+        borderRadius: 8,
+        padding: "0.75rem",
+      }}
+    >
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))",
+          gap: "0.5rem",
+        }}
+      >
+        <label style={{ display: "block" }}>
+          <span className="field-label">Key</span>
+          <input
+            className="input"
+            value={field.key}
+            onChange={(e) => onChange({ key: e.target.value })}
+            placeholder="e.g. dietary"
+          />
+        </label>
+        <label style={{ display: "block" }}>
+          <span className="field-label">Label</span>
+          <input
+            className="input"
+            value={field.label}
+            onChange={(e) => onChange({ label: e.target.value })}
+            placeholder="e.g. Dietary restrictions"
+          />
+        </label>
+        <label style={{ display: "block" }}>
+          <span className="field-label">Type</span>
+          <select
+            className="select"
+            value={field.type}
+            onChange={(e) => onChange({ type: e.target.value })}
+          >
+            {FIELD_TYPES.map((t) => (
+              <option key={t} value={t}>
+                {t}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: "0.4rem",
+            paddingTop: "1.35rem",
+          }}
+        >
+          <input
+            type="checkbox"
+            checked={field.required}
+            onChange={(e) => onChange({ required: e.target.checked })}
+          />
+          Required
+        </label>
+      </div>
+
+      {field.type === "select"
+        ? <label style={{ display: "block", marginTop: "0.5rem" }}>
+            <span className="field-label">Options (comma-separated)</span>
+            <input
+              className="input"
+              value={optionsText}
+              onChange={(e) => setOptionsFromText(e.target.value)}
+              placeholder="e.g. none, vegetarian, vegan"
+            />
+          </label>
+        : null}
+
+      <div style={{ display: "flex", gap: 6, marginTop: "0.5rem" }}>
+        <button
+          type="button"
+          className="btn btn-ghost"
+          style={{ width: "auto", padding: "0.25rem 0.6rem" }}
+          disabled={isFirst}
+          onClick={onMoveUp}
+        >
+          ↑ Move up
+        </button>
+        <button
+          type="button"
+          className="btn btn-ghost"
+          style={{ width: "auto", padding: "0.25rem 0.6rem" }}
+          disabled={isLast}
+          onClick={onMoveDown}
+        >
+          ↓ Move down
+        </button>
+        <button
+          type="button"
+          className="btn btn-ghost"
+          style={{
+            width: "auto",
+            padding: "0.25rem 0.6rem",
+            color: "var(--danger)",
+          }}
+          onClick={onRemove}
+        >
+          Remove
+        </button>
+      </div>
     </div>
   );
 }
