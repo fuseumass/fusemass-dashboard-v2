@@ -3,6 +3,7 @@
 var Application = require("../schemas/application");
 var ApplicationRound = require("../schemas/applicationRound");
 var azureBlob = require("../utils/azureBlob");
+var mailer = require("../utils/mailer");
 
 /**
  * Parse a form field that may arrive as a JSON string (multipart form data
@@ -106,12 +107,32 @@ function apply(req, res) {
           update.resumeUrl = resumeUrl;
         }
 
-        return Application.findOneAndUpdate(
-          { applicant: claims.id, round: round._id },
-          { $set: update },
-          { new: true, upsert: true, setDefaultsOnInsert: true }
-        ).then(function afterSave(application) {
-          res.status(200).json({ application: application.toJSON() });
+        return Application.findOne({ applicant: claims.id, round: round._id }).then(function afterExisting(
+          existing
+        ) {
+          // Only the first draft->pending (or new->pending) transition counts
+          // as "submitted" — re-saving an already-submitted application must
+          // not re-send the received email.
+          var alreadySubmitted = Boolean(existing) && existing.status !== "draft";
+
+          return Application.findOneAndUpdate(
+            { applicant: claims.id, round: round._id },
+            { $set: update },
+            { new: true, upsert: true, setDefaultsOnInsert: true }
+          ).then(function afterSave(application) {
+            res.status(200).json({ application: application.toJSON() });
+
+            if (status === "pending" && !alreadySubmitted) {
+              mailer
+                .sendTemplateEmail(claims.email, "application_received", {
+                  name: application.name,
+                  status: application.status,
+                })
+                .catch(function onMailError(err) {
+                  console.error("Failed to send application-received email:", err);
+                });
+            }
+          });
         });
       });
     })
