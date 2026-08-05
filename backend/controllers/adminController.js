@@ -4,8 +4,14 @@ var Application = require("../schemas/application");
 var ApplicationRound = require("../schemas/applicationRound");
 var EmailTemplate = require("../schemas/emailTemplate");
 var User = require("../schemas/user");
+var mailer = require("../utils/mailer");
 
 var DECISIONS = ["accepted", "rejected", "waitlisted", "pending"];
+
+var DECISION_TEMPLATE_KEYS = {
+  accepted: "application_accepted",
+  rejected: "application_rejected",
+};
 
 /**
  * GET /api/admin/applications
@@ -64,21 +70,43 @@ function decideApplication(req, res) {
     return Promise.resolve();
   }
 
-  return Application.findByIdAndUpdate(
-    req.params.id,
-    {
-      status: decision,
-      reviewedBy: admin.id,
-      reviewedAt: new Date(),
-    },
-    { new: true }
-  )
-    .then(function afterUpdate(application) {
-      if (!application) {
+  return Application.findById(req.params.id)
+    .then(function afterFind(existing) {
+      if (!existing) {
         res.status(404).json({ error: "Application not found." });
-        return;
+        return null;
       }
-      res.status(200).json({ application: application.toJSON() });
+
+      var previousStatus = existing.status;
+
+      return Application.findByIdAndUpdate(
+        req.params.id,
+        {
+          status: decision,
+          reviewedBy: admin.id,
+          reviewedAt: new Date(),
+        },
+        { new: true }
+      )
+        .populate("applicant", "name email role")
+        .then(function afterUpdate(application) {
+          res.status(200).json({ application: application.toJSON() });
+
+          // Idempotent: only fire when the decision actually changes the
+          // status (re-clicking the same decision must not re-send).
+          var templateKey = DECISION_TEMPLATE_KEYS[decision];
+          var recipient = application.applicant && application.applicant.email;
+          if (templateKey && decision !== previousStatus && recipient) {
+            mailer
+              .sendTemplateEmail(recipient, templateKey, {
+                name: application.name,
+                status: application.status,
+              })
+              .catch(function onMailError(err) {
+                console.error("Failed to send decision email:", err);
+              });
+          }
+        });
     })
     .catch(function onError(err) {
       console.error("decideApplication failed:", err);
