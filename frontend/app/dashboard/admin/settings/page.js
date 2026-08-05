@@ -227,7 +227,14 @@ function RoundsManager() {
   );
 }
 
-const FIELD_TYPES = ["text", "textarea", "number", "select", "checkbox", "date"];
+const FIELD_TYPES = [
+  "text",
+  "textarea",
+  "number",
+  "select",
+  "checkbox",
+  "date",
+];
 
 function fieldFromConfig(f) {
   return {
