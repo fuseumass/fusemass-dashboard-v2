@@ -18,14 +18,9 @@ var mailer = require("../utils/mailer");
  * @returns {Promise<void>}
  */
 function register(req, res) {
-  var name = req.body && req.body.name;
-  var email = req.body && req.body.email;
-  var password = req.body && req.body.password;
-
-  if (!name || !email || !password) {
-    res.status(400).json({ error: "name, email and password are required." });
-    return Promise.resolve();
-  }
+  var name = req.body.name;
+  var email = req.body.email;
+  var password = req.body.password;
 
   return User.findOne({ email: String(email).toLowerCase() })
     .then(function afterLookup(existing) {
@@ -73,13 +68,8 @@ function register(req, res) {
  * @returns {Promise<void>}
  */
 function login(req, res) {
-  var email = req.body && req.body.email;
-  var password = req.body && req.body.password;
-
-  if (!email || !password) {
-    res.status(400).json({ error: "email and password are required." });
-    return Promise.resolve();
-  }
+  var email = req.body.email;
+  var password = req.body.password;
 
   return User.findOne({ email: String(email).toLowerCase() })
     .then(function afterLookup(user) {
@@ -188,12 +178,7 @@ function googleCallback(req, res) {
  * @returns {Promise<void>}
  */
 function forgotPassword(req, res) {
-  var email = req.body && req.body.email;
-  if (!email) {
-    res.status(400).json({ error: "email is required." });
-    return Promise.resolve();
-  }
-
+  var email = req.body.email;
   var clientOrigin = process.env.CLIENT_ORIGIN || "http://localhost:3000";
 
   return User.findOne({ email: String(email).toLowerCase() })
@@ -236,13 +221,8 @@ function forgotPassword(req, res) {
  * @returns {Promise<void>}
  */
 function resetPassword(req, res) {
-  var token = req.body && req.body.token;
-  var password = req.body && req.body.password;
-
-  if (!token || !password) {
-    res.status(400).json({ error: "token and password are required." });
-    return Promise.resolve();
-  }
+  var token = req.body.token;
+  var password = req.body.password;
 
   var hashed = crypto.createHash("sha256").update(String(token)).digest("hex");
 
@@ -289,11 +269,7 @@ function setupAdmin(req, res) {
     return Promise.resolve();
   }
 
-  var email = req.body && req.body.email;
-  if (!email) {
-    res.status(400).json({ error: "email is required." });
-    return Promise.resolve();
-  }
+  var email = req.body.email;
 
   return User.findOne({ role: "admin" })
     .then(function afterCheck(existingAdmin) {

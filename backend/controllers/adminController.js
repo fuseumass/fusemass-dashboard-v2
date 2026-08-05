@@ -7,8 +7,6 @@ var User = require("../schemas/user");
 var mailer = require("../utils/mailer");
 var formConfigUtil = require("../utils/formConfig");
 
-var DECISIONS = ["accepted", "rejected", "waitlisted", "pending"];
-
 var DECISION_TEMPLATE_KEYS = {
   accepted: "application_accepted",
   rejected: "application_rejected",
@@ -65,11 +63,7 @@ function decideApplication(req, res) {
     return Promise.resolve();
   }
 
-  var decision = req.body && req.body.decision;
-  if (DECISIONS.indexOf(decision) === -1) {
-    res.status(400).json({ error: "decision must be one of " + DECISIONS.join(", ") + "." });
-    return Promise.resolve();
-  }
+  var decision = req.body.decision;
 
   return Application.findById(req.params.id)
     .then(function afterFind(existing) {
@@ -155,12 +149,7 @@ function searchUsers(req, res) {
  * @returns {Promise<void>}
  */
 function setRole(req, res) {
-  var role = req.body && req.body.role;
-  var validRoles = ["applicant", "moderator", "admin"];
-  if (validRoles.indexOf(role) === -1) {
-    res.status(400).json({ error: "role must be one of " + validRoles.join(", ") + "." });
-    return Promise.resolve();
-  }
+  var role = req.body.role;
 
   return User.findByIdAndUpdate(req.params.id, { role: role }, { new: true })
     .then(function afterUpdate(user) {
@@ -204,11 +193,7 @@ function listRounds(_req, res) {
  * @returns {Promise<void>}
  */
 function createRound(req, res) {
-  var name = req.body && req.body.name;
-  if (!name) {
-    res.status(400).json({ error: "name is required." });
-    return Promise.resolve();
-  }
+  var name = req.body.name;
 
   var formConfigCheck = formConfigUtil.validateFormConfigShape(req.body.formConfig);
   if (formConfigCheck.errors.length) {
@@ -322,14 +307,9 @@ function listEmailTemplates(_req, res) {
  * @returns {Promise<void>}
  */
 function createEmailTemplate(req, res) {
-  var key = req.body && req.body.key;
-  var subject = req.body && req.body.subject;
-  var body = req.body && req.body.body;
-
-  if (!key) {
-    res.status(400).json({ error: "key is required." });
-    return Promise.resolve();
-  }
+  var key = req.body.key;
+  var subject = req.body.subject;
+  var body = req.body.body;
 
   return EmailTemplate.create({
     key: key,

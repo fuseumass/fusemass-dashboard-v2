@@ -5,28 +5,53 @@ var adminController = require("../controllers/adminController");
 var settingsController = require("../controllers/settingsController");
 var isAdmin = require("../utils/isAdmin");
 var isModerator = require("../utils/isModerator");
+var validateBody = require("../utils/validateBody");
 
 var router = express.Router();
 
 // ---- Reviewer routes: moderators OR admins ---------------------------------
 // Moderators can review applications (approve/reject) and list them.
 router.get("/applications", isModerator, adminController.listApplications);
-router.patch("/applications/:id", isModerator, adminController.decideApplication);
+router.patch(
+  "/applications/:id",
+  isModerator,
+  validateBody({
+    decision: { required: true, type: "string", enum: ["accepted", "rejected", "waitlisted", "pending"] },
+  }),
+  adminController.decideApplication
+);
 
 // ---- Admin-only routes: organization setup ---------------------------------
 // User management (promote to moderator/admin).
 router.get("/users", isAdmin, adminController.searchUsers);
-router.patch("/users/:id/role", isAdmin, adminController.setRole);
+router.patch(
+  "/users/:id/role",
+  isAdmin,
+  validateBody({
+    role: { required: true, type: "string", enum: ["applicant", "moderator", "admin"] },
+  }),
+  adminController.setRole
+);
 
 // Application rounds (multiple application cycles + their dates + form config).
 router.get("/rounds", isAdmin, adminController.listRounds);
-router.post("/rounds", isAdmin, adminController.createRound);
+router.post(
+  "/rounds",
+  isAdmin,
+  validateBody({ name: { required: true, type: "string" } }),
+  adminController.createRound
+);
 router.patch("/rounds/:id", isAdmin, adminController.updateRound);
 router.delete("/rounds/:id", isAdmin, adminController.deleteRound);
 
 // Email templates.
 router.get("/email-templates", isAdmin, adminController.listEmailTemplates);
-router.post("/email-templates", isAdmin, adminController.createEmailTemplate);
+router.post(
+  "/email-templates",
+  isAdmin,
+  validateBody({ key: { required: true, type: "string" } }),
+  adminController.createEmailTemplate
+);
 router.patch("/email-templates/:id", isAdmin, adminController.updateEmailTemplate);
 router.delete("/email-templates/:id", isAdmin, adminController.deleteEmailTemplate);
 
