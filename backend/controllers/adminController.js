@@ -279,6 +279,7 @@ function createMeal(req, res) {
   var name = req.body && req.body.name;
   var startsAt = req.body && req.body.startsAt;
   var endsAt = req.body && req.body.endsAt;
+  var actorId = req.user && req.user.id ? req.user.id : null;
 
   if (!name) {
     res.status(400).json({ error: "name is required." });
@@ -294,6 +295,8 @@ function createMeal(req, res) {
     startsAt: new Date(startsAt),
     endsAt: new Date(endsAt),
     active: req.body.active !== undefined ? Boolean(req.body.active) : true,
+    createdBy: actorId,
+    updatedBy: actorId,
   })
     .then(function afterCreate(meal) {
       res.status(201).json({ meal: meal });
@@ -313,6 +316,7 @@ function createMeal(req, res) {
  */
 function updateMeal(req, res) {
   var update = {};
+  var actorId = req.user && req.user.id ? req.user.id : null;
   if (req.body && req.body.name !== undefined) {
     update.name = req.body.name;
   }
@@ -324,6 +328,9 @@ function updateMeal(req, res) {
   }
   if (req.body && req.body.active !== undefined) {
     update.active = Boolean(req.body.active);
+  }
+  if (actorId) {
+    update.updatedBy = actorId;
   }
 
   return MealService.findByIdAndUpdate(req.params.id, { $set: update }, { new: true })
