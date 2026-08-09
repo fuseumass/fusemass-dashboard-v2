@@ -57,7 +57,7 @@ Add a `MealService` schema (name e.g. "Saturday Lunch", startsAt, endsAt,
 active). Admin-only CRUD under `/api/admin/meals`.
 - **Depends on:** none. **Related:** F3, T3.
 
-### B7. Meal check-in endpoint
+### B7. Meal check-in endpoint - Richarla Preston @charlajp
 Record a check-in per user per meal service (one row each, prevents double
 serving). `POST /api/staff/meals/:mealId/checkin`, guarded by `isModerator`.
 - **Depends on:** B6. **Related:** F3, T3.
