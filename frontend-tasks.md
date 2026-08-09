@@ -91,7 +91,7 @@ Detect expired tokens app-wide and redirect to `/login` with a message
 (currently handled per-page in the dashboard layout).
 - **Depends on:** none.
 
-### F9. Logo assets
+### F9. Logo assets - Richarla Preston @charlajp
 Drop real `public/logo.png` and `public/logo-v2.png`, set the
 `NEXT_PUBLIC_*` env vars per deployment. The `Logo` component already falls back
 to the org name text until then.
