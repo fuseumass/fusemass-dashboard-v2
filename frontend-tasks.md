@@ -81,7 +81,7 @@ Page for judging progress once B11 lands.
 
 ## Supporting
 
-### F7. Client-side form validation + friendlier errors
+### F7. Client-side form validation + friendlier errors - Richarla Preston @charlajp
 Field-level validation on the application and auth forms (email format, phone,
 required), inline error messages.
 - **Depends on:** none.
