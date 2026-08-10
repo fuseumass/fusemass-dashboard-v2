@@ -289,17 +289,31 @@ function createMeal(req, res) {
     res.status(400).json({ error: "startsAt and endsAt are required." });
     return Promise.resolve();
   }
+  if (!actorId) {
+    res.status(401).json({ error: "Authentication required." });
+    return Promise.resolve();
+  }
 
-  return MealService.create({
+  return MealService.findOne({
     name: name,
-    startsAt: new Date(startsAt),
-    endsAt: new Date(endsAt),
-    active: req.body.active !== undefined ? Boolean(req.body.active) : true,
-    createdBy: actorId,
-    updatedBy: actorId,
+    $or: [{ createdBy: actorId }, { updatedBy: actorId }],
   })
-    .then(function afterCreate(meal) {
-      res.status(201).json({ meal: meal });
+    .then(function afterLookup(existingMeal) {
+      if (existingMeal) {
+        res.status(409).json({ error: "A meal with this name already exists for this user." });
+        return null;
+      }
+
+      return MealService.create({
+        name: name,
+        startsAt: new Date(startsAt),
+        endsAt: new Date(endsAt),
+        active: req.body.active !== undefined ? Boolean(req.body.active) : true,
+        createdBy: actorId,
+        updatedBy: actorId,
+      }).then(function afterCreate(meal) {
+        res.status(201).json({ meal: meal });
+      });
     })
     .catch(function onError(err) {
       console.error("createMeal failed:", err);
