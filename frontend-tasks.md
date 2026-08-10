@@ -86,7 +86,7 @@ Field-level validation on the application and auth forms (email format, phone,
 required), inline error messages.
 - **Depends on:** none.
 
-### F8. Session/token expiry handling
+### F8. Session/token expiry handling - @mli721
 Detect expired tokens app-wide and redirect to `/login` with a message
 (currently handled per-page in the dashboard layout).
 - **Depends on:** none.

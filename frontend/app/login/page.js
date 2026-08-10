@@ -5,7 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useState } from "react";
 import AuthShell from "@/components/AuthShell";
 import GoogleButton from "@/components/GoogleButton";
-import { apiFetch, saveToken } from "@/lib/api";
+import { apiFetch, EXPIRED_MESSAGE, saveToken } from "@/lib/api";
 
 export default function LoginPage() {
   return (
@@ -15,14 +15,23 @@ export default function LoginPage() {
   );
 }
 
+// Reasons we may have been sent here, rather than the visitor navigating in.
+function reasonFromParams(params) {
+  if (params.get("expired") === "1") {
+    return EXPIRED_MESSAGE;
+  }
+  if (params.get("error") === "google") {
+    return "Google sign-in failed. Try again.";
+  }
+  return "";
+}
+
 function LoginInner() {
   const router = useRouter();
   const params = useSearchParams();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [error, setError] = useState(
-    params.get("error") === "google" ? "Google sign-in failed. Try again." : "",
-  );
+  const [error, setError] = useState(reasonFromParams(params));
   const [submitting, setSubmitting] = useState(false);
 
   async function handleSubmit(event) {
