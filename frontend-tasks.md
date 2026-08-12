@@ -59,7 +59,7 @@ serving.
 
 ## Application form builder (per round)
 
-### F4. Round form builder + dynamic application rendering
+### F4. Round form builder + dynamic application rendering - Jeffrey Deng
 Replace the raw JSON `formConfig` textarea in Settings with a real builder
 (add/reorder/remove fields, pick type, mark required). Then have the applicant
 application page render the round's dynamic fields alongside the standard ones.
