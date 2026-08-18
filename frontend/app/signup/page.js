@@ -19,6 +19,25 @@ export default function SignupPage() {
     event.preventDefault();
     setError("");
     setSubmitting(true);
+    // Richarla - edit start
+    
+    if (!name.trim()) {
+      setError("Full name is required.");
+      return;
+    }
+
+    if (!email.incldudes("@") || !email.includes(".")) {
+      setError("Please enter a valid email address.");
+      return;
+    }
+
+    if (password.length < 8) {
+      setError("Password must be at least 8 charactes long.");
+      return;
+    }
+    
+
+    // Richarla - edit end
     try {
       const data = await apiFetch("/api/auth/register", {
         method: "POST",
