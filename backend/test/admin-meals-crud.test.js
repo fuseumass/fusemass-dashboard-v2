@@ -1,5 +1,8 @@
 "use strict";
 
+var path = require("path");
+require("dotenv").config({ path: path.resolve(__dirname, "../.env") });
+
 var test = require("node:test");
 var assert = require("node:assert/strict");
 var request = require("supertest");
@@ -15,8 +18,8 @@ var app;
 var adminToken;
 var createdMealId;
 
-var MONGODB_URI = process.env.MONGODB_URI || "mongodb://127.0.0.1:27017/fusemass-dashboard-test";
-var JWT_SECRET = process.env.JWT_SECRET || "test-secret";
+var MONGODB_URI = process.env.MONGODB_URI;
+var JWT_SECRET = process.env.JWT_SECRET;
 
 function buildApp() {
   var api = express();
