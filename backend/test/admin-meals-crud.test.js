@@ -52,6 +52,7 @@ test("admin meal CRUD: create", async function () {
     startsAt: "2026-08-13T12:00:00.000Z",
     endsAt: "2026-08-13T13:00:00.000Z",
     active: true,
+    createdFor: "xxx@gmail.com",
   };
 
   var response = await request(app)

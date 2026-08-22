@@ -270,7 +270,7 @@ function listMeals(_req, res) {
 
 /**
  * POST /api/admin/meals — create a meal service.
- * Body: { name, startsAt, endsAt, active? }
+ * Body: { name, startsAt, endsAt, active?, createdFor? }
  * @param {object} req
  * @param {object} res
  * @returns {Promise<void>}
@@ -279,6 +279,7 @@ function createMeal(req, res) {
   var name = req.body && req.body.name;
   var startsAt = req.body && req.body.startsAt;
   var endsAt = req.body && req.body.endsAt;
+  var createdFor = req.body && req.body.createdFor ? String(req.body.createdFor).trim() : "";
   var actorId = req.user && req.user.id ? req.user.id : null;
 
   if (!name) {
@@ -309,6 +310,7 @@ function createMeal(req, res) {
         startsAt: new Date(startsAt),
         endsAt: new Date(endsAt),
         active: req.body.active !== undefined ? Boolean(req.body.active) : true,
+        createdFor: createdFor,
         createdBy: actorId,
         updatedBy: actorId,
       }).then(function afterCreate(meal) {
@@ -323,7 +325,7 @@ function createMeal(req, res) {
 
 /**
  * PATCH /api/admin/meals/:id — update a meal service.
- * Body: { name?, startsAt?, endsAt?, active? }
+ * Body: { name?, startsAt?, endsAt?, active?, createdFor? }
  * @param {object} req
  * @param {object} res
  * @returns {Promise<void>}
@@ -342,6 +344,9 @@ function updateMeal(req, res) {
   }
   if (req.body && req.body.active !== undefined) {
     update.active = Boolean(req.body.active);
+  }
+  if (req.body && req.body.createdFor !== undefined) {
+    update.createdFor = String(req.body.createdFor).trim();
   }
   if (actorId) {
     update.updatedBy = actorId;

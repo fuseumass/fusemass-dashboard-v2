@@ -28,6 +28,11 @@ var mealServiceSchema = new Schema(
       type: Boolean,
       default: true,
     },
+    createdFor: {
+      type: String,
+      trim: true,
+      default: "",
+    },
     createdBy: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "User",
