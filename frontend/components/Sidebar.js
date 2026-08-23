@@ -30,6 +30,11 @@ export default function Sidebar({ user }) {
       label: "Settings",
       icon: "⚙️",
     });
+    nav.push({
+      href: "/dashboard/admin/mealService",
+      label: "Meal Service",
+      icon: "🍽️",
+    });
   }
 
   function handleLogout() {
