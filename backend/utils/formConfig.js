@@ -50,7 +50,70 @@ function validateAnswers(formConfig, answers) {
   return { errors: errors, answers: cleaned };
 }
 
+/**
+ * Validate the shape of a formConfig payload itself (as opposed to answers
+ * submitted against it) — used when an admin creates/edits a round. Each
+ * field must have a unique string `key`, a string `label`, and a `type` from
+ * ALLOWED_FIELD_TYPES; `required` (if present) must be a boolean and
+ * `options` (if present) must be an array.
+ *
+ * @param {*} formConfig - The raw payload value to validate.
+ * @returns {{errors: string[]}} Validation errors (empty when valid, which
+ *   also covers `undefined` — an absent formConfig means "leave unchanged").
+ */
+function validateFormConfigShape(formConfig) {
+  if (formConfig === undefined) {
+    return { errors: [] };
+  }
+  if (!Array.isArray(formConfig)) {
+    return { errors: ["formConfig must be an array."] };
+  }
+
+  var errors = [];
+  // No prototype, so a field key like "constructor" isn't mistaken for a duplicate.
+  var seenKeys = Object.create(null);
+
+  formConfig.forEach(function checkField(field, index) {
+    var label = "formConfig[" + index + "]";
+
+    if (!field || typeof field !== "object") {
+      errors.push(label + " must be an object.");
+      return;
+    }
+
+    if (!field.key || typeof field.key !== "string") {
+      errors.push(label + " is missing a string key.");
+      return;
+    }
+    label += " (" + field.key + ")";
+
+    if (seenKeys[field.key]) {
+      errors.push(label + " has a key that's already used by another field.");
+    }
+    seenKeys[field.key] = true;
+
+    if (!field.label || typeof field.label !== "string") {
+      errors.push(label + " is missing a string label.");
+    }
+
+    if (ALLOWED_FIELD_TYPES.indexOf(field.type) === -1) {
+      errors.push(label + " type must be one of: " + ALLOWED_FIELD_TYPES.join(", ") + ".");
+    }
+
+    if (field.required !== undefined && typeof field.required !== "boolean") {
+      errors.push(label + " required must be a boolean.");
+    }
+
+    if (field.options !== undefined && !Array.isArray(field.options)) {
+      errors.push(label + " options must be an array.");
+    }
+  });
+
+  return { errors: errors };
+}
+
 module.exports = {
   ALLOWED_FIELD_TYPES: ALLOWED_FIELD_TYPES,
   validateAnswers: validateAnswers,
+  validateFormConfigShape: validateFormConfigShape,
 };
