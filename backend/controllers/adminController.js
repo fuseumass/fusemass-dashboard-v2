@@ -361,6 +361,15 @@ function deleteEmailTemplate(req, res) {
 }
 
 /**
+ * Whether a value parses to a real date (new Date("nope") is Invalid Date).
+ * @param {*} value - Raw date input from the request body.
+ * @returns {boolean} True when the value is a usable date.
+ */
+function isValidDate(value) {
+  return !Number.isNaN(new Date(value).getTime());
+}
+
+/**
  * GET /api/admin/meals — list meal services.
  * @param {object} _req
  * @param {object} res
@@ -397,6 +406,10 @@ function createMeal(req, res) {
   }
   if (!startsAt || !endsAt) {
     res.status(400).json({ error: "startsAt and endsAt are required." });
+    return Promise.resolve();
+  }
+  if (!isValidDate(startsAt) || !isValidDate(endsAt)) {
+    res.status(400).json({ error: "startsAt and endsAt must be valid dates." });
     return Promise.resolve();
   }
   if (!actorId) {
@@ -455,6 +468,13 @@ function updateMeal(req, res) {
   }
   if (actorId) {
     update.updatedBy = actorId;
+  }
+  if (
+    (req.body && req.body.startsAt !== undefined && !isValidDate(req.body.startsAt)) ||
+    (req.body && req.body.endsAt !== undefined && !isValidDate(req.body.endsAt))
+  ) {
+    res.status(400).json({ error: "startsAt and endsAt must be valid dates." });
+    return Promise.resolve();
   }
 
   return MealService.findByIdAndUpdate(req.params.id, { $set: update }, { new: true })
