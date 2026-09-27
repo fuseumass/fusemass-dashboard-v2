@@ -19,6 +19,22 @@ const staffRoutes = require("./routes/staff");
 
 var app = express();
 
+// --- Proxy awareness --------------------------------------------------------
+// Behind a reverse proxy (any hosted deployment), req.ip is the proxy's own
+// address, so every visitor lands in the same rate-limit bucket and one
+// attendee can lock out the whole site. Setting this makes Express read the
+// client address from X-Forwarded-For instead.
+//
+// Off by default, and deliberately not hardcoded to `true`: trusting that
+// header when nothing trustworthy sets it lets a client forge its own IP and
+// bypass the limiter entirely, which is worse than the bug it fixes. Set
+// TRUST_PROXY to the number of proxy hops in front of the app (usually 1), or
+// to a value Express accepts such as "loopback".
+if (process.env.TRUST_PROXY) {
+  var hops = Number(process.env.TRUST_PROXY);
+  app.set("trust proxy", Number.isNaN(hops) ? process.env.TRUST_PROXY : hops);
+}
+
 // --- Core middleware --------------------------------------------------------
 app.use(
   cors({
