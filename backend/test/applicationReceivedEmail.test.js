@@ -107,5 +107,44 @@ test("B2 + B4: application-received email on submit", async function application
     assert.equal(mail.calls.length, 0);
   });
 
+  await t.test("a missing template warns instead of failing silently", async function (t2) {
+    await resetFixtures();
+    var mail = mailMock.mockTransport(t2);
+
+    // Simulate the state the admin guards now prevent via the API, but which
+    // a typo'd key or an unseeded database can still produce.
+    await EmailTemplate.deleteOne({ key: "application_received" });
+
+    var warnings = [];
+    t2.mock.method(console, "warn", function captureWarn(message, detail) {
+      warnings.push(String(message) + " " + String(detail));
+    });
+
+    var round = await ApplicationRound.create({ name: "No Template Round", isOpen: true });
+    var applicant = await fixtures.createUser({ role: "applicant" });
+
+    var res = await request(app)
+      .post("/api/applications")
+      .set("Authorization", "Bearer " + applicant.token)
+      .field("name", "Missing Template")
+      .field("status", "pending");
+
+    // The submission itself still succeeds — email is a side effect.
+    assert.equal(res.status, 200);
+    assert.equal(res.body.application.round, String(round._id));
+
+    await waitFor(function () {
+      return warnings.length >= 1;
+    });
+
+    assert.equal(mail.calls.length, 0);
+    assert.ok(
+      warnings.some(function matchesWarning(line) {
+        return /No email template found for key/.test(line) && /application_received/.test(line);
+      }),
+      "expected a warning naming the missing template key, got: " + JSON.stringify(warnings)
+    );
+  });
+
   await db.closeDatabase();
 });

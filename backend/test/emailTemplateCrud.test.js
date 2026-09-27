@@ -71,5 +71,67 @@ test("B1: email template CRUD", async function emailTemplateCrud(t) {
     assert.equal(stillThere, null);
   });
 
+  await t.test("a built-in template cannot be renamed", async function () {
+    await EmailTemplate.seedDefaults();
+    var admin = await fixtures.createUser({ role: "admin" });
+    var builtIn = await EmailTemplate.findOne({ key: "application_received" });
+
+    var res = await request(app)
+      .patch("/api/admin/email-templates/" + builtIn._id)
+      .set("Authorization", "Bearer " + admin.token)
+      .send({ key: "renamed_by_admin" });
+
+    assert.equal(res.status, 400);
+    assert.match(res.body.error, /cannot be renamed/);
+
+    var unchanged = await EmailTemplate.findById(builtIn._id);
+    assert.equal(unchanged.key, "application_received");
+  });
+
+  await t.test("a built-in template cannot be deleted", async function () {
+    await EmailTemplate.seedDefaults();
+    var admin = await fixtures.createUser({ role: "admin" });
+    var builtIn = await EmailTemplate.findOne({ key: "application_accepted" });
+
+    var res = await request(app)
+      .delete("/api/admin/email-templates/" + builtIn._id)
+      .set("Authorization", "Bearer " + admin.token);
+
+    assert.equal(res.status, 400);
+    assert.match(res.body.error, /cannot be deleted/);
+
+    var stillThere = await EmailTemplate.findById(builtIn._id);
+    assert.ok(stillThere, "expected the built-in template to survive the delete attempt");
+  });
+
+  await t.test("a built-in template's subject and body remain editable", async function () {
+    await EmailTemplate.seedDefaults();
+    var admin = await fixtures.createUser({ role: "admin" });
+    var builtIn = await EmailTemplate.findOne({ key: "application_rejected" });
+
+    var res = await request(app)
+      .patch("/api/admin/email-templates/" + builtIn._id)
+      .set("Authorization", "Bearer " + admin.token)
+      .send({ subject: "Edited subject", body: "Edited body for {{name}}" });
+
+    assert.equal(res.status, 200);
+    assert.equal(res.body.template.subject, "Edited subject");
+    assert.equal(res.body.template.key, "application_rejected");
+  });
+
+  await t.test("sending the same key twice is a no-op rename, not a rejection", async function () {
+    await EmailTemplate.seedDefaults();
+    var admin = await fixtures.createUser({ role: "admin" });
+    var builtIn = await EmailTemplate.findOne({ key: "application_received" });
+
+    var res = await request(app)
+      .patch("/api/admin/email-templates/" + builtIn._id)
+      .set("Authorization", "Bearer " + admin.token)
+      .send({ key: "application_received", subject: "Still fine" });
+
+    assert.equal(res.status, 200);
+    assert.equal(res.body.template.subject, "Still fine");
+  });
+
   await db.closeDatabase();
 });

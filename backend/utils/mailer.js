@@ -92,6 +92,11 @@ function sendTemplateEmail(to, templateKey, values) {
   return EmailTemplate.findOne({ key: templateKey })
     .then(function afterFind(template) {
       if (!template) {
+        // Guards in the admin controller stop the built-ins being renamed or
+        // deleted, but a template can still be missing (a key typo'd at the
+        // call site, a database restored without seeding). Say so rather than
+        // dropping the email silently.
+        console.warn("No email template found for key; skipped sending:", templateKey);
         return undefined;
       }
 
