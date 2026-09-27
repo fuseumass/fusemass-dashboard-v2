@@ -6,13 +6,16 @@ var isAuthenticated = require("../utils/isAuthenticated");
 var passportUtil = require("../utils/passport");
 var googleStatus = require("../utils/googleStatus");
 var validateBody = require("../utils/validateBody");
+var authRateLimit = require("../utils/authRateLimit");
 
 var passport = passportUtil.passport;
 var router = express.Router();
 
-// Public: email/password.
+// Public: email/password. Rate-limited (ahead of validation, so abusive
+// traffic doesn't even reach body parsing) to slow brute force.
 router.post(
   "/register",
+  authRateLimit,
   validateBody({
     name: { required: true, type: "string" },
     email: { required: true, type: "string" },
@@ -22,6 +25,7 @@ router.post(
 );
 router.post(
   "/login",
+  authRateLimit,
   validateBody({
     email: { required: true, type: "string" },
     password: { required: true, type: "string" },
@@ -32,6 +36,7 @@ router.post(
 // Public: password reset (nodemailer).
 router.post(
   "/forgot-password",
+  authRateLimit,
   validateBody({ email: { required: true, type: "string" } }),
   authController.forgotPassword
 );
@@ -47,6 +52,7 @@ router.post(
 // One-time first-admin bootstrap, gated by the SETUP_ADMIN env var.
 router.post(
   "/setup-admin",
+  authRateLimit,
   validateBody({ email: { required: true, type: "string" } }),
   authController.setupAdmin
 );
