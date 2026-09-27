@@ -299,6 +299,10 @@ function createEmailTemplate(req, res) {
       res.status(201).json({ template: template.toJSON ? template.toJSON() : template });
     })
     .catch(function onError(err) {
+      if (err && err.code === 11000) {
+        res.status(409).json({ error: "An email template with that key already exists." });
+        return;
+      }
       console.error("createEmailTemplate failed:", err);
       res.status(500).json({ error: "Could not create email template." });
     });
@@ -323,7 +327,7 @@ function updateEmailTemplate(req, res) {
     update.key = req.body.key;
   }
 
-  return EmailTemplate.findByIdAndUpdate(req.params.id, { $set: update }, { new: true })
+  return EmailTemplate.findByIdAndUpdate(req.params.id, { $set: update }, { new: true, runValidators: true })
     .then(function afterUpdate(template) {
       if (!template) {
         res.status(404).json({ error: "Email template not found." });
@@ -332,6 +336,18 @@ function updateEmailTemplate(req, res) {
       res.status(200).json({ template: template.toJSON ? template.toJSON() : template });
     })
     .catch(function onError(err) {
+      if (err && err.name === "CastError") {
+        res.status(404).json({ error: "Email template not found." });
+        return;
+      }
+      if (err && err.name === "ValidationError") {
+        res.status(400).json({ error: err.message });
+        return;
+      }
+      if (err && err.code === 11000) {
+        res.status(409).json({ error: "An email template with that key already exists." });
+        return;
+      }
       console.error("updateEmailTemplate failed:", err);
       res.status(500).json({ error: "Could not update email template." });
     });
@@ -354,6 +370,10 @@ function deleteEmailTemplate(req, res) {
       res.status(200).json({ ok: true });
     })
     .catch(function onError(err) {
+      if (err && err.name === "CastError") {
+        res.status(404).json({ error: "Email template not found." });
+        return;
+      }
       console.error("deleteEmailTemplate failed:", err);
       res.status(500).json({ error: "Could not delete email template." });
     });
