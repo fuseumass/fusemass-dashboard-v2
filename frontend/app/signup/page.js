@@ -19,7 +19,6 @@ export default function SignupPage() {
     event.preventDefault();
     setError("");
     setSubmitting(true);
-    // Richarla - edit start
 
     if (!name.trim()) {
       setError("Full name is required.");
@@ -39,7 +38,6 @@ export default function SignupPage() {
       return;
     }
 
-    // Richarla - edit end
     try {
       const data = await apiFetch("/api/auth/register", {
         method: "POST",
