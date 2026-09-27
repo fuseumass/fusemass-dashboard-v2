@@ -5,20 +5,51 @@ var authController = require("../controllers/authController");
 var isAuthenticated = require("../utils/isAuthenticated");
 var passportUtil = require("../utils/passport");
 var googleStatus = require("../utils/googleStatus");
+var validateBody = require("../utils/validateBody");
 
 var passport = passportUtil.passport;
 var router = express.Router();
 
 // Public: email/password.
-router.post("/register", authController.register);
-router.post("/login", authController.login);
+router.post(
+  "/register",
+  validateBody({
+    name: { required: true, type: "string" },
+    email: { required: true, type: "string" },
+    password: { required: true, type: "string" },
+  }),
+  authController.register
+);
+router.post(
+  "/login",
+  validateBody({
+    email: { required: true, type: "string" },
+    password: { required: true, type: "string" },
+  }),
+  authController.login
+);
 
 // Public: password reset (nodemailer).
-router.post("/forgot-password", authController.forgotPassword);
-router.post("/reset-password", authController.resetPassword);
+router.post(
+  "/forgot-password",
+  validateBody({ email: { required: true, type: "string" } }),
+  authController.forgotPassword
+);
+router.post(
+  "/reset-password",
+  validateBody({
+    token: { required: true, type: "string" },
+    password: { required: true, type: "string" },
+  }),
+  authController.resetPassword
+);
 
 // One-time first-admin bootstrap, gated by the SETUP_ADMIN env var.
-router.post("/setup-admin", authController.setupAdmin);
+router.post(
+  "/setup-admin",
+  validateBody({ email: { required: true, type: "string" } }),
+  authController.setupAdmin
+);
 
 // Public: Google OAuth. Availability depends on env credentials, the env flag,
 // AND the admin org setting — all checked via googleStatus.isGoogleEnabled().
