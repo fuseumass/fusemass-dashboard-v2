@@ -2,6 +2,7 @@
 
 var Application = require("../schemas/application");
 var ApplicationRound = require("../schemas/applicationRound");
+var EmailTemplate = require("../schemas/emailTemplate");
 var User = require("../schemas/user");
 
 var DECISIONS = ["accepted", "rejected", "waitlisted", "pending"];
@@ -249,6 +250,115 @@ function deleteRound(req, res) {
     });
 }
 
+// ---- Email templates ------------------------------------------------------
+
+/**
+ * GET /api/admin/email-templates
+ * List all email templates.
+ * @param {object} _req
+ * @param {object} res
+ * @returns {Promise<void>}
+ */
+function listEmailTemplates(_req, res) {
+  return EmailTemplate.find({})
+    .sort({ key: 1 })
+    .then(function afterFind(templates) {
+      res.status(200).json({ templates: templates.map(function mapTemplate(template) {
+        return template.toJSON ? template.toJSON() : template;
+      }) });
+    })
+    .catch(function onError(err) {
+      console.error("listEmailTemplates failed:", err);
+      res.status(500).json({ error: "Could not load email templates." });
+    });
+}
+
+/**
+ * POST /api/admin/email-templates
+ * Create a new email template.
+ * @param {object} req
+ * @param {object} res
+ * @returns {Promise<void>}
+ */
+function createEmailTemplate(req, res) {
+  var key = req.body && req.body.key;
+  var subject = req.body && req.body.subject;
+  var body = req.body && req.body.body;
+
+  if (!key) {
+    res.status(400).json({ error: "key is required." });
+    return Promise.resolve();
+  }
+
+  return EmailTemplate.create({
+    key: key,
+    subject: subject || "",
+    body: body || "",
+  })
+    .then(function afterCreate(template) {
+      res.status(201).json({ template: template.toJSON ? template.toJSON() : template });
+    })
+    .catch(function onError(err) {
+      console.error("createEmailTemplate failed:", err);
+      res.status(500).json({ error: "Could not create email template." });
+    });
+}
+
+/**
+ * PATCH /api/admin/email-templates/:id
+ * Update an email template.
+ * @param {object} req
+ * @param {object} res
+ * @returns {Promise<void>}
+ */
+function updateEmailTemplate(req, res) {
+  var update = {};
+  if (req.body && req.body.subject !== undefined) {
+    update.subject = req.body.subject;
+  }
+  if (req.body && req.body.body !== undefined) {
+    update.body = req.body.body;
+  }
+  if (req.body && req.body.key !== undefined) {
+    update.key = req.body.key;
+  }
+
+  return EmailTemplate.findByIdAndUpdate(req.params.id, { $set: update }, { new: true })
+    .then(function afterUpdate(template) {
+      if (!template) {
+        res.status(404).json({ error: "Email template not found." });
+        return;
+      }
+      res.status(200).json({ template: template.toJSON ? template.toJSON() : template });
+    })
+    .catch(function onError(err) {
+      console.error("updateEmailTemplate failed:", err);
+      res.status(500).json({ error: "Could not update email template." });
+    });
+}
+
+/**
+ * DELETE /api/admin/email-templates/:id
+ * Delete an email template.
+ * @param {object} req
+ * @param {object} res
+ * @returns {Promise<void>}
+ */
+function deleteEmailTemplate(req, res) {
+  return EmailTemplate.findByIdAndDelete(req.params.id)
+    .then(function afterDelete(template) {
+      if (!template) {
+        res.status(404).json({ error: "Email template not found." });
+        return;
+      }
+      res.status(200).json({ ok: true });
+    })
+    .catch(function onError(err) {
+      console.error("deleteEmailTemplate failed:", err);
+      res.status(500).json({ error: "Could not delete email template." });
+    });
+}
+
 module.exports = {
   listApplications: listApplications,
   decideApplication: decideApplication,
@@ -258,4 +368,8 @@ module.exports = {
   createRound: createRound,
   updateRound: updateRound,
   deleteRound: deleteRound,
+  listEmailTemplates: listEmailTemplates,
+  createEmailTemplate: createEmailTemplate,
+  updateEmailTemplate: updateEmailTemplate,
+  deleteEmailTemplate: deleteEmailTemplate,
 };
