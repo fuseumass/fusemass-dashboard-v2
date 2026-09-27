@@ -43,10 +43,13 @@ var PLACEHOLDER_GUIDE = ["{{name}}", "{{status}}", "{{orgName}}"];
 
 function renderPreview(template, values) {
   if (!template) return "";
-  return String(template).replace(/\{\{\s*([a-zA-Z0-9_]+)\s*\}\}/g, function replacer(_match, key) {
-    var value = values[key];
-    return value === undefined || value === null ? "" : String(value);
-  });
+  return String(template).replace(
+    /\{\{\s*([a-zA-Z0-9_]+)\s*\}\}/g,
+    function replacer(_match, key) {
+      var value = values[key];
+      return value === undefined || value === null ? "" : String(value);
+    },
+  );
 }
 
 // ---- Email template editor -------------------------------------------------
@@ -67,7 +70,11 @@ function EmailTemplateEditor() {
     apiFetch("/api/admin/email-templates")
       .then((data) => {
         const raw = data.templates || [];
-        const order = ["application_received", "application_accepted", "application_rejected"];
+        const order = [
+          "application_received",
+          "application_accepted",
+          "application_rejected",
+        ];
         const sorted = [...raw].sort((a, b) => {
           const ai = order.indexOf(a.key);
           const bi = order.indexOf(b.key);
@@ -95,7 +102,8 @@ function EmailTemplateEditor() {
     loadTemplates();
   }, [loadTemplates]);
 
-  const activeTemplate = templates.find((template) => template.key === selectedKey) || null;
+  const activeTemplate =
+    templates.find((template) => template.key === selectedKey) || null;
 
   useEffect(() => {
     if (!activeTemplate) {
@@ -113,10 +121,13 @@ function EmailTemplateEditor() {
     setError("");
 
     try {
-      const data = await apiFetch(`/api/admin/email-templates/${activeTemplate._id}`, {
-        method: "PATCH",
-        body: JSON.stringify({ subject: subject, body: body }),
-      });
+      const data = await apiFetch(
+        `/api/admin/email-templates/${activeTemplate._id}`,
+        {
+          method: "PATCH",
+          body: JSON.stringify({ subject: subject, body: body }),
+        },
+      );
 
       const updated = data.template;
       setTemplates((prev) =>
@@ -125,7 +136,7 @@ function EmailTemplateEditor() {
             return updated;
           }
           return template;
-        })
+        }),
       );
     } catch (err) {
       setError(err.message);
@@ -151,8 +162,12 @@ function EmailTemplateEditor() {
       >
         Email templates
       </h2>
-      <p className="muted" style={{ fontSize: "0.85rem", marginBottom: "1rem" }}>
-        Edit the email content used for application received/accepted/rejected messages.
+      <p
+        className="muted"
+        style={{ fontSize: "0.85rem", marginBottom: "1rem" }}
+      >
+        Edit the email content used for application received/accepted/rejected
+        messages.
       </p>
 
       {error
@@ -166,7 +181,14 @@ function EmailTemplateEditor() {
         : !activeTemplate
           ? <p className="muted">No templates found.</p>
           : <>
-              <div style={{ display: "flex", gap: "0.5rem", marginBottom: "0.75rem", flexWrap: "wrap" }}>
+              <div
+                style={{
+                  display: "flex",
+                  gap: "0.5rem",
+                  marginBottom: "0.75rem",
+                  flexWrap: "wrap",
+                }}
+              >
                 {templates.map((template) => (
                   <button
                     key={template._id}
@@ -175,7 +197,10 @@ function EmailTemplateEditor() {
                     style={{
                       width: "auto",
                       padding: "0.35rem 0.7rem",
-                      borderColor: selectedKey === template.key ? "var(--brand)" : undefined,
+                      borderColor:
+                        selectedKey === template.key
+                          ? "var(--brand)"
+                          : undefined,
                     }}
                     onClick={() => setSelectedKey(template.key)}
                   >
@@ -213,13 +238,26 @@ function EmailTemplateEditor() {
                   marginBottom: "0.75rem",
                 }}
               >
-                <div style={{ fontWeight: 600, marginBottom: 4, fontSize: "0.9rem" }}>Placeholders</div>
-                <div className="muted" style={{ fontSize: "0.82rem", marginBottom: 6 }}>
+                <div
+                  style={{
+                    fontWeight: 600,
+                    marginBottom: 4,
+                    fontSize: "0.9rem",
+                  }}
+                >
+                  Placeholders
+                </div>
+                <div
+                  className="muted"
+                  style={{ fontSize: "0.82rem", marginBottom: 6 }}
+                >
                   Available tokens:
                 </div>
                 <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
                   {PLACEHOLDER_GUIDE.map((token) => (
-                    <span key={token} className="chip">{token}</span>
+                    <span key={token} className="chip">
+                      {token}
+                    </span>
                   ))}
                 </div>
               </div>
@@ -232,9 +270,18 @@ function EmailTemplateEditor() {
                   marginBottom: "0.75rem",
                 }}
               >
-                <div style={{ fontWeight: 600, marginBottom: 4, fontSize: "0.9rem" }}>Preview</div>
+                <div
+                  style={{
+                    fontWeight: 600,
+                    marginBottom: 4,
+                    fontSize: "0.9rem",
+                  }}
+                >
+                  Preview
+                </div>
                 <div style={{ fontSize: "0.9rem", marginBottom: 6 }}>
-                  <strong>Subject:</strong> {renderPreview(subject, previewValues)}
+                  <strong>Subject:</strong>{" "}
+                  {renderPreview(subject, previewValues)}
                 </div>
                 <pre
                   style={{
