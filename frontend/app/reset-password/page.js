@@ -33,7 +33,7 @@ function ResetInner() {
     }
     setSubmitting(true);
     //Richarla - edit start
-    
+
     if (password.length < 8) {
       setError("Password must be at least 8 characters long.");
       setSubmitting(false);

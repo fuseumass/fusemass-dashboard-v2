@@ -20,7 +20,7 @@ export default function SignupPage() {
     setError("");
     setSubmitting(true);
     // Richarla - edit start
-    
+
     if (!name.trim()) {
       setError("Full name is required.");
       return;
@@ -35,7 +35,6 @@ export default function SignupPage() {
       setError("Password must be at least 8 charactes long.");
       return;
     }
-    
 
     // Richarla - edit end
     try {

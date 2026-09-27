@@ -16,12 +16,12 @@ export default function ForgotPasswordPage() {
     setError("");
     setSubmitting(true);
     //Richarla - edit start
-    
-if (!email.trim() || !email.includes("@")){
-  setError("Please enter a valid email address.");
-  setSubmitting(false);
-  return;
-}
+
+    if (!email.trim() || !email.includes("@")) {
+      setError("Please enter a valid email address.");
+      setSubmitting(false);
+      return;
+    }
 
     //Richarla - edit end
     try {

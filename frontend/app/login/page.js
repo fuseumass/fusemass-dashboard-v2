@@ -30,7 +30,7 @@ function LoginInner() {
     setError("");
     setSubmitting(true);
     // Richarla - edti start
-    
+
     if (!email.trim() || !email.includes("@")) {
       setError("Please enter a valid email address.");
       return;
@@ -40,7 +40,7 @@ function LoginInner() {
       setError("password is required.");
       return;
     }
-    
+
     // Richarla - edit end
     try {
       const data = await apiFetch("/api/auth/login", {
