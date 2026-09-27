@@ -35,6 +35,10 @@ function renderTemplate(template, values, options) {
   var shouldEscape = Boolean(options && options.escapeHtml);
 
   return String(template).replace(/\{\{\s*([a-zA-Z0-9_]+)\s*\}\}/g, function replaceToken(match, key) {
+    // Own properties only, so {{constructor}} etc. can't pull in Object.prototype.
+    if (!Object.prototype.hasOwnProperty.call(safeValues, key)) {
+      return "";
+    }
     var value = safeValues[key];
     if (value === undefined || value === null) {
       return "";
