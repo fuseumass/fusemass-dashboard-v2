@@ -27,7 +27,296 @@ export default function SettingsPage() {
         Organization setup — visible to admins only.
       </p>
       <AuthSettings />
+      <EmailTemplateEditor />
       <RoundsManager />
+    </div>
+  );
+}
+
+var TEMPLATE_LABELS = {
+  application_received: "Application Received",
+  application_accepted: "Application Accepted",
+  application_rejected: "Application Rejected",
+};
+
+var PLACEHOLDER_GUIDE = ["{{name}}", "{{status}}", "{{orgName}}"];
+
+function renderPreview(template, values) {
+  if (!template) return "";
+  return String(template).replace(
+    /\{\{\s*([a-zA-Z0-9_]+)\s*\}\}/g,
+    function replacer(_match, key) {
+      var value = values[key];
+      return value === undefined || value === null ? "" : String(value);
+    },
+  );
+}
+
+// ---- Email template editor -------------------------------------------------
+
+function EmailTemplateEditor() {
+  const [templates, setTemplates] = useState([]);
+  const [selectedKey, setSelectedKey] = useState("");
+  const [subject, setSubject] = useState("");
+  const [body, setBody] = useState("");
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  const loadTemplates = useCallback(() => {
+    setLoading(true);
+    setError("");
+
+    apiFetch("/api/admin/email-templates")
+      .then((data) => {
+        const raw = data.templates || [];
+        const order = [
+          "application_received",
+          "application_accepted",
+          "application_rejected",
+        ];
+        const sorted = [...raw].sort((a, b) => {
+          const ai = order.indexOf(a.key);
+          const bi = order.indexOf(b.key);
+          const safeAi = ai === -1 ? 999 : ai;
+          const safeBi = bi === -1 ? 999 : bi;
+          if (safeAi !== safeBi) return safeAi - safeBi;
+          return String(a.key).localeCompare(String(b.key));
+        });
+
+        setTemplates(sorted);
+        if (sorted.length) {
+          setSelectedKey(function selectExisting(prev) {
+            const exists = sorted.some((template) => template.key === prev);
+            return exists && prev ? prev : sorted[0].key;
+          });
+        } else {
+          setSelectedKey("");
+        }
+      })
+      .catch((err) => setError(err.message))
+      .finally(() => setLoading(false));
+  }, []);
+
+  useEffect(() => {
+    loadTemplates();
+  }, [loadTemplates]);
+
+  const activeTemplate =
+    templates.find((template) => template.key === selectedKey) || null;
+
+  useEffect(() => {
+    if (!activeTemplate) {
+      setSubject("");
+      setBody("");
+      return;
+    }
+    setSubject(activeTemplate.subject || "");
+    setBody(activeTemplate.body || "");
+  }, [activeTemplate]);
+
+  async function saveTemplate() {
+    if (!activeTemplate) return;
+    setSaving(true);
+    setError("");
+
+    try {
+      const data = await apiFetch(
+        `/api/admin/email-templates/${activeTemplate._id}`,
+        {
+          method: "PATCH",
+          body: JSON.stringify({ subject: subject, body: body }),
+        },
+      );
+
+      const updated = data.template;
+      setTemplates((prev) =>
+        prev.map((template) => {
+          if (template._id === activeTemplate._id) {
+            return updated;
+          }
+          return template;
+        }),
+      );
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  var previewValues = {
+    name: "Alex Applicant",
+    status: "accepted",
+    orgName: "FuseMass",
+  };
+
+  return (
+    <div className="card" style={{ padding: "1.5rem", marginBottom: "1.5rem" }}>
+      <h2
+        style={{
+          fontSize: "1.05rem",
+          fontWeight: 600,
+          marginBottom: "0.25rem",
+        }}
+      >
+        Email templates
+      </h2>
+      <p
+        className="muted"
+        style={{ fontSize: "0.85rem", marginBottom: "1rem" }}
+      >
+        Edit the email content used for application received/accepted/rejected
+        messages.
+      </p>
+
+      {error
+        ? <div className="alert-error" style={{ marginBottom: "0.75rem" }}>
+            {error}
+          </div>
+        : null}
+
+      {loading
+        ? <p className="muted">Loading…</p>
+        : !activeTemplate
+          ? <p className="muted">No templates found.</p>
+          : <>
+              <div
+                style={{
+                  display: "flex",
+                  gap: "0.5rem",
+                  marginBottom: "0.75rem",
+                  flexWrap: "wrap",
+                }}
+              >
+                {templates.map((template) => (
+                  <button
+                    key={template._id}
+                    type="button"
+                    className="btn btn-ghost"
+                    style={{
+                      width: "auto",
+                      padding: "0.35rem 0.7rem",
+                      borderColor:
+                        selectedKey === template.key
+                          ? "var(--brand)"
+                          : undefined,
+                    }}
+                    onClick={() => setSelectedKey(template.key)}
+                  >
+                    {TEMPLATE_LABELS[template.key] || template.key}
+                  </button>
+                ))}
+              </div>
+
+              <label style={{ display: "block", marginBottom: "0.75rem" }}>
+                <span className="field-label">Subject</span>
+                <input
+                  className="input"
+                  value={subject}
+                  onChange={(e) => setSubject(e.target.value)}
+                  placeholder="Email subject"
+                />
+              </label>
+
+              <label style={{ display: "block", marginBottom: "0.75rem" }}>
+                <span className="field-label">Body</span>
+                <textarea
+                  className="textarea"
+                  style={{ minHeight: 140 }}
+                  value={body}
+                  onChange={(e) => setBody(e.target.value)}
+                  placeholder="Email body"
+                />
+              </label>
+
+              <div
+                style={{
+                  border: "1px solid var(--border)",
+                  borderRadius: 10,
+                  padding: "0.75rem",
+                  marginBottom: "0.75rem",
+                }}
+              >
+                <div
+                  style={{
+                    fontWeight: 600,
+                    marginBottom: 4,
+                    fontSize: "0.9rem",
+                  }}
+                >
+                  Placeholders
+                </div>
+                <div
+                  className="muted"
+                  style={{ fontSize: "0.82rem", marginBottom: 6 }}
+                >
+                  Available tokens:
+                </div>
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                  {PLACEHOLDER_GUIDE.map((token) => (
+                    <span key={token} className="chip">
+                      {token}
+                    </span>
+                  ))}
+                </div>
+              </div>
+
+              <div
+                style={{
+                  border: "1px solid var(--border)",
+                  borderRadius: 10,
+                  padding: "0.75rem",
+                  marginBottom: "0.75rem",
+                }}
+              >
+                <div
+                  style={{
+                    fontWeight: 600,
+                    marginBottom: 4,
+                    fontSize: "0.9rem",
+                  }}
+                >
+                  Preview
+                </div>
+                <div style={{ fontSize: "0.9rem", marginBottom: 6 }}>
+                  <strong>Subject:</strong>{" "}
+                  {renderPreview(subject, previewValues)}
+                </div>
+                <pre
+                  style={{
+                    margin: 0,
+                    whiteSpace: "pre-wrap",
+                    wordBreak: "break-word",
+                    fontFamily: "inherit",
+                    fontSize: "0.9rem",
+                  }}
+                >
+                  {renderPreview(body, previewValues)}
+                </pre>
+              </div>
+
+              <div style={{ display: "flex", gap: 8 }}>
+                <button
+                  type="button"
+                  className="btn btn-primary"
+                  style={{ width: "auto" }}
+                  onClick={saveTemplate}
+                  disabled={saving}
+                >
+                  {saving ? "Saving..." : "Save template"}
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-ghost"
+                  style={{ width: "auto" }}
+                  onClick={loadTemplates}
+                  disabled={saving}
+                >
+                  Reload
+                </button>
+              </div>
+            </>}
     </div>
   );
 }
