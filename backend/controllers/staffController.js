@@ -2,7 +2,7 @@
 
 const User = require("../schemas/user");
 const Application = require("../schemas/application");
-const CheckIn = require("../schemas/checkIn");
+const CheckIn = require("../schemas/checkin");
 
 //  POST /api/staff/checkin
 /**
@@ -19,7 +19,7 @@ async function checkInMark(req, res) {
       return res.status(404).json({ error: "User not found" });
     }
 
-    const application = await Application.findOne({ user: userId});
+    const application = await Application.findOne({ applicant: userId, status: "accepted" });
     if (!application || application.status !== "accepted") {
       return res.status(400).json({ error: "User application has not been accepted or does not exist" });
     };
@@ -28,13 +28,13 @@ async function checkInMark(req, res) {
     if (exists) {
       return res.status(409).json({
           error: "User already checked in.",
-          checkedInAt: existing.checkedInAt
+          checkedInAt: exists.checkedInAt
       });
     }
 
     const checkIn = await CheckIn.create({
       user: userId,
-      checkedInBy: req.user._id
+      checkedInBy: req.user.id
     });
 
     return res.json({
@@ -58,11 +58,7 @@ async function getCheckInStatus (req, res) {
   try {
     const checkIn = await CheckIn.findOne({
       user: req.params.userId
-    }).populate(
-        "user",
-        "checkedInAt",
-        "checkedInBy"
-    );
+    });
 
     if (!checkIn) {
         return res.json({

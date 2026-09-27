@@ -1,7 +1,9 @@
+"use strict";
+
 const express = require("express");
 const router = express.Router();
 
-const staffController = require("../controllers/staff");
+const staffController = require("../controllers/staffController");
 
 const isAuthenticated = require("../utils/isAuthenticated");
 const isModerator = require("../utils/isModerator");
