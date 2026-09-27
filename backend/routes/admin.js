@@ -6,6 +6,7 @@ var settingsController = require("../controllers/settingsController");
 var isAdmin = require("../utils/isAdmin");
 var isModerator = require("../utils/isModerator");
 var validateBody = require("../utils/validateBody");
+var applicationStatus = require("../utils/applicationStatus");
 
 var router = express.Router();
 
@@ -16,7 +17,7 @@ router.patch(
   "/applications/:id",
   isModerator,
   validateBody({
-    decision: { required: true, type: "string", enum: ["accepted", "rejected", "waitlisted", "pending"] },
+    decision: { required: true, type: "string", enum: applicationStatus.DECISION_STATUSES },
   }),
   adminController.decideApplication
 );

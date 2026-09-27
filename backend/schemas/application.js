@@ -2,6 +2,8 @@
 
 var mongoose = require("mongoose");
 
+var applicationStatus = require("../utils/applicationStatus");
+
 var Schema = mongoose.Schema;
 
 /**
@@ -101,7 +103,7 @@ var applicationSchema = new Schema(
     // ---- Review ------------------------------------------------------------
     status: {
       type: String,
-      enum: ["draft", "pending", "accepted", "rejected", "waitlisted"],
+      enum: applicationStatus.APPLICATION_STATUSES,
       default: "pending",
       index: true,
     },
