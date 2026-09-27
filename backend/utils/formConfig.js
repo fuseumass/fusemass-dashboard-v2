@@ -28,7 +28,9 @@ function validateAnswers(formConfig, answers) {
     }
 
     var value = safeAnswers[field.key];
-    var isEmpty = value === undefined || value === null || value === "";
+    // An unticked checkbox arrives as `false`, which must not satisfy `required`.
+    var isEmpty =
+      value === undefined || value === null || value === "" || (field.type === "checkbox" && value === false);
 
     if (field.required && isEmpty) {
       errors.push((field.label || field.key) + " is required.");
