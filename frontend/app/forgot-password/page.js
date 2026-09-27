@@ -15,6 +15,13 @@ export default function ForgotPasswordPage() {
     event.preventDefault();
     setError("");
     setSubmitting(true);
+
+    if (!email.trim() || !email.includes("@")) {
+      setError("Please enter a valid email address.");
+      setSubmitting(false);
+      return;
+    }
+
     try {
       await apiFetch("/api/auth/forgot-password", {
         method: "POST",

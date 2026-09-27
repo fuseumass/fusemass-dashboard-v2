@@ -116,6 +116,13 @@ export default function ApplicationPage() {
     setError("");
     setSuccess("");
     setSubmitting(true);
+
+    if (status === "pending" && !form.name.trim()) {
+      setError("Full name is required.");
+      setSubmitting(false);
+      return;
+    }
+
     try {
       const fd = new FormData();
       fd.append("status", status);

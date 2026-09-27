@@ -29,6 +29,19 @@ function LoginInner() {
     event.preventDefault();
     setError("");
     setSubmitting(true);
+
+    if (!email.trim() || !email.includes("@")) {
+      setError("Please enter a valid email address.");
+      setSubmitting(false);
+      return;
+    }
+
+    if (!password) {
+      setError("Password is required.");
+      setSubmitting(false);
+      return;
+    }
+
     try {
       const data = await apiFetch("/api/auth/login", {
         method: "POST",
