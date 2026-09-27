@@ -70,7 +70,8 @@ function validateFormConfigShape(formConfig) {
   }
 
   var errors = [];
-  var seenKeys = {};
+  // No prototype, so a field key like "constructor" isn't mistaken for a duplicate.
+  var seenKeys = Object.create(null);
 
   formConfig.forEach(function checkField(field, index) {
     var label = "formConfig[" + index + "]";
