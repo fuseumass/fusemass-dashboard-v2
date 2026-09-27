@@ -49,7 +49,7 @@ A staff page to look up an accepted applicant (search by name/email) and mark
 them checked in; show who/when. Visible to moderators and admins.
 - **Depends on:** B5. **Related:** T2.
 
-### F3. Meal check-in UI + admin meal setup
+### F3. Meal check-in UI + admin meal setup - Richarla Preston @charlajp
 Admin: create/manage meal services (name, time window). Staff (mod+admin):
 select the active meal and check attendees in, with a guard against double
 serving.
