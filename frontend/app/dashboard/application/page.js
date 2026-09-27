@@ -45,6 +45,7 @@ function emptyForm() {
     programmingSkills: [],
     hardwareSkills: [],
     resumeUrl: "",
+    answers: {},
   };
 }
 
@@ -90,6 +91,7 @@ export default function ApplicationPage() {
             programmingSkills: a.programmingSkills || [],
             hardwareSkills: a.hardwareSkills || [],
             resumeUrl: a.resumeUrl || "",
+            answers: a.answers || {},
           });
         }
       })
@@ -105,6 +107,9 @@ export default function ApplicationPage() {
   }
   function setExperience(key, value) {
     setForm((f) => ({ ...f, experience: { ...f.experience, [key]: value } }));
+  }
+  function setAnswer(key, value) {
+    setForm((f) => ({ ...f, answers: { ...f.answers, [key]: value } }));
   }
 
   async function submit(status) {
@@ -128,6 +133,7 @@ export default function ApplicationPage() {
       fd.append("experience", JSON.stringify(form.experience));
       fd.append("programmingSkills", JSON.stringify(form.programmingSkills));
       fd.append("hardwareSkills", JSON.stringify(form.hardwareSkills));
+      fd.append("answers", JSON.stringify(form.answers));
 
       const file = resumeRef.current?.files[0];
       if (file) {
@@ -412,6 +418,21 @@ export default function ApplicationPage() {
           </label>
         </Section>
 
+        {round.formConfig && round.formConfig.length > 0
+          ? <Section title="Additional questions">
+              <Grid>
+                {round.formConfig.map((field) => (
+                  <DynamicField
+                    key={field.key}
+                    field={field}
+                    value={form.answers[field.key]}
+                    onChange={(v) => setAnswer(field.key, v)}
+                  />
+                ))}
+              </Grid>
+            </Section>
+          : null}
+
         <Section title="Skills">
           <Field label="Programming skills">
             <TagAutocomplete
@@ -484,6 +505,63 @@ function Grid({ children }) {
     >
       {children}
     </div>
+  );
+}
+
+function DynamicField({ field, value, onChange }) {
+  if (field.type === "checkbox") {
+    return (
+      <label style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+        <input
+          type="checkbox"
+          checked={Boolean(value)}
+          onChange={(e) => onChange(e.target.checked)}
+        />
+        {field.label}
+        {field.required
+          ? <span style={{ color: "var(--danger)" }}> *</span>
+          : null}
+      </label>
+    );
+  }
+
+  return (
+    <Field label={field.label} required={field.required}>
+      {field.type === "select"
+        ? <select
+            className="select"
+            value={value || ""}
+            required={field.required}
+            onChange={(e) => onChange(e.target.value)}
+          >
+            <option value="">Select…</option>
+            {(field.options || []).map((opt) => (
+              <option key={opt} value={opt}>
+                {opt}
+              </option>
+            ))}
+          </select>
+        : field.type === "textarea"
+          ? <textarea
+              className="textarea"
+              value={value || ""}
+              required={field.required}
+              onChange={(e) => onChange(e.target.value)}
+            />
+          : <input
+              className="input"
+              type={
+                field.type === "number"
+                  ? "number"
+                  : field.type === "date"
+                    ? "date"
+                    : "text"
+              }
+              value={value || ""}
+              required={field.required}
+              onChange={(e) => onChange(e.target.value)}
+            />}
+    </Field>
   );
 }
 
