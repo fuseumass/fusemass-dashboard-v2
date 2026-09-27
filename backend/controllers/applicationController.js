@@ -3,6 +3,8 @@
 var Application = require("../schemas/application");
 var ApplicationRound = require("../schemas/applicationRound");
 var azureBlob = require("../utils/azureBlob");
+var mailer = require("../utils/mailer");
+var formConfigUtil = require("../utils/formConfig");
 
 /**
  * Parse a form field that may arrive as a JSON string (multipart form data
@@ -85,6 +87,15 @@ function apply(req, res) {
 
       var profile = buildProfile(req.body || {});
       var status = req.body && req.body.status === "draft" ? "draft" : "pending";
+      var answersInput = parseMaybeJson(req.body && req.body.answers, {});
+      var answersCheck = formConfigUtil.validateAnswers(round.formConfig, answersInput);
+
+      // Drafts can be incomplete; a real submission must satisfy the round's
+      // required dynamic fields (and any options constraints).
+      if (status !== "draft" && answersCheck.errors.length) {
+        res.status(400).json({ error: answersCheck.errors.join(" ") });
+        return null;
+      }
 
       // Upload the resume first (if provided), then persist the application.
       var resumeStep = Promise.resolve(undefined);
@@ -101,17 +112,38 @@ function apply(req, res) {
           applicant: claims.id,
           round: round._id,
           status: status,
+          answers: answersCheck.answers,
         });
         if (resumeUrl) {
           update.resumeUrl = resumeUrl;
         }
 
-        return Application.findOneAndUpdate(
-          { applicant: claims.id, round: round._id },
-          { $set: update },
-          { new: true, upsert: true, setDefaultsOnInsert: true }
-        ).then(function afterSave(application) {
-          res.status(200).json({ application: application.toJSON() });
+        return Application.findOne({ applicant: claims.id, round: round._id }).then(function afterExisting(
+          existing
+        ) {
+          // Only the first draft->pending (or new->pending) transition counts
+          // as "submitted" — re-saving an already-submitted application must
+          // not re-send the received email.
+          var alreadySubmitted = Boolean(existing) && existing.status !== "draft";
+
+          return Application.findOneAndUpdate(
+            { applicant: claims.id, round: round._id },
+            { $set: update },
+            { new: true, upsert: true, setDefaultsOnInsert: true }
+          ).then(function afterSave(application) {
+            res.status(200).json({ application: application.toJSON() });
+
+            if (status === "pending" && !alreadySubmitted) {
+              mailer
+                .sendTemplateEmail(claims.email, "application_received", {
+                  name: application.name,
+                  status: application.status,
+                })
+                .catch(function onMailError(err) {
+                  console.error("Failed to send application-received email:", err);
+                });
+            }
+          });
         });
       });
     })

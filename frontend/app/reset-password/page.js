@@ -32,6 +32,13 @@ function ResetInner() {
       return;
     }
     setSubmitting(true);
+
+    if (password.length < 8) {
+      setError("Password must be at least 8 characters long.");
+      setSubmitting(false);
+      return;
+    }
+
     try {
       const data = await apiFetch("/api/auth/reset-password", {
         method: "POST",

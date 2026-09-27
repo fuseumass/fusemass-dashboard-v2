@@ -88,6 +88,16 @@ var applicationSchema = new Schema(
     hardwareSkills: [{ type: String, trim: true }],
     otherSkills: [{ type: String, trim: true }],
 
+    // ---- Dynamic per-round fields --------------------------------------------
+    // Answers to the round's formConfig-defined fields, keyed by field `key`.
+    // Kept flexible (Mixed) since formConfig itself is admin-editable.
+    answers: {
+      type: Schema.Types.Mixed,
+      default: function () {
+        return {};
+      },
+    },
+
     // ---- Review ------------------------------------------------------------
     status: {
       type: String,

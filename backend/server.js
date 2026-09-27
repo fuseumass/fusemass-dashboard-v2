@@ -15,6 +15,7 @@ var authRoutes = require("./routes/auth");
 var applicationRoutes = require("./routes/applications");
 var adminRoutes = require("./routes/admin");
 var metaRoutes = require("./routes/meta");
+const staffRoutes = require("./routes/staff");
 
 var app = express();
 
@@ -48,6 +49,7 @@ app.use("/api/auth", authRoutes);
 app.use("/api/applications", applicationRoutes);
 app.use("/api/admin", adminRoutes);
 app.use("/api/meta", metaRoutes);
+app.use("/api/staff", staffRoutes);
 
 // --- Fallback error handler (Express 4 signature: err, req, res, next) ------
 app.use(function errorHandler(err, _req, res, _next) {
@@ -56,24 +58,29 @@ app.use(function errorHandler(err, _req, res, _next) {
 });
 
 // --- Startup ----------------------------------------------------------------
-var PORT = process.env.PORT || 4000;
-var MONGODB_URI = process.env.MONGODB_URI || "";
+// Guarded so requiring this module (e.g. from tests, which manage their own
+// disposable database connection and never want a real port bound) doesn't
+// also connect to MongoDB and start listening. Only runs for `node server.js`.
+if (require.main === module) {
+  var PORT = process.env.PORT || 4000;
+  var MONGODB_URI = process.env.MONGODB_URI || "";
 
-connectDatabase(MONGODB_URI)
-  .then(function afterConnect() {
-    console.log("Connected to MongoDB.");
-    return EmailTemplate.seedDefaults().then(function afterSeed() {
-      console.log("Email templates seeded.");
+  connectDatabase(MONGODB_URI)
+    .then(function afterConnect() {
+      console.log("Connected to MongoDB.");
+      return EmailTemplate.seedDefaults().then(function afterSeed() {
+        console.log("Email templates seeded.");
+      });
+    })
+    .then(function afterSeed() {
+      app.listen(PORT, function onListen() {
+        console.log("HackUMass backend listening on port " + PORT + ".");
+      });
+    })
+    .catch(function onError(err) {
+      console.error("Failed to start server:", err);
+      process.exit(1);
     });
-  })
-  .then(function afterSeed() {
-    app.listen(PORT, function onListen() {
-      console.log("HackUMass backend listening on port " + PORT + ".");
-    });
-  })
-  .catch(function onError(err) {
-    console.error("Failed to start server:", err);
-    process.exit(1);
-  });
+}
 
 module.exports = app;

@@ -1,0 +1,54 @@
+name: CI
+
+on:
+  pull_request:
+
+jobs:
+  frontend:
+    name: frontend (lint)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: npm ci
+        working-directory: frontend
+      - run: npm run lint
+        working-directory: frontend
+
+  backend:
+    name: backend (node --check + tests)
+    runs-on: ubuntu-latest
+    services:
+      mongodb:
+        image: mongo:7
+        ports:
+          - 27017:27017
+        options: >-
+          --health-cmd "mongosh --eval 'db.runCommand({ ping: 1 })' --quiet"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: backend/package-lock.json
+      - run: npm ci
+        working-directory: backend
+      # No type-checking in this repo (plain, dynamically-typed JS — see
+      # README.md §3): node --check is the syntax gate, run over every
+      # backend .js file outside node_modules.
+      - name: node --check
+        working-directory: backend
+        run: find . -name "*.js" -not -path "./node_modules/*" -print0 | xargs -0 -n1 node --check
+      # test/helpers/testEnv.js defaults MONGODB_URI to the local Mongo
+      # service above (127.0.0.1:27017) when it isn't already set, so no
+      # extra env wiring is needed here.
+      - run: npm test
+        working-directory: backend

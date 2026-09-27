@@ -3,9 +3,15 @@
 var Application = require("../schemas/application");
 var ApplicationRound = require("../schemas/applicationRound");
 var EmailTemplate = require("../schemas/emailTemplate");
+var MealService = require("../schemas/mealService");
 var User = require("../schemas/user");
+var mailer = require("../utils/mailer");
+var formConfigUtil = require("../utils/formConfig");
 
-var DECISIONS = ["accepted", "rejected", "waitlisted", "pending"];
+var DECISION_TEMPLATE_KEYS = {
+  accepted: "application_accepted",
+  rejected: "application_rejected",
+};
 
 /**
  * GET /api/admin/applications
@@ -58,27 +64,45 @@ function decideApplication(req, res) {
     return Promise.resolve();
   }
 
-  var decision = req.body && req.body.decision;
-  if (DECISIONS.indexOf(decision) === -1) {
-    res.status(400).json({ error: "decision must be one of " + DECISIONS.join(", ") + "." });
-    return Promise.resolve();
-  }
+  var decision = req.body.decision;
 
-  return Application.findByIdAndUpdate(
-    req.params.id,
-    {
-      status: decision,
-      reviewedBy: admin.id,
-      reviewedAt: new Date(),
-    },
-    { new: true }
-  )
-    .then(function afterUpdate(application) {
-      if (!application) {
+  return Application.findById(req.params.id)
+    .then(function afterFind(existing) {
+      if (!existing) {
         res.status(404).json({ error: "Application not found." });
-        return;
+        return null;
       }
-      res.status(200).json({ application: application.toJSON() });
+
+      var previousStatus = existing.status;
+
+      return Application.findByIdAndUpdate(
+        req.params.id,
+        {
+          status: decision,
+          reviewedBy: admin.id,
+          reviewedAt: new Date(),
+        },
+        { new: true }
+      )
+        .populate("applicant", "name email role")
+        .then(function afterUpdate(application) {
+          res.status(200).json({ application: application.toJSON() });
+
+          // Idempotent: only fire when the decision actually changes the
+          // status (re-clicking the same decision must not re-send).
+          var templateKey = DECISION_TEMPLATE_KEYS[decision];
+          var recipient = application.applicant && application.applicant.email;
+          if (templateKey && decision !== previousStatus && recipient) {
+            mailer
+              .sendTemplateEmail(recipient, templateKey, {
+                name: application.name,
+                status: application.status,
+              })
+              .catch(function onMailError(err) {
+                console.error("Failed to send decision email:", err);
+              });
+          }
+        });
     })
     .catch(function onError(err) {
       console.error("decideApplication failed:", err);
@@ -126,12 +150,7 @@ function searchUsers(req, res) {
  * @returns {Promise<void>}
  */
 function setRole(req, res) {
-  var role = req.body && req.body.role;
-  var validRoles = ["applicant", "moderator", "admin"];
-  if (validRoles.indexOf(role) === -1) {
-    res.status(400).json({ error: "role must be one of " + validRoles.join(", ") + "." });
-    return Promise.resolve();
-  }
+  var role = req.body.role;
 
   return User.findByIdAndUpdate(req.params.id, { role: role }, { new: true })
     .then(function afterUpdate(user) {
@@ -175,9 +194,11 @@ function listRounds(_req, res) {
  * @returns {Promise<void>}
  */
 function createRound(req, res) {
-  var name = req.body && req.body.name;
-  if (!name) {
-    res.status(400).json({ error: "name is required." });
+  var name = req.body.name;
+
+  var formConfigCheck = formConfigUtil.validateFormConfigShape(req.body.formConfig);
+  if (formConfigCheck.errors.length) {
+    res.status(400).json({ error: formConfigCheck.errors.join(" ") });
     return Promise.resolve();
   }
 
@@ -214,6 +235,12 @@ function updateRound(req, res) {
       update[key] = req.body[key];
     }
   });
+
+  var formConfigCheck = formConfigUtil.validateFormConfigShape(update.formConfig);
+  if (formConfigCheck.errors.length) {
+    res.status(400).json({ error: formConfigCheck.errors.join(" ") });
+    return Promise.resolve();
+  }
 
   return ApplicationRound.findByIdAndUpdate(req.params.id, { $set: update }, { new: true })
     .then(function afterUpdate(round) {
@@ -281,14 +308,9 @@ function listEmailTemplates(_req, res) {
  * @returns {Promise<void>}
  */
 function createEmailTemplate(req, res) {
-  var key = req.body && req.body.key;
-  var subject = req.body && req.body.subject;
-  var body = req.body && req.body.body;
-
-  if (!key) {
-    res.status(400).json({ error: "key is required." });
-    return Promise.resolve();
-  }
+  var key = req.body.key;
+  var subject = req.body.subject;
+  var body = req.body.body;
 
   return EmailTemplate.create({
     key: key,
@@ -299,6 +321,10 @@ function createEmailTemplate(req, res) {
       res.status(201).json({ template: template.toJSON ? template.toJSON() : template });
     })
     .catch(function onError(err) {
+      if (err && err.code === 11000) {
+        res.status(409).json({ error: "An email template with that key already exists." });
+        return;
+      }
       console.error("createEmailTemplate failed:", err);
       res.status(500).json({ error: "Could not create email template." });
     });
@@ -323,7 +349,7 @@ function updateEmailTemplate(req, res) {
     update.key = req.body.key;
   }
 
-  return EmailTemplate.findByIdAndUpdate(req.params.id, { $set: update }, { new: true })
+  return EmailTemplate.findByIdAndUpdate(req.params.id, { $set: update }, { new: true, runValidators: true })
     .then(function afterUpdate(template) {
       if (!template) {
         res.status(404).json({ error: "Email template not found." });
@@ -332,6 +358,18 @@ function updateEmailTemplate(req, res) {
       res.status(200).json({ template: template.toJSON ? template.toJSON() : template });
     })
     .catch(function onError(err) {
+      if (err && err.name === "CastError") {
+        res.status(404).json({ error: "Email template not found." });
+        return;
+      }
+      if (err && err.name === "ValidationError") {
+        res.status(400).json({ error: err.message });
+        return;
+      }
+      if (err && err.code === 11000) {
+        res.status(409).json({ error: "An email template with that key already exists." });
+        return;
+      }
       console.error("updateEmailTemplate failed:", err);
       res.status(500).json({ error: "Could not update email template." });
     });
@@ -354,8 +392,164 @@ function deleteEmailTemplate(req, res) {
       res.status(200).json({ ok: true });
     })
     .catch(function onError(err) {
+      if (err && err.name === "CastError") {
+        res.status(404).json({ error: "Email template not found." });
+        return;
+      }
       console.error("deleteEmailTemplate failed:", err);
       res.status(500).json({ error: "Could not delete email template." });
+    });
+}
+
+/**
+ * Whether a value parses to a real date (new Date("nope") is Invalid Date).
+ * @param {*} value - Raw date input from the request body.
+ * @returns {boolean} True when the value is a usable date.
+ */
+function isValidDate(value) {
+  return !Number.isNaN(new Date(value).getTime());
+}
+
+/**
+ * GET /api/admin/meals — list meal services.
+ * @param {object} _req
+ * @param {object} res
+ * @returns {Promise<void>}
+ */
+function listMeals(_req, res) {
+  return MealService.find({})
+    .sort({ startsAt: 1, createdAt: 1 })
+    .then(function afterFind(meals) {
+      res.status(200).json({ meals: meals });
+    })
+    .catch(function onError(err) {
+      console.error("listMeals failed:", err);
+      res.status(500).json({ error: "Could not load meal services." });
+    });
+}
+
+/**
+ * POST /api/admin/meals — create a meal service.
+ * Body: { name, startsAt, endsAt, active? }
+ * @param {object} req
+ * @param {object} res
+ * @returns {Promise<void>}
+ */
+function createMeal(req, res) {
+  var name = req.body && req.body.name;
+  var startsAt = req.body && req.body.startsAt;
+  var endsAt = req.body && req.body.endsAt;
+  var actorId = req.user && req.user.id ? req.user.id : null;
+
+  if (!name) {
+    res.status(400).json({ error: "name is required." });
+    return Promise.resolve();
+  }
+  if (!startsAt || !endsAt) {
+    res.status(400).json({ error: "startsAt and endsAt are required." });
+    return Promise.resolve();
+  }
+  if (!isValidDate(startsAt) || !isValidDate(endsAt)) {
+    res.status(400).json({ error: "startsAt and endsAt must be valid dates." });
+    return Promise.resolve();
+  }
+  if (!actorId) {
+    res.status(401).json({ error: "Authentication required." });
+    return Promise.resolve();
+  }
+
+  return MealService.findOne({
+    name: name,
+    $or: [{ createdBy: actorId }, { updatedBy: actorId }],
+  })
+    .then(function afterLookup(existingMeal) {
+      if (existingMeal) {
+        res.status(409).json({ error: "A meal with this name already exists for this user." });
+        return null;
+      }
+
+      return MealService.create({
+        name: name,
+        startsAt: new Date(startsAt),
+        endsAt: new Date(endsAt),
+        active: req.body.active !== undefined ? Boolean(req.body.active) : true,
+        createdBy: actorId,
+        updatedBy: actorId,
+      }).then(function afterCreate(meal) {
+        res.status(201).json({ meal: meal });
+      });
+    })
+    .catch(function onError(err) {
+      console.error("createMeal failed:", err);
+      res.status(500).json({ error: "Could not create meal service." });
+    });
+}
+
+/**
+ * PATCH /api/admin/meals/:id — update a meal service.
+ * Body: { name?, startsAt?, endsAt?, active? }
+ * @param {object} req
+ * @param {object} res
+ * @returns {Promise<void>}
+ */
+function updateMeal(req, res) {
+  var update = {};
+  var actorId = req.user && req.user.id ? req.user.id : null;
+  if (req.body && req.body.name !== undefined) {
+    update.name = req.body.name;
+  }
+  if (req.body && req.body.startsAt !== undefined) {
+    update.startsAt = new Date(req.body.startsAt);
+  }
+  if (req.body && req.body.endsAt !== undefined) {
+    update.endsAt = new Date(req.body.endsAt);
+  }
+  if (req.body && req.body.active !== undefined) {
+    update.active = Boolean(req.body.active);
+  }
+  if (actorId) {
+    update.updatedBy = actorId;
+  }
+  if (
+    (req.body && req.body.startsAt !== undefined && !isValidDate(req.body.startsAt)) ||
+    (req.body && req.body.endsAt !== undefined && !isValidDate(req.body.endsAt))
+  ) {
+    res.status(400).json({ error: "startsAt and endsAt must be valid dates." });
+    return Promise.resolve();
+  }
+
+  return MealService.findByIdAndUpdate(req.params.id, { $set: update }, { new: true })
+    .then(function afterUpdate(meal) {
+      if (!meal) {
+        res.status(404).json({ error: "Meal service not found." });
+        return;
+      }
+      res.status(200).json({ meal: meal });
+    })
+    .catch(function onError(err) {
+      console.error("updateMeal failed:", err);
+      res.status(500).json({ error: "Could not update meal service." });
+    });
+}
+
+/**
+ * DELETE /api/admin/meals/:id — remove a meal service.
+ * @param {object} req
+ * @param {object} res
+ * @returns {Promise<void>}
+ */
+function deleteMeal(req, res) {
+  return MealService.findByIdAndDelete(req.params.id)
+    .then(function afterDelete(meal) {
+      if (!meal) {
+        res.status(404).json({ error: "Meal service not found." });
+        return;
+      }
+      res.status(200).json({ ok: true });
+    })
+    .catch(function onError(err) {
+      console.error("deleteMeal failed:", err);
+      res.status(500).json({ error: "Could not delete meal service." });
     });
 }
 
@@ -372,4 +566,8 @@ module.exports = {
   createEmailTemplate: createEmailTemplate,
   updateEmailTemplate: updateEmailTemplate,
   deleteEmailTemplate: deleteEmailTemplate,
+  listMeals: listMeals,
+  createMeal: createMeal,
+  updateMeal: updateMeal,
+  deleteMeal: deleteMeal,
 };

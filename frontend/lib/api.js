@@ -32,6 +32,91 @@ export function clearToken() {
   }
 }
 
+// --- Expired session handling -----------------------------------------------
+// A JWT can expire at any point after the dashboard has loaded, so every
+// request is a place where the session can end. Rather than let each page
+// render a bare "Request failed (401)", we detect it here and bounce to
+// /login with a message.
+
+export const EXPIRED_MESSAGE = "Your session has expired. Please log in again.";
+
+// These endpoints answer 401 for bad credentials, not for an expired session —
+// a 401 from /api/auth/login means "wrong password" and must stay on the page.
+const AUTH_ENTRY_PATHS = [
+  "/api/auth/login",
+  "/api/auth/register",
+  "/api/auth/forgot-password",
+  "/api/auth/reset-password",
+  "/api/auth/setup-admin",
+];
+
+// Several requests are usually in flight at once, and any number of them can
+// come back 401 together. Only the first one should navigate.
+let redirecting = false;
+
+function isAuthEntryPath(path) {
+  const withoutQuery = String(path).split("?")[0];
+  return AUTH_ENTRY_PATHS.includes(withoutQuery);
+}
+
+/**
+ * Decide whether a 401 means "the session ended" and, if so, clear the token
+ * and send the browser to /login. A hard navigation (rather than a router
+ * push) is deliberate: it drops every page's in-memory copy of the old user.
+ * @param {object} res - The fetch Response.
+ * @param {string} path - Request path, used to spot auth-entry endpoints.
+ * @param {boolean} sentToken - Whether we attached an Authorization header.
+ * @returns {boolean} True when the session was treated as expired.
+ */
+function handleExpiredSession(res, path, sentToken) {
+  // Without a token we never claimed a session, so a 401 is just a rejected
+  // credential — leave it to the calling page.
+  if (res.status !== 401 || !sentToken || isAuthEntryPath(path)) {
+    return false;
+  }
+
+  clearToken();
+
+  if (typeof window === "undefined" || redirecting) {
+    return true;
+  }
+  // Already on the login page: nothing to navigate to, and reloading would
+  // wipe an error the page is showing.
+  if (window.location.pathname === "/login") {
+    return true;
+  }
+
+  redirecting = true;
+  window.location.replace("/login?expired=1");
+  return true;
+}
+
+/**
+ * Read the JSON body of a response and throw a useful Error when it failed.
+ * @param {object} res - The fetch Response.
+ * @param {string} path - Request path, for expired-session detection.
+ * @param {boolean} sentToken - Whether we attached an Authorization header.
+ * @returns {Promise<object|null>} Parsed body on success.
+ */
+async function readResponse(res, path, sentToken) {
+  let data = null;
+  try {
+    data = await res.json();
+  } catch {
+    data = null;
+  }
+
+  if (!res.ok) {
+    if (handleExpiredSession(res, path, sentToken)) {
+      throw new Error(EXPIRED_MESSAGE);
+    }
+    const message = data?.error || `Request failed (${res.status})`;
+    throw new Error(message);
+  }
+
+  return data;
+}
+
 // --- Fetch wrapper ----------------------------------------------------------
 // Attaches the JWT as `Authorization: Bearer <token>` so the backend's
 // parseToken middleware can decode it onto req.user.
@@ -49,19 +134,7 @@ export async function apiFetch(path, options = {}) {
 
   const res = await fetch(`${API_URL}${path}`, { ...options, headers });
 
-  let data = null;
-  try {
-    data = await res.json();
-  } catch {
-    data = null;
-  }
-
-  if (!res.ok) {
-    const message = data?.error || `Request failed (${res.status})`;
-    throw new Error(message);
-  }
-
-  return data;
+  return readResponse(res, path, Boolean(token));
 }
 
 // --- Multipart upload -------------------------------------------------------
@@ -82,17 +155,5 @@ export async function apiUpload(path, formData, options = {}) {
     headers,
   });
 
-  let data = null;
-  try {
-    data = await res.json();
-  } catch {
-    data = null;
-  }
-
-  if (!res.ok) {
-    const message = data?.error || `Request failed (${res.status})`;
-    throw new Error(message);
-  }
-
-  return data;
+  return readResponse(res, path, Boolean(token));
 }

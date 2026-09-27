@@ -49,7 +49,7 @@ A staff page to look up an accepted applicant (search by name/email) and mark
 them checked in; show who/when. Visible to moderators and admins.
 - **Depends on:** B5. **Related:** T2.
 
-### F3. Meal check-in UI + admin meal setup
+### F3. Meal check-in UI + admin meal setup - Richarla Preston @charlajp
 Admin: create/manage meal services (name, time window). Staff (mod+admin):
 select the active meal and check attendees in, with a guard against double
 serving.
@@ -81,17 +81,17 @@ Page for judging progress once B11 lands.
 
 ## Supporting
 
-### F7. Client-side form validation + friendlier errors
+### F7. Client-side form validation + friendlier errors - Richarla Preston @charlajp
 Field-level validation on the application and auth forms (email format, phone,
 required), inline error messages.
 - **Depends on:** none.
 
-### F8. Session/token expiry handling
+### F8. Session/token expiry handling - @mli721
 Detect expired tokens app-wide and redirect to `/login` with a message
 (currently handled per-page in the dashboard layout).
 - **Depends on:** none.
 
-### F9. Logo assets
+### F9. Logo assets - Richarla Preston @charlajp
 Drop real `public/logo.png` and `public/logo-v2.png`, set the
 `NEXT_PUBLIC_*` env vars per deployment. The `Logo` component already falls back
 to the org name text until then.
