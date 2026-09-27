@@ -34,7 +34,7 @@ Mobile layout for the sidebar (collapsible), keyboard nav, ARIA, contrast.
 
 ## Email templates
 
-### F1. Admin email-template editor
+### F1. Admin email-template editor - Jeffrey Deng
 Settings sub-page (admins only) to edit the subject/body of the
 `application_received` / `accepted` / `rejected` emails, with a list of
 available `{{placeholders}}` and a preview.
@@ -44,7 +44,7 @@ available `{{placeholders}}` and a preview.
 
 ## Check-in (event day)
 
-### F2. First check-in UI (moderators + admins)
+### F2. First check-in UI (moderators + admins) - Jeng-Aun Chou
 A staff page to look up an accepted applicant (search by name/email) and mark
 them checked in; show who/when. Visible to moderators and admins.
 - **Depends on:** B5. **Related:** T2.
@@ -59,7 +59,7 @@ serving.
 
 ## Application form builder (per round)
 
-### F4. Round form builder + dynamic application rendering
+### F4. Round form builder + dynamic application rendering - Jeffrey Deng
 Replace the raw JSON `formConfig` textarea in Settings with a real builder
 (add/reorder/remove fields, pick type, mark required). Then have the applicant
 application page render the round's dynamic fields alongside the standard ones.

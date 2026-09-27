@@ -24,6 +24,12 @@ router.post("/rounds", isAdmin, adminController.createRound);
 router.patch("/rounds/:id", isAdmin, adminController.updateRound);
 router.delete("/rounds/:id", isAdmin, adminController.deleteRound);
 
+// Email templates.
+router.get("/email-templates", isAdmin, adminController.listEmailTemplates);
+router.post("/email-templates", isAdmin, adminController.createEmailTemplate);
+router.patch("/email-templates/:id", isAdmin, adminController.updateEmailTemplate);
+router.delete("/email-templates/:id", isAdmin, adminController.deleteEmailTemplate);
+
 // Org settings (e.g. Google OAuth toggle).
 router.get("/settings", isAdmin, settingsController.getSettings);
 router.patch("/settings", isAdmin, settingsController.updateSettings);

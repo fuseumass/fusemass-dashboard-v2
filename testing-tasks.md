@@ -9,7 +9,7 @@ Testing/QA backlog. Task IDs are `T#`. Cross-file links: `B#` = backend task,
 
 ---
 
-## T0. Verify what's already built (smoke + regression)
+## T0. Verify what's already built (smoke + regression) - Jeffrey Deng
 The features below are implemented but not yet formally tested. Write tests
 and/or run manual QA:
 - Register / login / `GET /api/auth/me`; JWT attaches on requests.
@@ -29,12 +29,12 @@ and/or run manual QA:
 - User search + promote to moderator/admin; role change reflected in the sidebar.
 - **Depends on:** the built features. **Related:** everything above.
 
-## T1. Email notifications
+## T1. Email notifications - Jeffrey Deng
 Test template CRUD (B1), received email on submit (B2), decision emails (B3),
 placeholder rendering (B4), and idempotency (no duplicate decision emails).
 - **Depends on:** B1–B4, F1.
 
-## T2. First check-in
+## T2. First check-in - Jeng-Aun Chou
 Test the check-in endpoint + UI: moderators and admins can check in; applicants
 cannot; double check-in is handled.
 - **Depends on:** B5, F2.
@@ -44,23 +44,23 @@ Test meal service CRUD (admin), per-user-per-meal uniqueness (no double
 serving), and the staff check-in flow.
 - **Depends on:** B6, B7, F3.
 
-## T4. Per-round form builder
+## T4. Per-round form builder - Jeffrey Deng
 Test that admin-defined `formConfig` renders on the application page, dynamic
 required fields validate, and answers persist. Moderators can't edit forms.
 - **Depends on:** B8, B9, F4.
 
-## T5. Security / hardening
+## T5. Security / hardening - Jeffrey Deng
 Rate-limit behavior on auth endpoints (B13); authz coverage (no privilege
 escalation via request body role); resume upload rejects oversized/wrong types.
 - **Depends on:** B12, B13.
 
-## T6. CI pipeline
+## T6. CI pipeline - Jeffrey Deng
 GitHub Actions on every PR: `frontend` → `npm run lint` (Biome); `Backend` →
 `node --check` over `**/*.js` (we don't type-check — see `README.md` §3). Wire
 the test runners from T0–T5 as they land.
 - **Depends on:** none. **Related:** the branch/PR rule in `README.md`.
 
-## T7. Test harness setup
+## T7. Test harness setup - Jeffrey Deng
 Choose and configure runners (e.g. a Node test runner + supertest for the API;
 a component testing setup for the frontend), plus a seed/fixture strategy and a
 disposable test database.

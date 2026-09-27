@@ -1,6 +1,8 @@
 "use strict";
 
 var nodemailer = require("nodemailer");
+var EmailTemplate = require("../schemas/emailTemplate");
+var renderTemplate = require("./renderTemplate");
 
 /**
  * Whether SMTP is configured for outgoing email.
@@ -69,7 +71,50 @@ function sendPasswordReset(to, resetUrl) {
     });
 }
 
+/**
+ * Send an email using a stored template.
+ *
+ * @param {string} to - Recipient email address.
+ * @param {string} templateKey - Template key to load from the database.
+ * @param {object} values - Placeholder values for the template.
+ * @returns {Promise<void>}
+ */
+function sendTemplateEmail(to, templateKey, values) {
+  if (!to) {
+    return Promise.resolve();
+  }
+
+  if (!isMailConfigured()) {
+    console.warn("SMTP not configured; skipped template email for:", templateKey);
+    return Promise.resolve();
+  }
+
+  return EmailTemplate.findOne({ key: templateKey })
+    .then(function afterFind(template) {
+      if (!template) {
+        return undefined;
+      }
+
+      var orgName = process.env.ORG_NAME || "the hackathon";
+      var from = process.env.MAIL_FROM || process.env.SMTP_USER;
+      var renderedSubject = renderTemplate(template.subject, Object.assign({}, values, { orgName: orgName }));
+      var renderedBody = renderTemplate(template.body, Object.assign({}, values, { orgName: orgName }));
+
+      return buildTransport().sendMail({
+        from: from,
+        to: to,
+        subject: renderedSubject,
+        text: renderedBody,
+        html: renderedBody.replace(/\n/g, "<br />"),
+      });
+    })
+    .then(function afterSend() {
+      return undefined;
+    });
+}
+
 module.exports = {
   isMailConfigured: isMailConfigured,
   sendPasswordReset: sendPasswordReset,
+  sendTemplateEmail: sendTemplateEmail,
 };
