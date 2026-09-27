@@ -33,11 +33,13 @@ function LoginInner() {
 
     if (!email.trim() || !email.includes("@")) {
       setError("Please enter a valid email address.");
+      setSubmitting(false);
       return;
     }
 
     if (!password) {
-      setError("password is required.");
+      setError("Password is required.");
+      setSubmitting(false);
       return;
     }
 

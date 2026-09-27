@@ -23,16 +23,19 @@ export default function SignupPage() {
 
     if (!name.trim()) {
       setError("Full name is required.");
+      setSubmitting(false);
       return;
     }
 
-    if (!email.incldudes("@") || !email.includes(".")) {
+    if (!email.includes("@") || !email.includes(".")) {
       setError("Please enter a valid email address.");
+      setSubmitting(false);
       return;
     }
 
     if (password.length < 8) {
-      setError("Password must be at least 8 charactes long.");
+      setError("Password must be at least 8 characters long.");
+      setSubmitting(false);
       return;
     }
 

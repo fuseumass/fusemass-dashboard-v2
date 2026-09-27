@@ -40,12 +40,6 @@ function ResetInner() {
       return;
     }
 
-    if (password !== confrimPassword) {
-      setError("Passwords do not match.");
-      setSubmitting(false);
-      return;
-    }
-
     //Richarla - edit end
     try {
       const data = await apiFetch("/api/auth/reset-password", {
