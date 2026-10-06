@@ -7,6 +7,7 @@ var MealService = require("../schemas/mealService");
 var User = require("../schemas/user");
 var mailer = require("../utils/mailer");
 var formConfigUtil = require("../utils/formConfig");
+var validator = require("validator");
 
 var DECISION_TEMPLATE_KEYS = {
   accepted: "application_accepted",
@@ -438,6 +439,7 @@ function listMeals(_req, res) {
  */
 function createMeal(req, res) {
   var name = req.body && req.body.name;
+  var createdFor = req.body && req.body.createdFor;
   var startsAt = req.body && req.body.startsAt;
   var endsAt = req.body && req.body.endsAt;
   var startDate = parseDate(startsAt);
@@ -446,6 +448,10 @@ function createMeal(req, res) {
 
   if (!name) {
     res.status(400).json({ error: "name is required." });
+    return Promise.resolve();
+  }
+  if (!validator.isEmail(createdFor.trim())) {
+    res.status(400).json({ error: "createdFor must be a valid email address." });
     return Promise.resolve();
   }
   if (!startsAt || !endsAt) {
@@ -478,6 +484,7 @@ function createMeal(req, res) {
 
       return MealService.create({
         name: name,
+        createdFor: createdFor.trim(),
         startsAt: startDate.toUTCString(),
         endsAt: endDate.toUTCString(),
         active: req.body.active !== undefined ? Boolean(req.body.active) : true,
@@ -511,6 +518,13 @@ function updateMeal(req, res) {
   if (req.body && req.body.name !== undefined) {
     update.name = req.body.name;
   }
+  if (req.body && req.body.createdFor !== undefined) {
+    if (!validator.isEmail(req.body.createdFor.trim())) {
+      res.status(400).json({ error: "createdFor must be a valid email address." });
+      return Promise.resolve();
+    }
+    update.createdFor = req.body.createdFor.trim(); //if createdFor's value is valid email address, should be updated
+  }
   if (req.body && req.body.active !== undefined) {
     update.active = Boolean(req.body.active);
   }
@@ -540,7 +554,9 @@ function updateMeal(req, res) {
       update.startsAt = effectiveStartsAt.toUTCString();
       update.endsAt = effectiveEndsAt.toUTCString();
 
-      return MealService.findByIdAndUpdate(req.params.id, { $set: update }, { new: true });
+      return MealService.findByIdAndUpdate(req.params.id, { $set: update }, { new: true, runValidators: true });
+
+      //find doc corresponding to that meal via its mealservice-unique ID and then update keys with new values
     })
     .then(function afterUpdate(meal) {
       if (!meal) {

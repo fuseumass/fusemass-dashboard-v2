@@ -1,6 +1,7 @@
 "use strict";
 
 var mongoose = require("mongoose");
+var validator = require("validator");
 
 var Schema = mongoose.Schema;
 
@@ -15,6 +16,15 @@ var mealServiceSchema = new Schema(
       type: String,
       required: true,
       trim: true,
+    },
+    createdFor: {
+      type: String,
+      required: true,
+      trim: true,
+      validate: {
+        validator: validator.isEmail,
+        message: "createdFor must be a valid email address.",
+      },
     },
     startsAt: {
       type: Date,
