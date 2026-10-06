@@ -402,12 +402,13 @@ function deleteEmailTemplate(req, res) {
 }
 
 /**
- * Whether a value parses to a real date (new Date("nope") is Invalid Date).
+ * Parse a date value using JavaScript's native Date parser.
  * @param {*} value - Raw date input from the request body.
- * @returns {boolean} True when the value is a usable date.
+ * @returns {Date|null} The parsed date, or null for invalid input.
  */
-function isValidDate(value) {
-  return !Number.isNaN(new Date(value).getTime());
+function parseDate(value) {
+  var parsed = new Date(value);
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
 }
 
 /**
@@ -439,6 +440,8 @@ function createMeal(req, res) {
   var name = req.body && req.body.name;
   var startsAt = req.body && req.body.startsAt;
   var endsAt = req.body && req.body.endsAt;
+  var startDate = parseDate(startsAt);
+  var endDate = parseDate(endsAt);
   var actorId = req.user && req.user.id ? req.user.id : null;
 
   if (!name) {
@@ -449,8 +452,13 @@ function createMeal(req, res) {
     res.status(400).json({ error: "startsAt and endsAt are required." });
     return Promise.resolve();
   }
-  if (!isValidDate(startsAt) || !isValidDate(endsAt)) {
-    res.status(400).json({ error: "startsAt and endsAt must be valid dates." });
+  if (!startDate || !endDate) {
+    res.status(400).json({ error: "startsAt and endsAt must be valid date-time values." });
+    return Promise.resolve();
+  }
+  // getTime() returns each Date's millisecond value for numeric comparison.
+  if (startDate.getTime() >= endDate.getTime()) {
+    res.status(400).json({ error: "endsAt must be after startsAt." });
     return Promise.resolve();
   }
   if (!actorId) {
@@ -470,8 +478,8 @@ function createMeal(req, res) {
 
       return MealService.create({
         name: name,
-        startsAt: new Date(startsAt),
-        endsAt: new Date(endsAt),
+        startsAt: startDate.toUTCString(),
+        endsAt: endDate.toUTCString(),
         active: req.body.active !== undefined ? Boolean(req.body.active) : true,
         createdBy: actorId,
         updatedBy: actorId,
@@ -495,14 +503,13 @@ function createMeal(req, res) {
 function updateMeal(req, res) {
   var update = {};
   var actorId = req.user && req.user.id ? req.user.id : null;
+  var startsAt = req.body && req.body.startsAt;
+  var endsAt = req.body && req.body.endsAt;
+  var startDate = parseDate(startsAt);
+  var endDate = parseDate(endsAt);
+
   if (req.body && req.body.name !== undefined) {
     update.name = req.body.name;
-  }
-  if (req.body && req.body.startsAt !== undefined) {
-    update.startsAt = new Date(req.body.startsAt);
-  }
-  if (req.body && req.body.endsAt !== undefined) {
-    update.endsAt = new Date(req.body.endsAt);
   }
   if (req.body && req.body.active !== undefined) {
     update.active = Boolean(req.body.active);
@@ -510,18 +517,33 @@ function updateMeal(req, res) {
   if (actorId) {
     update.updatedBy = actorId;
   }
-  if (
-    (req.body && req.body.startsAt !== undefined && !isValidDate(req.body.startsAt)) ||
-    (req.body && req.body.endsAt !== undefined && !isValidDate(req.body.endsAt))
-  ) {
-    res.status(400).json({ error: "startsAt and endsAt must be valid dates." });
-    return Promise.resolve();
-  }
+  return MealService.findById(req.params.id)
+    .then(function afterFind(existingMeal) {
+      if (!existingMeal) {
+        res.status(404).json({ error: "Meal service not found." });
+        return null;
+      }
 
-  return MealService.findByIdAndUpdate(req.params.id, { $set: update }, { new: true })
+      var effectiveStartsAt = startDate || parseDate(existingMeal.startsAt);
+      var effectiveEndsAt = endDate || parseDate(existingMeal.endsAt);
+      if (!effectiveStartsAt || !effectiveEndsAt) {
+        res.status(400).json({ error: "startsAt and endsAt must be valid dates." });
+        return null;
+      }
+      // getTime() returns each Date's millisecond value for numeric comparison.
+      if (effectiveStartsAt.getTime() >= effectiveEndsAt.getTime()) {
+        res.status(400).json({ error: "endsAt must be after startsAt." });
+        return null;
+      }
+
+      // Store the normalized date values as UTC strings; Mongoose casts them to Date fields.
+      update.startsAt = effectiveStartsAt.toUTCString();
+      update.endsAt = effectiveEndsAt.toUTCString();
+
+      return MealService.findByIdAndUpdate(req.params.id, { $set: update }, { new: true });
+    })
     .then(function afterUpdate(meal) {
       if (!meal) {
-        res.status(404).json({ error: "Meal service not found." });
         return;
       }
       res.status(200).json({ meal: meal });
