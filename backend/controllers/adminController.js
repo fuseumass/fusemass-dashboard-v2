@@ -474,7 +474,7 @@ function createMeal(req, res) {
 
   return MealService.findOne({
     name: name,
-    $or: [{ createdBy: actorId }, { updatedBy: actorId }],
+    createdFor: createdFor.trim()
   })
     .then(function afterLookup(existingMeal) {
       if (existingMeal) {
@@ -494,7 +494,13 @@ function createMeal(req, res) {
         res.status(201).json({ meal: meal });
       });
     })
-    .catch(function onError(err) {
+    .catch(function onError(err) { /*Mealservice.create-promise rejects if createdFor value and name value are both already present in a mealservice-schema document. 
+      this rejection is based on mealservice schema enforcement "mealServiceSchema.index({ name: 1, createdFor: 1 }, { unique: true }); */
+
+      if (err && err.code === 11000) { //this rejection is based
+        res.status(409).json({ error: "A meal with this name already exists for this user." });
+        return;
+      } 
       console.error("createMeal failed:", err);
       res.status(500).json({ error: "Could not create meal service." });
     });
@@ -565,6 +571,10 @@ function updateMeal(req, res) {
       res.status(200).json({ meal: meal });
     })
     .catch(function onError(err) {
+      if (err && err.code === 11000) {
+        res.status(409).json({ error: "A meal with this name already exists for this user." });
+        return;
+      }
       console.error("updateMeal failed:", err);
       res.status(500).json({ error: "Could not update meal service." });
     });

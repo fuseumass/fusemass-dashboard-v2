@@ -59,4 +59,6 @@ mealServiceSchema.pre("validate", function validateMealService(next) {
   next();
 });
 
+mealServiceSchema.index({ name: 1, createdFor: 1 }, { unique: true });
+
 module.exports = mongoose.model("MealService", mealServiceSchema);
