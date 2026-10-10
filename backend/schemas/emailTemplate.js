@@ -15,7 +15,7 @@ var DEFAULT_TEMPLATES = [
     key: "application_accepted",
     subject: "Your application to {{orgName}} was accepted",
     body:
-      "Hi {{name}},\n\nCongratulations! Your application to {{orgName}} has been accepted.\n\nStatus: {{status}}",
+      "Hi {{name}},\n\nCongratulations! Your application to {{orgName}} has been accepted.\n\nStatus: {{status}}.\n\nShow the QR code below when you arrive at check-in: {{qrcode}}",
   },
   {
     key: "application_rejected",
