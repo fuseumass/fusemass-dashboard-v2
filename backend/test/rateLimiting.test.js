@@ -1,10 +1,12 @@
 "use strict";
 
-// Isolated in its own file: express-rate-limit's in-memory store is shared
-// across every route authRateLimit is mounted on (one IP-keyed budget for
-// login/register/forgot-password/setup-admin combined, by design — a
-// stronger brute-force defense than a per-route budget), so tightening it
-// here would otherwise starve unrelated tests running in the same process.
+// Isolated in its own file: express-rate-limit's stores are module-level and
+// live for the process, so tightening the budget here would otherwise starve
+// unrelated tests running alongside it.
+//
+// Subtest order matters. The limiters cannot be reset between subtests, and
+// every supertest request arrives from the same loopback IP, so the subtest
+// that needs an unspent login budget runs before the one that exhausts it.
 process.env.AUTH_RATE_LIMIT_MAX = "3";
 process.env.AUTH_RATE_LIMIT_WINDOW_MS = "60000";
 
@@ -19,7 +21,28 @@ test("T5 + B13: auth rate limiting", async function rateLimiting(t) {
   await db.connect();
   await db.clearDatabase();
 
-  await t.test("login is rate-limited after AUTH_RATE_LIMIT_MAX attempts, per IP", async function () {
+  await t.test("successful logins do not spend the login budget", async function () {
+    var registered = await request(app)
+      .post("/api/auth/register")
+      .send({ name: "Repeat Login", email: "repeat-login@test.com", password: "secret123" });
+    assert.equal(registered.status, 201);
+
+    // More successful logins than AUTH_RATE_LIMIT_MAX. With
+    // skipSuccessfulRequests they cost nothing, so none may be blocked —
+    // this is what keeps a venue full of attendees behind one NAT'd IP from
+    // locking itself out just by signing in.
+    var statuses = [];
+    for (var i = 0; i < 5; i++) {
+      var res = await request(app)
+        .post("/api/auth/login")
+        .send({ email: "repeat-login@test.com", password: "secret123" });
+      statuses.push(res.status);
+    }
+
+    assert.deepEqual(statuses, [200, 200, 200, 200, 200]);
+  });
+
+  await t.test("failed logins are rate-limited after AUTH_RATE_LIMIT_MAX attempts, per IP", async function () {
     var statuses = [];
     for (var i = 0; i < 5; i++) {
       var res = await request(app).post("/api/auth/login").send({ email: "nobody@test.com", password: "wrong" });
@@ -29,12 +52,28 @@ test("T5 + B13: auth rate limiting", async function rateLimiting(t) {
     assert.deepEqual(statuses, [401, 401, 401, 429, 429]);
   });
 
-  await t.test("the budget is shared across auth endpoints, not per-route", async function () {
-    // The previous subtest already exhausted this IP's budget.
+  await t.test("each endpoint keeps its own budget, so login's does not block register", async function () {
+    // The previous subtest exhausted the login budget for this IP. Register
+    // has its own, so it must still go through. This is the behavior change
+    // from B13's review: these four endpoints used to share one bucket, which
+    // meant a burst of failed logins also locked out signups and password
+    // resets.
     var res = await request(app)
       .post("/api/auth/register")
       .send({ name: "Nobody", email: "nobody2@test.com", password: "whatever" });
-    assert.equal(res.status, 429);
+    assert.equal(res.status, 201);
+
+    // ...and login is still blocked, so this is isolation rather than the
+    // limiter having simply stopped working.
+    var stillBlocked = await request(app)
+      .post("/api/auth/login")
+      .send({ email: "nobody@test.com", password: "wrong" });
+    assert.equal(stillBlocked.status, 429);
+  });
+
+  await t.test("forgot-password has its own budget too", async function () {
+    var res = await request(app).post("/api/auth/forgot-password").send({ email: "nobody3@test.com" });
+    assert.notEqual(res.status, 429);
   });
 
   await db.closeDatabase();
