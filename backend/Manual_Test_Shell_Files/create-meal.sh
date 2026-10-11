@@ -31,6 +31,7 @@ MEAL_RESPONSE=$(curl -s -X POST http://localhost:4000/api/admin/meals \
   -H "Authorization: Bearer $TOKEN" \
   -d '{
     "name": "Saturday Lunch",
+    "createdFor": "xxx@gmail.com",
     "startsAt": "2026-08-15T12:00:00Z",
     "endsAt": "2026-08-15T13:30:00Z",
     "active": true
