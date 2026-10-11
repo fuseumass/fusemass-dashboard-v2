@@ -349,8 +349,29 @@ function updateEmailTemplate(req, res) {
     update.key = req.body.key;
   }
 
-  return EmailTemplate.findByIdAndUpdate(req.params.id, { $set: update }, { new: true, runValidators: true })
+  return EmailTemplate.findById(req.params.id)
+    .then(function afterFind(existing) {
+      if (!existing) {
+        res.status(404).json({ error: "Email template not found." });
+        return null;
+      }
+
+      // Subject and body stay editable — that is the whole point of the
+      // feature. Only the key is locked, because the application and decision
+      // flows look these templates up by key.
+      if (update.key !== undefined && update.key !== existing.key && EmailTemplate.isBuiltInKey(existing.key)) {
+        res.status(400).json({
+          error: "Built-in templates cannot be renamed. Edit the subject and body instead.",
+        });
+        return null;
+      }
+
+      return EmailTemplate.findByIdAndUpdate(req.params.id, { $set: update }, { new: true, runValidators: true });
+    })
     .then(function afterUpdate(template) {
+      if (template === null) {
+        return; // 404 or built-in rename, already answered above
+      }
       if (!template) {
         res.status(404).json({ error: "Email template not found." });
         return;
@@ -383,8 +404,26 @@ function updateEmailTemplate(req, res) {
  * @returns {Promise<void>}
  */
 function deleteEmailTemplate(req, res) {
-  return EmailTemplate.findByIdAndDelete(req.params.id)
+  return EmailTemplate.findById(req.params.id)
+    .then(function afterFind(existing) {
+      if (!existing) {
+        res.status(404).json({ error: "Email template not found." });
+        return null;
+      }
+
+      if (EmailTemplate.isBuiltInKey(existing.key)) {
+        res.status(400).json({
+          error: "Built-in templates cannot be deleted. Edit the subject and body instead.",
+        });
+        return null;
+      }
+
+      return EmailTemplate.findByIdAndDelete(req.params.id);
+    })
     .then(function afterDelete(template) {
+      if (template === null) {
+        return; // 404 or built-in delete, already answered above
+      }
       if (!template) {
         res.status(404).json({ error: "Email template not found." });
         return;

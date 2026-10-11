@@ -25,6 +25,13 @@ var DEFAULT_TEMPLATES = [
   },
 ];
 
+// Derived from DEFAULT_TEMPLATES rather than written out again, so the two can
+// never drift. These three keys are referenced by name from application and
+// decision flows, so renaming or deleting one silently stops those emails.
+var BUILT_IN_KEYS = DEFAULT_TEMPLATES.map(function pickKey(template) {
+  return template.key;
+});
+
 /**
  * Email templates that can be edited by admins and later rendered into emails.
  *
@@ -86,4 +93,19 @@ emailTemplateSchema.statics.seedDefaults = function seedDefaults() {
     });
 };
 
-module.exports = mongoose.model("EmailTemplate", emailTemplateSchema);
+/**
+ * Whether a key belongs to one of the built-in templates, which admins may
+ * edit the contents of but must not rename or delete.
+ *
+ * @param {string} key - The template key to check.
+ * @returns {boolean} True when the key is built in.
+ */
+emailTemplateSchema.statics.isBuiltInKey = function isBuiltInKey(key) {
+  return BUILT_IN_KEYS.indexOf(String(key)) !== -1;
+};
+
+var EmailTemplate = mongoose.model("EmailTemplate", emailTemplateSchema);
+
+EmailTemplate.BUILT_IN_KEYS = BUILT_IN_KEYS;
+
+module.exports = EmailTemplate;
