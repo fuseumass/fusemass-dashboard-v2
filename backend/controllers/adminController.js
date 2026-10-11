@@ -7,6 +7,7 @@ var MealService = require("../schemas/mealService");
 var User = require("../schemas/user");
 var mailer = require("../utils/mailer");
 var formConfigUtil = require("../utils/formConfig");
+var applicationStatus = require("../utils/applicationStatus");
 
 var DECISION_TEMPLATE_KEYS = {
   accepted: "application_accepted",
@@ -26,8 +27,7 @@ var DECISION_TEMPLATE_KEYS = {
 function listApplications(req, res) {
   var filter = {};
   var status = req.query && req.query.status;
-  var validStatus = ["draft", "pending", "accepted", "rejected", "waitlisted"];
-  if (status && validStatus.indexOf(status) !== -1) {
+  if (status && applicationStatus.APPLICATION_STATUSES.indexOf(status) !== -1) {
     filter.status = status;
   }
   if (req.query && req.query.round) {
