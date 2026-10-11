@@ -107,6 +107,55 @@ test("B2 + B4: application-received email on submit", async function application
     assert.equal(mail.calls.length, 0);
   });
 
+  await t.test("two concurrent submits of the same draft send exactly one email", async function (t2) {
+    await resetFixtures();
+    var mail = mailMock.mockTransport(t2);
+    await ApplicationRound.create({ name: "Concurrent Round", isOpen: true });
+    var applicant = await fixtures.createUser({ role: "applicant" });
+
+    // Save a draft first, so both concurrent requests are updates. A pair of
+    // simultaneous *inserts* would race the unique (applicant, round) index
+    // instead, which is a different problem than the one under test.
+    var draft = await request(app)
+      .post("/api/applications")
+      .set("Authorization", "Bearer " + applicant.token)
+      .field("name", "Draft First")
+      .field("status", "draft");
+    assert.equal(draft.status, 200);
+    assert.equal(mail.calls.length, 0);
+
+    /**
+     * Submit the draft, without awaiting between the two calls.
+     * @returns {Promise<object>} The supertest response.
+     */
+    function submit() {
+      return request(app)
+        .post("/api/applications")
+        .set("Authorization", "Bearer " + applicant.token)
+        .field("name", "Draft First")
+        .field("status", "pending");
+    }
+
+    var responses = await Promise.all([submit(), submit()]);
+    assert.deepEqual(
+      responses.map(function pluckStatus(res) {
+        return res.status;
+      }),
+      [200, 200]
+    );
+
+    await waitFor(function () {
+      return mail.calls.length >= 1;
+    });
+    await new Promise(function (resolve) {
+      setTimeout(resolve, 150);
+    });
+
+    // Both requests saw a "draft" predecessor under the old read-then-write,
+    // so both would have sent. Exactly one may now.
+    assert.equal(mail.calls.length, 1);
+  });
+
   await t.test("a missing template warns instead of failing silently", async function (t2) {
     await resetFixtures();
     var mail = mailMock.mockTransport(t2);

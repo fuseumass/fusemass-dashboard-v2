@@ -118,19 +118,26 @@ function apply(req, res) {
           update.resumeUrl = resumeUrl;
         }
 
-        return Application.findOne({ applicant: claims.id, round: round._id }).then(function afterExisting(
-          existing
-        ) {
-          // Only the first draft->pending (or new->pending) transition counts
-          // as "submitted" — re-saving an already-submitted application must
-          // not re-send the received email.
-          var alreadySubmitted = Boolean(existing) && existing.status !== "draft";
+        // A single atomic upsert performs the write and reports what was
+        // there before it: `new: false` returns the pre-update document, or
+        // null when this call is the one that inserted. Only the first
+        // draft->pending (or new->pending) transition counts as "submitted",
+        // and deriving that from the write itself means two concurrent
+        // submits cannot both observe "not yet submitted" and both send.
+        // Reading the document first and then updating allowed exactly that.
+        return Application.findOneAndUpdate(
+          { applicant: claims.id, round: round._id },
+          { $set: update },
+          { new: false, upsert: true, setDefaultsOnInsert: true }
+        ).then(function afterSave(previous) {
+          var alreadySubmitted = Boolean(previous) && previous.status !== "draft";
 
-          return Application.findOneAndUpdate(
-            { applicant: claims.id, round: round._id },
-            { $set: update },
-            { new: true, upsert: true, setDefaultsOnInsert: true }
-          ).then(function afterSave(application) {
+          // The pre-image is not what the client should get back, so reload
+          // the saved document. The write has already landed, so this read
+          // is not part of the decision and cannot race it.
+          return Application.findOne({ applicant: claims.id, round: round._id }).then(function afterReload(
+            application
+          ) {
             res.status(200).json({ application: application.toJSON() });
 
             if (status === "pending" && !alreadySubmitted) {

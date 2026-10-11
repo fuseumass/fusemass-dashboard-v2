@@ -66,42 +66,51 @@ function decideApplication(req, res) {
 
   var decision = req.body.decision;
 
-  return Application.findById(req.params.id)
-    .then(function afterFind(existing) {
-      if (!existing) {
-        res.status(404).json({ error: "Application not found." });
-        return null;
+  // The status change is its own guard: the filter only matches an
+  // application that is not already at `decision`, so of two concurrent
+  // requests (a double-clicked button) exactly one can perform the
+  // transition and therefore exactly one can send the email. Reading the
+  // previous status separately and comparing afterwards let both requests
+  // observe the same "before" value and both send.
+  return Application.findOneAndUpdate(
+    { _id: req.params.id, status: { $ne: decision } },
+    {
+      status: decision,
+      reviewedBy: admin.id,
+      reviewedAt: new Date(),
+    },
+    { new: true }
+  )
+    .populate("applicant", "name email role")
+    .then(function afterUpdate(application) {
+      if (application) {
+        res.status(200).json({ application: application.toJSON() });
+
+        var templateKey = DECISION_TEMPLATE_KEYS[decision];
+        var recipient = application.applicant && application.applicant.email;
+        if (templateKey && recipient) {
+          mailer
+            .sendTemplateEmail(recipient, templateKey, {
+              name: application.name,
+              status: application.status,
+            })
+            .catch(function onMailError(err) {
+              console.error("Failed to send decision email:", err);
+            });
+        }
+        return undefined;
       }
 
-      var previousStatus = existing.status;
-
-      return Application.findByIdAndUpdate(
-        req.params.id,
-        {
-          status: decision,
-          reviewedBy: admin.id,
-          reviewedAt: new Date(),
-        },
-        { new: true }
-      )
+      // No match: either there is no such application, or it already holds
+      // this status. Re-applying the same decision stays a successful no-op.
+      return Application.findById(req.params.id)
         .populate("applicant", "name email role")
-        .then(function afterUpdate(application) {
-          res.status(200).json({ application: application.toJSON() });
-
-          // Idempotent: only fire when the decision actually changes the
-          // status (re-clicking the same decision must not re-send).
-          var templateKey = DECISION_TEMPLATE_KEYS[decision];
-          var recipient = application.applicant && application.applicant.email;
-          if (templateKey && decision !== previousStatus && recipient) {
-            mailer
-              .sendTemplateEmail(recipient, templateKey, {
-                name: application.name,
-                status: application.status,
-              })
-              .catch(function onMailError(err) {
-                console.error("Failed to send decision email:", err);
-              });
+        .then(function afterReload(existing) {
+          if (!existing) {
+            res.status(404).json({ error: "Application not found." });
+            return;
           }
+          res.status(200).json({ application: existing.toJSON() });
         });
     })
     .catch(function onError(err) {

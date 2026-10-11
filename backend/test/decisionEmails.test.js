@@ -160,5 +160,47 @@ test("B3: decision emails on accept/reject", async function decisionEmails(t) {
     assert.equal(mail.calls.length, 0);
   });
 
+  await t.test("two concurrent identical decisions send exactly one email", async function (t2) {
+    await resetFixtures();
+    var mail = mailMock.mockTransport(t2);
+    var applicant = await fixtures.createUser({ role: "applicant" });
+    var admin = await fixtures.createUser({ role: "admin" });
+    var application = await createPendingApplication(applicant);
+
+    /**
+     * Fire the same decision twice without awaiting in between, the way a
+     * double-clicked button does.
+     * @returns {Promise<object>} The supertest response.
+     */
+    function decide() {
+      return request(app)
+        .patch("/api/admin/applications/" + application._id)
+        .set("Authorization", "Bearer " + admin.token)
+        .send({ decision: "accepted" });
+    }
+
+    var responses = await Promise.all([decide(), decide()]);
+
+    // Both requests succeed — the loser is an idempotent no-op, not an error.
+    assert.deepEqual(
+      responses.map(function pluckStatus(res) {
+        return res.status;
+      }),
+      [200, 200]
+    );
+
+    await waitFor(function () {
+      return mail.calls.length >= 1;
+    });
+    await new Promise(function (resolve) {
+      setTimeout(resolve, 150);
+    });
+
+    assert.equal(mail.calls.length, 1);
+
+    var saved = await Application.findById(application._id);
+    assert.equal(saved.status, "accepted");
+  });
+
   await db.closeDatabase();
 });
