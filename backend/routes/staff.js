@@ -24,4 +24,18 @@ router.get(
     staffController.getCheckInStatus
 );
 
+router.post(
+    "/meals/:mealId/checkin",
+    isAuthenticated,
+    isModerator,
+    staffController.mealCheckInMark
+);
+
+router.get(
+    "/meals",
+    isAuthenticated,
+    isModerator,
+    staffController.listMealsForStaff
+);
+
 module.exports = router;
