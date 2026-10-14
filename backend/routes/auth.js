@@ -12,10 +12,11 @@ var passport = passportUtil.passport;
 var router = express.Router();
 
 // Public: email/password. Rate-limited (ahead of validation, so abusive
-// traffic doesn't even reach body parsing) to slow brute force.
+// traffic doesn't even reach body parsing) to slow brute force. Each endpoint
+// has its own budget, so a burst on one cannot lock out the others.
 router.post(
   "/register",
-  authRateLimit,
+  authRateLimit.register,
   validateBody({
     name: { required: true, type: "string" },
     email: { required: true, type: "string" },
@@ -25,7 +26,7 @@ router.post(
 );
 router.post(
   "/login",
-  authRateLimit,
+  authRateLimit.login,
   validateBody({
     email: { required: true, type: "string" },
     password: { required: true, type: "string" },
@@ -36,7 +37,7 @@ router.post(
 // Public: password reset (nodemailer).
 router.post(
   "/forgot-password",
-  authRateLimit,
+  authRateLimit.forgotPassword,
   validateBody({ email: { required: true, type: "string" } }),
   authController.forgotPassword
 );
@@ -52,7 +53,7 @@ router.post(
 // One-time first-admin bootstrap, gated by the SETUP_ADMIN env var.
 router.post(
   "/setup-admin",
-  authRateLimit,
+  authRateLimit.setupAdmin,
   validateBody({ email: { required: true, type: "string" } }),
   authController.setupAdmin
 );

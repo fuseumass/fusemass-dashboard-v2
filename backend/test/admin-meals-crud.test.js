@@ -33,6 +33,7 @@ test("B6: admin meal service CRUD", async function adminMealCrud(t) {
   await t.test("create", async function () {
     var payload = {
       name: "8_13_2026_Lunch",
+      createdFor: "xxx@gmail.com",
       startsAt: "2026-08-13T12:00:00.000Z",
       endsAt: "2026-08-13T13:00:00.000Z",
       active: true,
@@ -42,9 +43,24 @@ test("B6: admin meal service CRUD", async function adminMealCrud(t) {
 
     assert.equal(res.status, 201);
     assert.equal(res.body.meal.name, payload.name);
+    assert.equal(res.body.meal.createdFor, payload.createdFor);
     assert.equal(res.body.meal.active, true);
     createdMealId = res.body.meal._id;
     assert.ok(createdMealId, "meal id should be returned on create");
+  });
+
+  await t.test("rejects an invalid createdFor email", async function () {
+    var res = await request(app)
+      .post("/api/admin/meals")
+      .set("Authorization", auth)
+      .send({
+        name: "Invalid Meal",
+        createdFor: "not-an-email",
+        startsAt: "2026-08-13T12:00:00.000Z",
+        endsAt: "2026-08-13T13:00:00.000Z",
+      });
+
+    assert.equal(res.status, 400);
   });
 
   await t.test("list", async function () {

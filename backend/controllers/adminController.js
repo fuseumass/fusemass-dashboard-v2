@@ -7,6 +7,8 @@ var MealService = require("../schemas/mealService");
 var User = require("../schemas/user");
 var mailer = require("../utils/mailer");
 var formConfigUtil = require("../utils/formConfig");
+var applicationStatus = require("../utils/applicationStatus");
+var validator = require("validator");
 
 var DECISION_TEMPLATE_KEYS = {
   accepted: "application_accepted",
@@ -26,8 +28,7 @@ var DECISION_TEMPLATE_KEYS = {
 function listApplications(req, res) {
   var filter = {};
   var status = req.query && req.query.status;
-  var validStatus = ["draft", "pending", "accepted", "rejected", "waitlisted"];
-  if (status && validStatus.indexOf(status) !== -1) {
+  if (status && applicationStatus.APPLICATION_STATUSES.indexOf(status) !== -1) {
     filter.status = status;
   }
   if (req.query && req.query.round) {
@@ -66,42 +67,51 @@ function decideApplication(req, res) {
 
   var decision = req.body.decision;
 
-  return Application.findById(req.params.id)
-    .then(function afterFind(existing) {
-      if (!existing) {
-        res.status(404).json({ error: "Application not found." });
-        return null;
+  // The status change is its own guard: the filter only matches an
+  // application that is not already at `decision`, so of two concurrent
+  // requests (a double-clicked button) exactly one can perform the
+  // transition and therefore exactly one can send the email. Reading the
+  // previous status separately and comparing afterwards let both requests
+  // observe the same "before" value and both send.
+  return Application.findOneAndUpdate(
+    { _id: req.params.id, status: { $ne: decision } },
+    {
+      status: decision,
+      reviewedBy: admin.id,
+      reviewedAt: new Date(),
+    },
+    { new: true }
+  )
+    .populate("applicant", "name email role")
+    .then(function afterUpdate(application) {
+      if (application) {
+        res.status(200).json({ application: application.toJSON() });
+
+        var templateKey = DECISION_TEMPLATE_KEYS[decision];
+        var recipient = application.applicant && application.applicant.email;
+        if (templateKey && recipient) {
+          mailer
+            .sendTemplateEmail(recipient, templateKey, {
+              name: application.name,
+              status: application.status,
+            })
+            .catch(function onMailError(err) {
+              console.error("Failed to send decision email:", err);
+            });
+        }
+        return undefined;
       }
 
-      var previousStatus = existing.status;
-
-      return Application.findByIdAndUpdate(
-        req.params.id,
-        {
-          status: decision,
-          reviewedBy: admin.id,
-          reviewedAt: new Date(),
-        },
-        { new: true }
-      )
+      // No match: either there is no such application, or it already holds
+      // this status. Re-applying the same decision stays a successful no-op.
+      return Application.findById(req.params.id)
         .populate("applicant", "name email role")
-        .then(function afterUpdate(application) {
-          res.status(200).json({ application: application.toJSON() });
-
-          // Idempotent: only fire when the decision actually changes the
-          // status (re-clicking the same decision must not re-send).
-          var templateKey = DECISION_TEMPLATE_KEYS[decision];
-          var recipient = application.applicant && application.applicant.email;
-          if (templateKey && decision !== previousStatus && recipient) {
-            mailer
-              .sendTemplateEmail(recipient, templateKey, {
-                name: application.name,
-                status: application.status,
-              })
-              .catch(function onMailError(err) {
-                console.error("Failed to send decision email:", err);
-              });
+        .then(function afterReload(existing) {
+          if (!existing) {
+            res.status(404).json({ error: "Application not found." });
+            return;
           }
+          res.status(200).json({ application: existing.toJSON() });
         });
     })
     .catch(function onError(err) {
@@ -349,8 +359,29 @@ function updateEmailTemplate(req, res) {
     update.key = req.body.key;
   }
 
-  return EmailTemplate.findByIdAndUpdate(req.params.id, { $set: update }, { new: true, runValidators: true })
+  return EmailTemplate.findById(req.params.id)
+    .then(function afterFind(existing) {
+      if (!existing) {
+        res.status(404).json({ error: "Email template not found." });
+        return null;
+      }
+
+      // Subject and body stay editable — that is the whole point of the
+      // feature. Only the key is locked, because the application and decision
+      // flows look these templates up by key.
+      if (update.key !== undefined && update.key !== existing.key && EmailTemplate.isBuiltInKey(existing.key)) {
+        res.status(400).json({
+          error: "Built-in templates cannot be renamed. Edit the subject and body instead.",
+        });
+        return null;
+      }
+
+      return EmailTemplate.findByIdAndUpdate(req.params.id, { $set: update }, { new: true, runValidators: true });
+    })
     .then(function afterUpdate(template) {
+      if (template === null) {
+        return; // 404 or built-in rename, already answered above
+      }
       if (!template) {
         res.status(404).json({ error: "Email template not found." });
         return;
@@ -383,8 +414,26 @@ function updateEmailTemplate(req, res) {
  * @returns {Promise<void>}
  */
 function deleteEmailTemplate(req, res) {
-  return EmailTemplate.findByIdAndDelete(req.params.id)
+  return EmailTemplate.findById(req.params.id)
+    .then(function afterFind(existing) {
+      if (!existing) {
+        res.status(404).json({ error: "Email template not found." });
+        return null;
+      }
+
+      if (EmailTemplate.isBuiltInKey(existing.key)) {
+        res.status(400).json({
+          error: "Built-in templates cannot be deleted. Edit the subject and body instead.",
+        });
+        return null;
+      }
+
+      return EmailTemplate.findByIdAndDelete(req.params.id);
+    })
     .then(function afterDelete(template) {
+      if (template === null) {
+        return; // 404 or built-in delete, already answered above
+      }
       if (!template) {
         res.status(404).json({ error: "Email template not found." });
         return;
@@ -402,12 +451,13 @@ function deleteEmailTemplate(req, res) {
 }
 
 /**
- * Whether a value parses to a real date (new Date("nope") is Invalid Date).
+ * Parse a date value using JavaScript's native Date parser.
  * @param {*} value - Raw date input from the request body.
- * @returns {boolean} True when the value is a usable date.
+ * @returns {Date|null} The parsed date, or null for invalid input.
  */
-function isValidDate(value) {
-  return !Number.isNaN(new Date(value).getTime());
+function parseDate(value) {
+  var parsed = new Date(value);
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
 }
 
 /**
@@ -437,20 +487,32 @@ function listMeals(_req, res) {
  */
 function createMeal(req, res) {
   var name = req.body && req.body.name;
+  var createdFor = req.body && req.body.createdFor;
   var startsAt = req.body && req.body.startsAt;
   var endsAt = req.body && req.body.endsAt;
+  var startDate = parseDate(startsAt);
+  var endDate = parseDate(endsAt);
   var actorId = req.user && req.user.id ? req.user.id : null;
 
   if (!name) {
     res.status(400).json({ error: "name is required." });
     return Promise.resolve();
   }
+  if (!validator.isEmail(createdFor.trim())) {
+    res.status(400).json({ error: "createdFor must be a valid email address." });
+    return Promise.resolve();
+  }
   if (!startsAt || !endsAt) {
     res.status(400).json({ error: "startsAt and endsAt are required." });
     return Promise.resolve();
   }
-  if (!isValidDate(startsAt) || !isValidDate(endsAt)) {
-    res.status(400).json({ error: "startsAt and endsAt must be valid dates." });
+  if (!startDate || !endDate) {
+    res.status(400).json({ error: "startsAt and endsAt must be valid date-time values." });
+    return Promise.resolve();
+  }
+  // getTime() returns each Date's millisecond value for numeric comparison.
+  if (startDate.getTime() >= endDate.getTime()) {
+    res.status(400).json({ error: "endsAt must be after startsAt." });
     return Promise.resolve();
   }
   if (!actorId) {
@@ -460,7 +522,7 @@ function createMeal(req, res) {
 
   return MealService.findOne({
     name: name,
-    $or: [{ createdBy: actorId }, { updatedBy: actorId }],
+    createdFor: createdFor.trim()
   })
     .then(function afterLookup(existingMeal) {
       if (existingMeal) {
@@ -470,8 +532,9 @@ function createMeal(req, res) {
 
       return MealService.create({
         name: name,
-        startsAt: new Date(startsAt),
-        endsAt: new Date(endsAt),
+        createdFor: createdFor.trim(),
+        startsAt: startDate.toUTCString(),
+        endsAt: endDate.toUTCString(),
         active: req.body.active !== undefined ? Boolean(req.body.active) : true,
         createdBy: actorId,
         updatedBy: actorId,
@@ -479,7 +542,13 @@ function createMeal(req, res) {
         res.status(201).json({ meal: meal });
       });
     })
-    .catch(function onError(err) {
+    .catch(function onError(err) { /*Mealservice.create-promise rejects if createdFor value and name value are both already present in a mealservice-schema document. 
+      this rejection is based on mealservice schema enforcement "mealServiceSchema.index({ name: 1, createdFor: 1 }, { unique: true }); */
+
+      if (err && err.code === 11000) { //this rejection is based
+        res.status(409).json({ error: "A meal with this name already exists for this user." });
+        return;
+      } 
       console.error("createMeal failed:", err);
       res.status(500).json({ error: "Could not create meal service." });
     });
@@ -495,14 +564,20 @@ function createMeal(req, res) {
 function updateMeal(req, res) {
   var update = {};
   var actorId = req.user && req.user.id ? req.user.id : null;
+  var startsAt = req.body && req.body.startsAt;
+  var endsAt = req.body && req.body.endsAt;
+  var startDate = parseDate(startsAt);
+  var endDate = parseDate(endsAt);
+
   if (req.body && req.body.name !== undefined) {
     update.name = req.body.name;
   }
-  if (req.body && req.body.startsAt !== undefined) {
-    update.startsAt = new Date(req.body.startsAt);
-  }
-  if (req.body && req.body.endsAt !== undefined) {
-    update.endsAt = new Date(req.body.endsAt);
+  if (req.body && req.body.createdFor !== undefined) {
+    if (!validator.isEmail(req.body.createdFor.trim())) {
+      res.status(400).json({ error: "createdFor must be a valid email address." });
+      return Promise.resolve();
+    }
+    update.createdFor = req.body.createdFor.trim(); //if createdFor's value is valid email address, should be updated
   }
   if (req.body && req.body.active !== undefined) {
     update.active = Boolean(req.body.active);
@@ -510,23 +585,44 @@ function updateMeal(req, res) {
   if (actorId) {
     update.updatedBy = actorId;
   }
-  if (
-    (req.body && req.body.startsAt !== undefined && !isValidDate(req.body.startsAt)) ||
-    (req.body && req.body.endsAt !== undefined && !isValidDate(req.body.endsAt))
-  ) {
-    res.status(400).json({ error: "startsAt and endsAt must be valid dates." });
-    return Promise.resolve();
-  }
+  return MealService.findById(req.params.id)
+    .then(function afterFind(existingMeal) {
+      if (!existingMeal) {
+        res.status(404).json({ error: "Meal service not found." });
+        return null;
+      }
 
-  return MealService.findByIdAndUpdate(req.params.id, { $set: update }, { new: true })
+      var effectiveStartsAt = startDate || parseDate(existingMeal.startsAt);
+      var effectiveEndsAt = endDate || parseDate(existingMeal.endsAt);
+      if (!effectiveStartsAt || !effectiveEndsAt) {
+        res.status(400).json({ error: "startsAt and endsAt must be valid dates." });
+        return null;
+      }
+      // getTime() returns each Date's millisecond value for numeric comparison.
+      if (effectiveStartsAt.getTime() >= effectiveEndsAt.getTime()) {
+        res.status(400).json({ error: "endsAt must be after startsAt." });
+        return null;
+      }
+
+      // Store the normalized date values as UTC strings; Mongoose casts them to Date fields.
+      update.startsAt = effectiveStartsAt.toUTCString();
+      update.endsAt = effectiveEndsAt.toUTCString();
+
+      return MealService.findByIdAndUpdate(req.params.id, { $set: update }, { new: true, runValidators: true });
+
+      //find doc corresponding to that meal via its mealservice-unique ID and then update keys with new values
+    })
     .then(function afterUpdate(meal) {
       if (!meal) {
-        res.status(404).json({ error: "Meal service not found." });
         return;
       }
       res.status(200).json({ meal: meal });
     })
     .catch(function onError(err) {
+      if (err && err.code === 11000) {
+        res.status(409).json({ error: "A meal with this name already exists for this user." });
+        return;
+      }
       console.error("updateMeal failed:", err);
       res.status(500).json({ error: "Could not update meal service." });
     });
