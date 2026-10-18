@@ -1,0 +1,145 @@
+# Feature parity with the old platforms
+
+Every feature the previous HackUMass tools had, whether this dashboard has it,
+and the task that covers it. **Keep this file updated** when a task lands or a
+feature is dropped on purpose, so nothing silently goes missing again.
+
+Task IDs link to [`backend-tasks.md`](./backend-tasks.md) (`B#`),
+[`frontend-tasks.md`](./frontend-tasks.md) (`F#`) and
+[`testing-tasks.md`](./testing-tasks.md) (`T#`).
+
+**Status:** ✅ built · 🔍 in review (`feature/qr-checkin`) · 🟡 partial ·
+📋 tasked · ⏸ deferred / needs a decision · ✖ dropped on purpose · ➕ new
+(the old tools never had it).
+
+## Sources reviewed (Oct 2026)
+
+| Platform | Repo | Stack | Notes |
+| -------- | ---- | ----- | ----- |
+| Old dashboard | [fuseumass/dashboard](https://github.com/fuseumass/dashboard) | Rails | `master` (2023) is the full feature set. Event branches (`hum-xii`, `hackher2025`, …) only add content tweaks plus a Facilities page. |
+| Older dashboard | `fuseumass/hackumass-web` (private) | Rails | 2018 predecessor. Its `travel-reimbursements` branch is the **only finance code that ever existed**; it was never merged. |
+| Judging | [gamer-1478/HackUMass-Judging-New](https://github.com/gamer-1478/HackUMass-Judging-New) | Express 5 + EJS | Used Nov 2025. See B16 (leaked credentials) and B24. |
+| Sponsorship CRM | [fuseumass/hackerforce](https://github.com/fuseumass/hackerforce) | Django | Companies, contacts, sponsorship tiers/perks/contributions, email campaigns. **Not being merged** (decided Oct 2026). |
+
+No repo had **budgets, team expenses or organizer reimbursements**. Those
+were presumably tracked in spreadsheets, so B33–B37 are a new design.
+
+## Accounts & roles
+
+| Old feature | Status | Task |
+| ----------- | ------ | ---- |
+| Email/password sign-up, login, forgot password | ✅ | — |
+| Email confirmation on sign-up (Devise `confirmable`) | 📋 | B40 |
+| Google sign-in | ➕ ✅ | — |
+| Roles: admin / organizer / attendee | ✅ as admin / moderator / applicant | — |
+| Mentor role | ✖ mentorship runs on Discord | B31 |
+| Judge role (judging app used a CSV of logins) | 📋 | B47 |
+| Workshop organizer role | ➕ 📋 | B17 |
+| Admin role management (`pages#permissions`) | ✅ Users page | — |
+| "Redeem code" to upgrade your own role | ✖ security hole (let anyone become admin) | B17 |
+| Slack: join gate, DMs, account re-association | ✖ replaced by Discord link + email | B26 |
+| Marketing-email consent (`non_transactional_email_consent`) | 📋 | B26 |
+
+## Registration & review
+
+| Old feature | Status | Task |
+| ----------- | ------ | ---- |
+| Application form + resume upload | ✅ | — |
+| Custom questions from YAML config | ✅ per-round `formConfig` | — |
+| University / major autocomplete | 🟡 university + skills; majors are free text | F14 |
+| Application mode open / closed | ✅ rounds open/close | — |
+| Waitlist mode (auto-waitlist past capacity) | 📋 | B41 |
+| Accept / deny / waitlist decisions | ✅ | — |
+| Accepted / denied emails | ✅ | — |
+| **Waitlisted email** | 📋 (deciding "waitlisted" sends nothing today) | B41 |
+| Application search | 🟡 status/round filters only | F14 |
+| Resume auto-check + flag suspicious applications, flag/unflag | 📋 | B42 |
+| Admin statistics (counts by school, gender, status, …) | 📋 | B43, F26 |
+| CSV export of applications | 📋 | B29 |
+| RSVP + custom RSVP questions + un-RSVP | ⏸ | B32 |
+| Mass email to lists (not applied / accepted / waitlisted / undecided / test to self) | 📋 | B26 |
+| Reminder emails | 📋 | B26 |
+
+## Event day
+
+| Old feature | Status | Task |
+| ----------- | ------ | ---- |
+| Unique QR per attendee, in the email and on the dashboard | 🔍 | — |
+| Staff check-in by QR / email; check-in counter | 🔍 | — |
+| Force check-in (override for non-accepted walk-ins) | 📋 | B44 |
+| Self check-in (virtual events) | ✖ it trusted a client-sent email; no virtual events planned | — |
+| Schedule, admin-editable | 🔍 run of show | — |
+| Schedule visible to attendees + "upcoming" on home | 📋 | F22 |
+| Public schedule feed for the hackathon website | 📋 | B45 |
+| Meal check-in | ➕ 🔍 | — |
+| "You're checked in" email + calendar invite | ➕ 🔍 | — |
+
+## Workshops (old: RSVP-able events)
+
+| Old feature | Status | Task |
+| ----------- | ------ | ---- |
+| Events with `rsvpable` + `max_seats` | 📋 (old never enforced seats) | B18, B19 |
+| RSVP / un-RSVP to an event | 📋 | B19, F17 |
+| Per-event attendance check-in | 📋 Top Hat-style code; requires event check-in | B21 |
+| Workshop materials / announcements | ➕ 📋 visible to every accepted attendee | B20 |
+| Workshop raffle | ➕ 📋 after the workshop ends, attendees only; winner emailed to collect from the organizer room | B21 |
+| Calendar invites per workshop | ➕ 📋 | B19 |
+
+## Hardware
+
+| Old feature | Status | Task |
+| ----------- | ------ | ---- |
+| Inventory CRUD (name, category, location, link, count) | 📋 | B22, F20 |
+| Search by item id / name | 📋 | B23, F20 |
+| Checkout / return, per-item history log | 📋 (old had no permission check) | B22 |
+| "All checked out" list | 📋 | B22, F20 |
+| Barcode label CSV | 📋 as printable QR labels | B22 |
+| Slack reminders to return hardware | 📋 as email | B22, B26 |
+| Facilities page (makerspace tools list, `hum-xii`) | 📋 | B23, F20 |
+
+## Mentorship
+
+| Old feature | Status | Task |
+| ----------- | ------ | ---- |
+| Help tickets with screenshot, resolve / deny, search | ✖ created on Discord instead | B31 |
+| Mentor notifications by tech tag; Slack DM link | ✖ Discord | B31 |
+
+## Projects, prizes & judging
+
+| Old feature | Status | Task |
+| ----------- | ------ | ---- |
+| Project submission with team members | ✖ projects are imported from Devpost | B24b |
+| Public project gallery | ✖ Devpost hosts it | — |
+| Power-outlet needs per project | 📋 | B24b |
+| Prizes / tracks, participants pick prizes, assign winners | 📋 | B24h |
+| Judge assignments (old Rails: tags, mass assign) | ✖ replaced by the 2025 judging platform's slotted generator | B24a, B24e |
+| Printed judging forms (`paper_judging`) | 🟡 printable table signs only | B24c |
+| Judging results + CSV | 📋 (the 2025 app never computed results) | B24g |
+| **2025 judging:** two-step desk → table check-in | 📋 | B24c |
+| **2025 judging:** calibration rounds + judge bias | 📋 | B24d |
+| **2025 judging:** time-slotted assignments + verifier | 📋 | B24a, B24e |
+| **2025 judging:** one-at-a-time scoring, skip, rejudge, assignment sheet | 📋 | B24f |
+| **2025 judging:** progress board ("leaderboard") | 📋 | B24g |
+
+## Finance
+
+| Old feature | Status | Task |
+| ----------- | ------ | ---- |
+| Attendee travel reimbursements (2018 branch, never merged) | ✖ not offered this year | B39 |
+| Organizer teams | ➕ 📋 | B33 |
+| Budget with lines (components) owned by teams | ➕ 📋 | B34 |
+| Team expenses, closed when paid by the hackathon | ➕ 📋 | B35 |
+| Organizer reimbursement requests + amount-owed tracking | ➕ 📋 | B36 |
+| Finance reports / exports | ➕ 📋 | B37 |
+| Funding / income (entered by admins) | ➕ 📋 | B38 |
+| HackerForce sponsorship CRM (companies, contacts, tiers, campaigns) | ✖ no longer needed | — |
+
+## Platform
+
+| Old feature | Status | Task |
+| ----------- | ------ | ---- |
+| Feature flags per module | 📋 (old flag check was broken) | B25 |
+| Per-hackathon config repo (names, texts, branding) | 🟡 env + org settings; branding broken | B28, F12 |
+| CSV exports (applications, events, judging, projects) | 📋 | B29 |
+| Resume bulk download (`download_resumes.py`) | 📋 | B29 |
+| Error reporting (Sentry/Raven) | 📋 | B46 |
