@@ -3,6 +3,7 @@
 var express = require("express");
 var adminController = require("../controllers/adminController");
 var settingsController = require("../controllers/settingsController");
+var scheduleController = require("../controllers/scheduleController");
 var isAdmin = require("../utils/isAdmin");
 var isModerator = require("../utils/isModerator");
 var validateBody = require("../utils/validateBody");
@@ -53,6 +54,11 @@ router.post(
   validateBody({ key: { required: true, type: "string" } }),
   adminController.createEmailTemplate
 );
+// Preview / test-send take the unsaved draft `{ subject, body }` from the
+// editor (or use the stored template :id). Registered before /:id routes.
+router.post("/email-templates/preview", isAdmin, adminController.previewEmailTemplate);
+router.post("/email-templates/test", isAdmin, adminController.sendTestEmailTemplate);
+router.post("/email-templates/:id/test", isAdmin, adminController.sendTestEmailTemplate);
 router.patch("/email-templates/:id", isAdmin, adminController.updateEmailTemplate);
 router.delete("/email-templates/:id", isAdmin, adminController.deleteEmailTemplate);
 
@@ -65,5 +71,11 @@ router.get("/meals", isAdmin, adminController.listMeals);
 router.post("/meals", isAdmin, adminController.createMeal);
 router.patch("/meals/:id", isAdmin, adminController.updateMeal);
 router.delete("/meals/:id", isAdmin, adminController.deleteMeal);
+
+// Run of show (emailed to attendees as a calendar invite when they check in).
+router.get("/schedule", isAdmin, scheduleController.listScheduleEvents);
+router.post("/schedule", isAdmin, scheduleController.createScheduleEvent);
+router.patch("/schedule/:id", isAdmin, scheduleController.updateScheduleEvent);
+router.delete("/schedule/:id", isAdmin, scheduleController.deleteScheduleEvent);
 
 module.exports = router;

@@ -21,10 +21,27 @@ export default function Sidebar({ user }) {
   if (isModerator) {
     // Moderators and admins review applications.
     nav.push({ href: "/dashboard/admin", label: "Review", icon: "🗂️" });
+    // Event-day scanning: first arrival, and the meal line.
+    nav.push({
+      href: "/dashboard/staff/checkin",
+      label: "Check-in",
+      icon: "📷",
+    });
+    nav.push({
+      href: "/dashboard/staff/meals",
+      label: "Meal check-in",
+      icon: "🥪",
+    });
   }
   if (isAdmin) {
     // Org setup is admin-only.
     nav.push({ href: "/dashboard/admin/users", label: "Users", icon: "👥" });
+    nav.push({ href: "/dashboard/admin/meals", label: "Meals", icon: "🍽️" });
+    nav.push({
+      href: "/dashboard/admin/schedule",
+      label: "Run of show",
+      icon: "🗓️",
+    });
     nav.push({
       href: "/dashboard/admin/settings",
       label: "Settings",

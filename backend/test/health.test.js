@@ -21,7 +21,7 @@ test("health + harness smoke test", async function harnessSmokeTest(t) {
   await t.test("the disposable test database is reachable and writable", async function () {
     await EmailTemplate.seedDefaults();
     var count = await EmailTemplate.countDocuments({});
-    assert.equal(count, 3);
+    assert.equal(count, EmailTemplate.BUILT_IN_KEYS.length);
   });
 
   await t.test("admin-only routes reject unauthenticated requests", async function () {

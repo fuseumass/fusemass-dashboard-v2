@@ -2,9 +2,11 @@
 
 var Application = require("../schemas/application");
 var ApplicationRound = require("../schemas/applicationRound");
+var User = require("../schemas/user");
 var azureBlob = require("../utils/azureBlob");
 var mailer = require("../utils/mailer");
 var formConfigUtil = require("../utils/formConfig");
+var qrCode = require("../utils/qrCode");
 
 /**
  * Parse a form field that may arrive as a JSON string (multipart form data
@@ -198,7 +200,47 @@ function getMine(req, res) {
     });
 }
 
+/**
+ * GET /api/applications/me/qr
+ * The caller's event check-in QR code (the same one on their acceptance
+ * email), once any of their applications has been accepted. Looks across all
+ * rounds, not just the open one: on event day applications are usually closed.
+ *
+ * @param {object} req - Express request.
+ * @param {object} res - Express response.
+ * @returns {Promise<void>}
+ */
+function getMyQr(req, res) {
+  var claims = req.user;
+  if (!claims) {
+    res.status(401).json({ error: "Authentication required." });
+    return Promise.resolve();
+  }
+
+  return Application.exists({ applicant: claims.id, status: "accepted" })
+    .then(function afterLookup(accepted) {
+      if (!accepted) {
+        res.status(404).json({ error: "Your check-in QR code is available once your application is accepted." });
+        return null;
+      }
+      return User.ensureQrId(claims.id).then(function afterQrId(qrId) {
+        if (!qrId) {
+          res.status(404).json({ error: "User not found." });
+          return null;
+        }
+        return qrCode.toDataUrl(qrId).then(function afterRender(dataUrl) {
+          res.status(200).json({ qrId: qrId, qrCode: dataUrl });
+        });
+      });
+    })
+    .catch(function onError(err) {
+      console.error("getMyQr failed:", err);
+      res.status(500).json({ error: "Could not load your check-in QR code." });
+    });
+}
+
 module.exports = {
   apply: apply,
   getMine: getMine,
+  getMyQr: getMyQr,
 };

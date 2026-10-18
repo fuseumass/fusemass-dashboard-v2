@@ -4,11 +4,13 @@ var Application = require("../schemas/application");
 var ApplicationRound = require("../schemas/applicationRound");
 var EmailTemplate = require("../schemas/emailTemplate");
 var MealService = require("../schemas/mealService");
+var MealCheckIn = require("../schemas/mealCheckin");
 var User = require("../schemas/user");
 var mailer = require("../utils/mailer");
 var formConfigUtil = require("../utils/formConfig");
 var applicationStatus = require("../utils/applicationStatus");
 var validator = require("validator");
+var mongoose = require("mongoose");
 
 var DECISION_TEMPLATE_KEYS = {
   accepted: "application_accepted",
@@ -90,6 +92,9 @@ function decideApplication(req, res) {
         var templateKey = DECISION_TEMPLATE_KEYS[decision];
         var recipient = application.applicant && application.applicant.email;
         if (templateKey && recipient) {
+          // If the template contains {{qrcode}} (the accepted one does by
+          // default), the mailer issues the applicant's check-in code
+          // (SHA-256 of their email) and embeds it as a QR image.
           mailer
             .sendTemplateEmail(recipient, templateKey, {
               name: application.name,
@@ -407,6 +412,137 @@ function updateEmailTemplate(req, res) {
 }
 
 /**
+ * Sample values for previews and test sends, based on the admin themselves.
+ * @param {object} user - The admin's User document.
+ * @returns {object}
+ */
+function sampleTemplateValues(user) {
+  var calendar = require("../utils/calendar");
+  var start = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+  return {
+    name: user.name,
+    status: "accepted",
+    runOfShow: calendar.formatRunOfShow([
+      {
+        title: "Opening ceremony (sample)",
+        startsAt: start,
+        endsAt: new Date(start.getTime() + 60 * 60 * 1000),
+        location: "Main hall",
+      },
+    ]),
+  };
+}
+
+/**
+ * Read the template being edited from the body: `{ subject, body }` (unsaved
+ * edits), falling back to the stored template `:id`.
+ * @param {object} req
+ * @returns {Promise<object|null>} `{ subject, body }`, or null when not found.
+ */
+function templateFromRequest(req) {
+  var hasDraft = req.body && (req.body.subject !== undefined || req.body.body !== undefined);
+  if (hasDraft) {
+    return Promise.resolve({ subject: String(req.body.subject || ""), body: String(req.body.body || "") });
+  }
+  if (!req.params.id || !mongoose.isValidObjectId(req.params.id)) {
+    return Promise.resolve(null);
+  }
+  return EmailTemplate.findById(req.params.id).lean();
+}
+
+/**
+ * POST /api/admin/email-templates/preview
+ * Render `{ subject, body }` exactly as the email will look, using the admin's
+ * own name and check-in QR code (shown inline as an image when the body has
+ * {{qrcode}}).
+ * @param {object} req
+ * @param {object} res
+ * @returns {Promise<void>}
+ */
+function previewEmailTemplate(req, res) {
+  var user;
+  return User.findById(req.user.id)
+    .then(function afterUser(found) {
+      user = found;
+      if (!user) {
+        res.status(401).json({ error: "Authentication required." });
+        return null;
+      }
+      return templateFromRequest(req);
+    })
+    .then(function afterTemplate(template) {
+      if (!user) return null;
+      if (!template) {
+        res.status(404).json({ error: "Email template not found." });
+        return null;
+      }
+      var qrIdPromise = mailer.usesQrCode(template.body) ? User.ensureQrId(user._id) : Promise.resolve(null);
+      return qrIdPromise
+        .then(function afterQrId(qrId) {
+          return mailer.renderEmail(template, sampleTemplateValues(user), { qrId: qrId, dataUrlImages: true });
+        })
+        .then(function afterRender(rendered) {
+          res.status(200).json({
+            subject: rendered.subject,
+            html: rendered.html,
+            text: rendered.text,
+            hasQrCode: mailer.usesQrCode(template.body),
+          });
+        });
+    })
+    .catch(function onError(err) {
+      console.error("previewEmailTemplate failed:", err);
+      res.status(500).json({ error: "Could not render the preview." });
+    });
+}
+
+/**
+ * POST /api/admin/email-templates/:id/test (or /test with a draft body)
+ * Send the template (or the unsaved draft `{ subject, body }`) to the admin's
+ * own address through the real mailer, QR attachment included, so they can
+ * check it in an actual inbox.
+ * @param {object} req
+ * @param {object} res
+ * @returns {Promise<void>}
+ */
+function sendTestEmailTemplate(req, res) {
+  if (!mailer.isMailConfigured()) {
+    res.status(503).json({ error: "Email isn't configured on the server (SMTP_HOST / SMTP_USER)." });
+    return Promise.resolve();
+  }
+  var user;
+  return User.findById(req.user.id)
+    .then(function afterUser(found) {
+      user = found;
+      if (!user) {
+        res.status(401).json({ error: "Authentication required." });
+        return null;
+      }
+      return templateFromRequest(req);
+    })
+    .then(function afterTemplate(template) {
+      if (!user) return null;
+      if (!template) {
+        res.status(404).json({ error: "Email template not found." });
+        return null;
+      }
+      return mailer
+        .sendRenderedTemplate(
+          user.email,
+          { subject: "[Test] " + template.subject, body: template.body },
+          sampleTemplateValues(user)
+        )
+        .then(function afterSend() {
+          res.status(200).json({ ok: true, sentTo: user.email });
+        });
+    })
+    .catch(function onError(err) {
+      console.error("sendTestEmailTemplate failed:", err);
+      res.status(502).json({ error: "The test email could not be sent: " + (err && err.message ? err.message : "unknown error") });
+    });
+}
+
+/**
  * DELETE /api/admin/email-templates/:id
  * Delete an email template.
  * @param {object} req
@@ -467,10 +603,14 @@ function parseDate(value) {
  * @returns {Promise<void>}
  */
 function listMeals(_req, res) {
-  return MealService.find({})
-    .sort({ startsAt: 1, createdAt: 1 })
-    .then(function afterFind(meals) {
-      res.status(200).json({ meals: meals });
+  return Promise.all([MealService.find({}).sort({ startsAt: 1, createdAt: 1 }), MealCheckIn.countsByMeal()])
+    .then(function afterFind(results) {
+      var counts = results[1];
+      res.status(200).json({
+        meals: results[0].map(function withCount(meal) {
+          return Object.assign(meal.toJSON(), { checkInCount: counts[String(meal._id)] || 0 });
+        }),
+      });
     })
     .catch(function onError(err) {
       console.error("listMeals failed:", err);
@@ -480,14 +620,15 @@ function listMeals(_req, res) {
 
 /**
  * POST /api/admin/meals — create a meal service.
- * Body: { name, startsAt, endsAt, active? }
+ * Body: { name, startsAt, endsAt, active?, createdFor? }
+ * createdFor is optional: leave it out for an event-wide meal.
  * @param {object} req
  * @param {object} res
  * @returns {Promise<void>}
  */
 function createMeal(req, res) {
   var name = req.body && req.body.name;
-  var createdFor = req.body && req.body.createdFor;
+  var createdFor = req.body && req.body.createdFor ? String(req.body.createdFor).trim() : "";
   var startsAt = req.body && req.body.startsAt;
   var endsAt = req.body && req.body.endsAt;
   var startDate = parseDate(startsAt);
@@ -498,7 +639,7 @@ function createMeal(req, res) {
     res.status(400).json({ error: "name is required." });
     return Promise.resolve();
   }
-  if (!validator.isEmail(createdFor.trim())) {
+  if (createdFor && !validator.isEmail(createdFor)) {
     res.status(400).json({ error: "createdFor must be a valid email address." });
     return Promise.resolve();
   }
@@ -522,7 +663,7 @@ function createMeal(req, res) {
 
   return MealService.findOne({
     name: name,
-    createdFor: createdFor.trim()
+    createdFor: createdFor
   })
     .then(function afterLookup(existingMeal) {
       if (existingMeal) {
@@ -532,7 +673,7 @@ function createMeal(req, res) {
 
       return MealService.create({
         name: name,
-        createdFor: createdFor.trim(),
+        createdFor: createdFor,
         startsAt: startDate.toUTCString(),
         endsAt: endDate.toUTCString(),
         active: req.body.active !== undefined ? Boolean(req.body.active) : true,
@@ -573,11 +714,12 @@ function updateMeal(req, res) {
     update.name = req.body.name;
   }
   if (req.body && req.body.createdFor !== undefined) {
-    if (!validator.isEmail(req.body.createdFor.trim())) {
+    var createdFor = req.body.createdFor ? String(req.body.createdFor).trim() : "";
+    if (createdFor && !validator.isEmail(createdFor)) {
       res.status(400).json({ error: "createdFor must be a valid email address." });
       return Promise.resolve();
     }
-    update.createdFor = req.body.createdFor.trim(); //if createdFor's value is valid email address, should be updated
+    update.createdFor = createdFor; //a valid email address, or "" to make the meal event-wide
   }
   if (req.body && req.body.active !== undefined) {
     update.active = Boolean(req.body.active);
@@ -635,13 +777,23 @@ function updateMeal(req, res) {
  * @returns {Promise<void>}
  */
 function deleteMeal(req, res) {
-  return MealService.findByIdAndDelete(req.params.id)
-    .then(function afterDelete(meal) {
-      if (!meal) {
-        res.status(404).json({ error: "Meal service not found." });
-        return;
+  // Once anyone has been served, deleting the meal would orphan its check-ins
+  // and let a re-created copy serve the same people twice. Deactivate instead.
+  return MealCheckIn.countDocuments({ mealService: req.params.id })
+    .then(function afterCount(served) {
+      if (served > 0) {
+        res.status(409).json({
+          error: "This meal already has " + served + " check-in(s). Deactivate it instead of deleting it.",
+        });
+        return undefined;
       }
-      res.status(200).json({ ok: true });
+      return MealService.findByIdAndDelete(req.params.id).then(function afterDelete(meal) {
+        if (!meal) {
+          res.status(404).json({ error: "Meal service not found." });
+          return;
+        }
+        res.status(200).json({ ok: true });
+      });
     })
     .catch(function onError(err) {
       console.error("deleteMeal failed:", err);
@@ -662,6 +814,8 @@ module.exports = {
   createEmailTemplate: createEmailTemplate,
   updateEmailTemplate: updateEmailTemplate,
   deleteEmailTemplate: deleteEmailTemplate,
+  previewEmailTemplate: previewEmailTemplate,
+  sendTestEmailTemplate: sendTestEmailTemplate,
   listMeals: listMeals,
   createMeal: createMeal,
   updateMeal: updateMeal,

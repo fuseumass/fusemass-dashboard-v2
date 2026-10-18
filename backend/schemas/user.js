@@ -2,6 +2,7 @@
 
 var mongoose = require("mongoose");
 var bcrypt = require("bcryptjs");
+var qrCode = require("../utils/qrCode");
 
 var Schema = mongoose.Schema;
 
@@ -57,6 +58,26 @@ var userSchema = new Schema(
     resetPasswordExpires: {
       type: Date,
     },
+    // Event-day check-in code (SHA-256 of the email, see utils/qrCode),
+    // encoded into the QR on the acceptance email. Staff scan it for the first
+    // check-in, meals and hardware checkout. Set on acceptance and stored so
+    // scans can look the attendee up by it.
+    qrId: {
+      type: String,
+      unique: true,
+      sparse: true,
+    },
+    // Whether the attendee has arrived (first event check-in). Flipped once,
+    // atomically, by POST /api/staff/checkin; the CheckIn collection keeps the
+    // who/when record.
+    checkedIn: {
+      type: Boolean,
+      default: false,
+      index: true,
+    },
+    checkedInAt: {
+      type: Date,
+    },
   },
   { timestamps: true }
 );
@@ -80,6 +101,81 @@ userSchema.methods.verifyPassword = function verifyPassword(candidate) {
     return Promise.resolve(false);
   }
   return bcrypt.compare(candidate, this.passwordHash);
+};
+
+/**
+ * Return a user's check-in code, generating and saving it on first use. Safe
+ * to call repeatedly or concurrently: the code is derived from the email, so
+ * every caller computes and writes the same value.
+ * @param {*} userId - The user's _id.
+ * @returns {Promise<string|null>} The code, or null when there is no such user.
+ */
+userSchema.statics.ensureQrId = function ensureQrId(userId) {
+  var User = this;
+
+  return User.findById(userId)
+    .select("email qrId")
+    .then(function afterFind(user) {
+      if (!user) {
+        return null;
+      }
+      if (user.qrId) {
+        return user.qrId;
+      }
+      var qrId = qrCode.computeQrId(user.email);
+      return User.updateOne({ _id: user._id }, { $set: { qrId: qrId } }).then(function afterSave() {
+        return qrId;
+      });
+    });
+};
+
+/**
+ * The check-in code for whoever owns this email address: their stored code if
+ * they have an account, otherwise just SHA-256 of the email. Used when sending
+ * any email whose template contains {{qrcode}}.
+ * @param {string} email - Recipient email.
+ * @returns {Promise<string>}
+ */
+userSchema.statics.ensureQrIdForEmail = function ensureQrIdForEmail(email) {
+  var User = this;
+  var normalized = String(email || "").trim().toLowerCase();
+
+  return User.findOne({ email: normalized })
+    .select("_id")
+    .then(function afterFind(user) {
+      return user ? User.ensureQrId(user._id) : qrCode.computeQrId(normalized);
+    });
+};
+
+/**
+ * Recompute and save the check-in code of every user that's missing one. The
+ * code is just SHA-256 of the email, so lost codes can always be rebuilt
+ * (e.g. after a restore or a field being dropped).
+ * @returns {Promise<number>} How many users were updated.
+ */
+userSchema.statics.backfillQrIds = function backfillQrIds() {
+  var User = this;
+
+  return User.find({ $or: [{ qrId: { $exists: false } }, { qrId: null }, { qrId: "" }] })
+    .select("email")
+    .lean()
+    .then(function afterFind(users) {
+      if (!users.length) {
+        return 0;
+      }
+      return User.bulkWrite(
+        users.map(function toUpdate(user) {
+          return {
+            updateOne: {
+              filter: { _id: user._id },
+              update: { $set: { qrId: qrCode.computeQrId(user.email) } },
+            },
+          };
+        })
+      ).then(function afterWrite() {
+        return users.length;
+      });
+    });
 };
 
 // Strip sensitive fields whenever a user document is serialized to JSON.

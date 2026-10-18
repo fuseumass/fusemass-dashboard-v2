@@ -8,8 +8,25 @@ const staffController = require("../controllers/staffController");
 const isAuthenticated = require("../utils/isAuthenticated");
 const isModerator = require("../utils/isModerator");
 
-// Only authenticated admins or moderators may check in a participant or access the check in records.
+// Event-day staff routes. Only authenticated admins or moderators may look up
+// attendees, check them in, or read the check-in records.
 
+router.get(
+    "/attendees",
+    isAuthenticated,
+    isModerator,
+    staffController.searchAttendees
+);
+
+// Registered before /checkin/:userId so "stats" isn't read as a user id.
+router.get(
+    "/checkin/stats",
+    isAuthenticated,
+    isModerator,
+    staffController.checkInStats
+);
+
+// Body: { qrId } (scanned) or { userId } (from the attendee search).
 router.post(
     "/checkin",
     isAuthenticated,
@@ -22,6 +39,21 @@ router.get(
     isAuthenticated,
     isModerator,
     staffController.getCheckInStatus
+);
+
+router.get(
+    "/meals",
+    isAuthenticated,
+    isModerator,
+    staffController.listMealsForStaff
+);
+
+// Body: { qrId } (scanned) or { userId }.
+router.post(
+    "/meals/:mealId/checkin",
+    isAuthenticated,
+    isModerator,
+    staffController.mealCheckInMark
 );
 
 module.exports = router;

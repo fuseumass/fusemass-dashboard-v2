@@ -15,7 +15,7 @@ var DEFAULT_TEMPLATES = [
     key: "application_accepted",
     subject: "Your application to {{orgName}} was accepted",
     body:
-      "Hi {{name}},\n\nCongratulations! Your application to {{orgName}} has been accepted.\n\nStatus: {{status}}",
+      "Hi {{name}},\n\nCongratulations! Your application to {{orgName}} has been accepted.\n\nStatus: {{status}}\n\nThis QR code is your pass for event check-in and meals. Keep this email handy (it is also on your dashboard):\n\n{{qrcode}}",
   },
   {
     key: "application_rejected",
@@ -23,11 +23,30 @@ var DEFAULT_TEMPLATES = [
     body:
       "Hi {{name}},\n\nThank you for applying to {{orgName}}. After review, your application was not selected.\n\nStatus: {{status}}",
   },
+  {
+    // Sent when staff check an attendee in on arrival. The run of show is
+    // also attached as a calendar invite.
+    key: "checked_in",
+    subject: "You're checked in to {{orgName}}!",
+    body:
+      "Hi {{name}},\n\nYou're checked in to {{orgName}}. Welcome!\n\nIf you haven't joined our Discord yet, join now. It's where announcements, mentors and team-finding happen: {{discordUrl}}\n\n{{runOfShow}}\n\nSchedule updates, FAQs, maps and prizes are on our website: {{websiteUrl}}\n\nHappy hacking!",
+  },
 ];
 
+// Earlier default bodies of built-in templates. A stored template whose body
+// is still exactly one of these was never edited by an admin, so seeding
+// upgrades it to the current default (this is how existing databases get
+// {{qrcode}} in the acceptance email). Edited templates are never touched.
+var LEGACY_DEFAULT_BODIES = {
+  application_accepted: [
+    "Hi {{name}},\n\nCongratulations! Your application to {{orgName}} has been accepted.\n\nStatus: {{status}}",
+  ],
+};
+
 // Derived from DEFAULT_TEMPLATES rather than written out again, so the two can
-// never drift. These three keys are referenced by name from application and
-// decision flows, so renaming or deleting one silently stops those emails.
+// never drift. These keys are referenced by name from the application,
+// decision and check-in flows, so renaming or deleting one silently stops
+// those emails.
 var BUILT_IN_KEYS = DEFAULT_TEMPLATES.map(function pickKey(template) {
   return template.key;
 });
@@ -63,7 +82,8 @@ var emailTemplateSchema = new Schema(
 );
 
 /**
- * Seed the built-in templates if they have not been added already.
+ * Seed the built-in templates if they have not been added already, and
+ * upgrade built-ins that still hold an old, unedited default body.
  *
  * @returns {Promise<Array<object>>} The newly created templates.
  */
@@ -71,7 +91,7 @@ emailTemplateSchema.statics.seedDefaults = function seedDefaults() {
   var EmailTemplate = this;
 
   return EmailTemplate.find({})
-    .select("key")
+    .select("key body")
     .lean()
     .then(function afterFind(existingTemplates) {
       var existingKeys = existingTemplates.map(function mapKey(template) {
@@ -81,15 +101,25 @@ emailTemplateSchema.statics.seedDefaults = function seedDefaults() {
         return existingKeys.indexOf(template.key) === -1;
       });
 
-      if (!missingTemplates.length) {
-        return [];
-      }
+      var upgrades = existingTemplates.filter(function isUneditedLegacy(template) {
+        var legacy = LEGACY_DEFAULT_BODIES[template.key] || [];
+        return legacy.indexOf(template.body) !== -1;
+      });
 
       return Promise.all(
-        missingTemplates.map(function createTemplate(template) {
-          return EmailTemplate.create(template);
+        upgrades.map(function upgrade(template) {
+          var current = DEFAULT_TEMPLATES.find(function byKey(def) {
+            return def.key === template.key;
+          });
+          return EmailTemplate.updateOne({ _id: template._id, body: template.body }, { $set: { body: current.body } });
         })
-      );
+      ).then(function afterUpgrade() {
+        return Promise.all(
+          missingTemplates.map(function createTemplate(template) {
+            return EmailTemplate.create(template);
+          })
+        );
+      });
     });
 };
 

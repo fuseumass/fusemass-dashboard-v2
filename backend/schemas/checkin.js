@@ -28,6 +28,23 @@ var checkInSchema = new Schema(
       ref: "User",
       required: true,
     },
+
+    // Forced check-in: staff checked in someone whose application wasn't
+    // accepted (e.g. an approved walk-in). The reason is required and kept
+    // with the record, along with their application status at the time.
+    forced: {
+      type: Boolean,
+      default: false,
+    },
+    forcedReason: {
+      type: String,
+      trim: true,
+      default: "",
+    },
+    applicationStatus: {
+      type: String,
+      default: "",
+    },
   },
   {timestamps: true}
 );
