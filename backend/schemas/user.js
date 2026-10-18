@@ -58,10 +58,10 @@ var userSchema = new Schema(
     resetPasswordExpires: {
       type: Date,
     },
-    // Event-day check-in code (HMAC-SHA256 of the email, see utils/qrCode),
+    // Event-day check-in code (SHA-256 of the email, see utils/qrCode),
     // encoded into the QR on the acceptance email. Staff scan it for the first
-    // check-in, meals and hardware checkout. Set on acceptance; stored rather
-    // than recomputed so an issued code keeps working if the secret changes.
+    // check-in, meals and hardware checkout. Set on acceptance and stored so
+    // scans can look the attendee up by it.
     qrId: {
       type: String,
       unique: true,

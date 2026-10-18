@@ -88,16 +88,12 @@ function createMeal(name, active) {
 test("check-in QR codes", async function qrCodes(t) {
   await db.connect();
 
-  await t.test("are a keyed SHA-256 of the email, not a bare hash", function () {
+  await t.test("are the SHA-256 of the normalized email", function () {
     var qrId = qrCode.computeQrId("Ada@Example.com ");
     assert.match(qrId, /^[a-f0-9]{64}$/);
     assert.equal(qrId, qrCode.computeQrId("ada@example.com"), "email is normalized");
     assert.notEqual(qrId, qrCode.computeQrId("grace@example.com"));
-    assert.notEqual(
-      qrId,
-      crypto.createHash("sha256").update("ada@example.com").digest("hex"),
-      "knowing an email must not be enough to forge its code"
-    );
+    assert.equal(qrId, crypto.createHash("sha256").update("ada@example.com").digest("hex"));
   });
 
   await t.test("normalizes scanner input and rejects anything else", function () {

@@ -15,26 +15,15 @@ var RENDER_OPTIONS = {
 };
 
 /**
- * The key the check-in code is signed with. QR_SECRET is preferred so codes
- * survive a JWT secret rotation; JWT_SECRET is the fallback so a deployment
- * that hasn't set it up yet still works.
- * @returns {string}
- */
-function qrSecret() {
-  return process.env.QR_SECRET || process.env.JWT_SECRET || "";
-}
-
-/**
- * Derive an attendee's check-in code from their email: HMAC-SHA256 keyed by
- * the server secret. Keyed rather than a bare SHA-256 so nobody can mint a
- * working code for someone else just by knowing their email address.
+ * Derive an attendee's check-in code from their email: the SHA-256 of the
+ * normalized address.
  *
  * @param {string} email - The email the applicant applied with.
  * @returns {string} 64-character lowercase hex code.
  */
 function computeQrId(email) {
   var normalized = String(email || "").trim().toLowerCase();
-  return crypto.createHmac("sha256", qrSecret()).update(normalized).digest("hex");
+  return crypto.createHash("sha256").update(normalized).digest("hex");
 }
 
 /**
