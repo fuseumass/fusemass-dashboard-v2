@@ -140,16 +140,58 @@ or check-in).
 - [ ] Every organizer endpoint uses this guard, and list endpoints filter to
       the caller's workshops on the server (don't rely on the UI hiding
       them).
-- [ ] **Decision needed:** roles are a single value today, so a moderator who
-      also runs a workshop can't hold both. Options: (a) allow assigning any
-      staff role (mod/admin) as a workshop's organizer, with the guard
-      checking the assignment rather than the role; or (b) move to a `roles`
-      array. Recommend (a): smallest change, no migration.
-- [ ] Judges get a `judge` role the same way (B24a).
+- [ ] **Decided: moderators and admins can run workshops too.** The guard
+      checks the **assignment**, not the role: anyone in `organizers` who is a
+      `workshop_organizer`, `moderator` or `admin` can manage that workshop
+      (admins can manage every workshop regardless). The `workshop_organizer`
+      role is for hosts who aren't otherwise staff. Assigning an applicant
+      offers to make them a `workshop_organizer` first; judges can't be
+      assigned.
+- [ ] Judges get their own role: see B47.
 - **Don't repeat:** the old dashboard's `redeem_code` let any attendee who
   hadn't RSVP'd or checked in become an organizer or **admin** by typing a
   code from a config file. Roles change only through admin endpoints.
 - **Depends on:** none. **Related:** B18–B21, F18, F19, T12.
+
+### B47. `judge` role
+Judges become dashboard users. No CSV logins, no passwords handled by
+organizers. Judges are usually external (faculty, sponsors, alumni), so they
+see **only** judging: no application form, QR card, workshops, meals or
+staff screens.
+
+**Steps (one PR; coordinate with B17, which also edits the role enum):**
+1. **Schema:** add `"judge"` to the `role` enum in `backend/schemas/user.js`
+   and update the roles comment at the top of that file.
+2. **Role validation:** add `"judge"` to the `validateBody` enum on
+   `PATCH /users/:id/role` in `backend/routes/admin.js`.
+3. **Guard:** new `backend/utils/isJudge.js`, in the same shape as
+   `isModerator.js`: 401 without a user, 403 unless `role` is `judge` or
+   `admin` (admins can test the flow). JSDoc like the other guards.
+4. **Keep judges out of everything else:** check that `isModerator`/`isAdmin`
+   reject `judge` (they test exact roles, so they should). Also make
+   `POST /api/applications` and `/api/applications/me/qr` return 403 for
+   judges, so a judge account can't apply or get an attendee QR.
+5. **Invite flow** (`POST /api/admin/judges { name, email, hardware }`,
+   isAdmin): create the user with `role: "judge"` (or promote an existing
+   account), create their `JudgeProfile` (B24d), and email an invite whose link
+   sets their password. Reuse the password-reset token code in
+   `authController` (hashed token, expiry), with a longer expiry (e.g. 7
+   days) and an "invite" email template. Re-sending an invite rotates the
+   token. Google sign-in also works if their Google email matches.
+6. **Bulk invite:** CSV upload of name, email, hardware → the same flow per
+   row, with a preview. This replaces `judges_auth.csv`.
+7. **List/remove:** `GET /api/admin/judges` (with calibration and progress
+   status); removing a judge demotes them to `applicant` and removes them
+   from the active assignment version (B24e).
+8. **`/api/auth/me`:** include the judge's profile summary (hardware flag,
+   calibration done) so the frontend can route them.
+9. **Docs:** update the roles line in `AGENTS.md` and the README role table.
+10. **Tests (T12, T11):** every guard with a judge token; judges get 403 on
+    `/api/admin/*`, `/api/staff/*`, applications and the QR endpoint; the
+    invite token can be used once and expires; a demoted judge loses access
+    immediately (JWT role is re-checked against the database for judging
+    routes, or tokens are short-lived; decide which in the PR).
+- **Depends on:** none. **Related:** B24a–B24i, F27, T11, T12.
 
 ### B25. Feature flags per module
 Let each hackathon switch modules on or off at runtime: meals, hardware,
@@ -225,8 +267,8 @@ lands in their calendar.
 
 ### B20. Workshop announcements feed (files + posts)
 A chat-style announcement channel per workshop. Organizers post slides,
-starter code and links; signed-up attendees read them. It's one-way:
-organizers post, attendees don't reply.
+starter code and links; **every accepted attendee** can read them, signed up
+or not. It's one-way: organizers post, attendees don't reply.
 - [ ] `schemas/workshopPost.js`: `workshop`, `author`, `body` (plain text,
       URLs linkified on render, no raw HTML), `attachments: [{ name, blobName,
       size, contentType }]`, `pinned`, timestamps.
@@ -235,9 +277,9 @@ organizers post, attendees don't reply.
       docx, zip, images, ipynb, txt/md). Reuse `utils/azureBlob` with a
       **private** container.
 - [ ] `GET /api/workshops/:id/posts` (newest first, cursor paginated) for
-      organizers + signed-up attendees + admins. **Decision needed:** should
-      every accepted attendee see materials, even without signing up?
-      Recommend yes once the workshop has started (people drop in).
+      **all accepted attendees** (decided: signing up isn't required to see
+      materials), organizers and admins. Unpublished or cancelled workshops
+      stay hidden from attendees.
 - [ ] `GET /api/workshops/:id/files/:postId/:index`: check access, then
       redirect to a short-lived (≈5 min) SAS URL. Never store or return
       permanent public blob URLs.
@@ -297,7 +339,17 @@ Raffles happen **after** a Top Hat-style attendance check-in at each workshop:
       every draw (who drew, when, prize, pool size, winners) for audit.
 - [ ] Claiming: organizer marks a winner `claimed`, or `redraw` for a no-show.
       A redraw excludes the no-show and is recorded too.
-- [ ] Email winners (B26) and show "You won …" on their dashboard (F17).
+- [ ] **When:** the raffle goes up **after the workshop ends** (the draw
+      button unlocks at `endsAt`; organizers can override for workshops that
+      finish early). Only attendees can win (decided): people who entered the
+      attendance code and are event checked-in. Seeing materials or signing
+      up doesn't enter you.
+- [ ] **Winner email** (built-in template `raffle_winner`, via B26): "You won
+      <prize> at <workshop>. Collect it from the **organizer room**
+      (<location>) after the workshop." The organizer room's name and location
+      come from a new `OrgSettings.organizerRoom` (e.g. "Organizer room, S120,
+      open 9am–9pm"), so each hackathon sets its own. Also show it as a "You
+      won …" card on their dashboard (F17).
 - [ ] Admin view across workshops: all draws and winners, for prize stock.
 - **Don't repeat:** don't reuse the old `redeem_code` pattern (B17). A
   workshop code only ever records attendance.
@@ -367,118 +419,263 @@ check them back in on return.
 
 ## Judging (merge HackUMass-Judging-New; replaces B11)
 
-The judging platform was a separate Express 5 + EJS app with its own users
-loaded from a CSV. Merge it into this API as a module under `/api/judging`
-(judge endpoints) and `/api/admin/judging` (admin endpoints). Rewrite it to our
-conventions (Express 4, CommonJS, named handlers, `routes → controllers →
-schemas`, JSDoc), not copy it. Its EJS views become Next pages (F21). Build it
-in this order; each subtask is its own PR.
+The judging platform we used in Nov 2025
+([gamer-1478/HackUMass-Judging-New](https://github.com/gamer-1478/HackUMass-Judging-New))
+works **completely differently** from the old Rails dashboard's judging
+(tags, mass-assign, paper forms). These tasks merge the 2025 platform into
+this dashboard. Read "How it works" first; every subtask maps to one of its
+phases.
 
-**Bugs in the old judging code, to avoid in every subtask:**
-- Logins came from `judges_auth.csv` with plaintext password comparison (B16),
-  and `GET /auth/user` returned the logged-in judge's full CSV row,
-  **password included**.
-- No admin role: any judge could upload teams, regenerate assignments,
-  recompute bias and view the leaderboard. Those destructive actions were
-  `GET` links (`/generate_assignments`, `/update-bias-scores`, `/uploadTeams`,
-  `/rejudge/:table`), so one malicious link could trigger them.
-- Scoring accepted any values, didn't check the judge was assigned that
-  table, allowed scoring the same team repeatedly, and crashed (request hangs)
-  for an unknown table.
-- Participants' table check-in link was `base64(team email)` and the table QR
-  was `sha256("Table N")`; both are guessable, so anyone could check any team
-  in.
-- Timestamps used `moment(...).format('YYYY-MM-DD HH:MM:SS')` (`MM` is
-  *month*), computed once at server start, so every record got the same wrong
-  time.
-- Room names hard-coded in `utils/helper.js`; Mongo URL + session config "DO
-  NOT TOUCH"; 50 MB JSON body limit; unused `openai`, `ai` and SendGrid
-  dependencies; `if (err) throw err` inside callbacks (crashes the process).
+### How the 2025 judging platform works
 
-### B24a. Judge accounts (`judge` role)
-- [ ] Add `judge` to the role enum. Admins invite judges (name, email,
-      hardware-judge flag); the invite email uses the existing password-reset
-      flow, so no passwords are ever handled by organizers.
-- [ ] `utils/isJudge` guard (judges + admins).
-- **Depends on:** B17 (role changes). **Related:** F21, T11.
+| # | Phase | What happens | Where in the old repo |
+| - | ----- | ------------ | --------------------- |
+| 0 | Setup | Judges come from `judges_auth.csv` (name, email, plaintext password, hardware flag). Rooms and capacities are hard-coded `ROOM_CONFIG` (6 rooms: S110 33, S131 49, S120 33, S140 40, N101 22, and the hardware room N155 31), duplicated in two files plus `roomNumberToName`. | `server.js`, `routes/checkinRouter.js`, `utils/helper.js` |
+| 1 | Team import | Devpost CSV → one `Team` per project (name, submitter email, category, up to 4 members, MLH tracks, Devpost link, hardware flag). Each team is emailed a QR (`base64(submitter email)`) and a link to step 2. | `GET /uploadTeams` |
+| 2 | Desk check-in ("checkin1") | An organizer scans the team's QR. In a Mongo transaction with retries, the team gets the **next table**: rooms fill in order, hardware teams go to the hardware room, and table numbers are **global and continuous across rooms** (room 2 starts at 34). The team is emailed its table and room. | `POST /api/checkin1` |
+| 3 | Table check-in ("checkin2") | At their table, the team opens their link and scans the **QR printed on the table** (`sha256("Table N")`), which proves they're sitting at the right table. **Only teams that finish both check-ins get judged.** | `GET /checkin2/:base64email`, `POST /api/checkin2` |
+| 3b | Fallback | "Check-in has failed": bulk-assign every team a table and mark both check-ins done. | `GET /checkin-has-failed` |
+| 4 | Calibration ("tutorial") | Each judge scores the **same 3 practice projects**. Bias = the judge's average of the 5 general criteria minus all judges' average for that round, averaged over rounds; the same for the category criterion. | `GET/POST /tutorial`, `GET /update-bias-scores` |
+| 5 | Assignments | Two separate runs (regular teams/judges and hardware teams/judges), **3 judgings per team**, **time-slotted**: judges start in rooms in proportion to room capacity and move room to room in phases. No two judges at one table in the same slot; no judge sees a team twice; load within ±2. A verifier checks the result; up to 10 attempts. Each judge's queue is stored as a list of table numbers. | `utils/judging-api.js`, `GET /generate_assignments` |
+| 6 | Judging | A judge sees one team at a time, in slot order: name, table, room, category. They score **6 criteria** (Innovation 0–10, Functionality 0–10, Practicality 0–5, Presentation 0–10, Q&A 0–5, Category fit 0–10) plus comments, or **skip** and come back from the Skipped list; there's also an assignment sheet. | `routes/dashboardRouter.js`, `views/judge.ejs` |
+| 7 | Progress | The "leaderboard" is **judging progress** per table (scores in / assigned), not a ranking. | `GET /leaderboard` |
+| 8 | Results | **Not built.** Bias was computed but never applied; the only export is a commented-out CSV dump. Winners were worked out outside the app. | `server.js` (commented out) |
 
-### B24b. Teams / projects
-- [ ] `schemas/team.js`: `name`, `members: [User]` (not `Mem1Name..Mem4Email`
-      columns), `contactEmail`, `devpostUrl`, `categories: [String]`
-      (tracks/prizes), `hardware: Boolean`, `needsPower: Boolean` (the old
-      dashboard seated these near outlets), `room`, `table`,
-      `tableCheckedIn`.
-- [ ] Admin import from the Devpost CSV export: upload → server-side validation
-      → preview diff → confirm. Match members to Users by email and report
-      unmatched ones. Re-importing updates rather than duplicates.
-- [ ] **Decision needed:** in-dashboard project submission (the old Rails app
-      had it) vs. Devpost import only. Recommend Devpost import for this year.
-- **Depends on:** B24a.
+### What carries over, and what changes
 
-### B24c. Rooms, tables and team table check-in
-- [ ] `schemas/judgingRoom.js` (`name`, `tableCount`, `hardware`), configured
-      by admins instead of the hard-coded list.
-- [ ] Desk check-in (old "checkin1"): staff scan a member's QR → assign the
-      next free table in a transaction. Keep the old unique (room, table)
-      index + retry approach, which was right. Hardware teams go to hardware
-      rooms.
-- [ ] Table check-in (old "checkin2"): a team member, logged in, scans the
-      printed table QR. That QR holds a random per-table token (stored), not
-      `sha256("Table N")`.
-- [ ] Email each team its room/table via the mailer + a template (B26), not
-      SendGrid.
-- [ ] Printable output (the old `paper_judging` made PDFs): table signs with
-      the table QR, and a paper rubric per team as a backup if Wi-Fi dies.
-- **Depends on:** B24b.
+| 2025 platform | In the dashboard |
+| ------------- | ---------------- |
+| Judges in a CSV with plaintext passwords | Dashboard users with the `judge` role (B47), invited by admins |
+| A team QR emailed per team (`base64(email)`) | **No new QR:** desk staff scan any team member's existing attendee QR (`resolveAttendee` from check-in) |
+| Table QR = `sha256("Table N")` | A random token per table, stored, printed on table signs |
+| `ROOM_CONFIG` in code | `JudgingRoom` documents edited by admins |
+| `Team` with `Mem1Name..Mem4Email` columns | `Project` with `members: [User]`, matched by email on import |
+| Scores as `score1..score6` | A configurable rubric (same 6 criteria seeded by default) |
+| SendGrid + EJS emails | Our mailer + editable built-in templates (B26) |
+| Destructive `GET` links, open to every judge | Admin-only `POST` endpoints |
+| Results in a spreadsheet | Bias-adjusted results in the app (B24g) |
 
-### B24d. Judge calibration (tutorial rounds) + bias
-- [ ] Port the tutorial flow: every judge scores the same practice projects.
-- [ ] Move the bias calculation (`/update-bias-scores` in the old `server.js`)
-      into `utils/judgingBias.js` as **pure functions**. Unit-test them
-      against fixtures computed by hand (T11).
-- [ ] `POST /api/admin/judging/bias` (admin), stored on the judge's profile
-      with the time computed.
-- **Depends on:** B24a.
+### Bugs in the final 2025 commit (don't port the code as-is)
+The last commit can't run several of its own admin routes. Treat the repo as a
+**spec**, not code to copy.
+- `/uploadTeams` uses `CsvfileTeams`, `QRCode` and `sgMail`, none of which is
+  defined in `server.js`. `/check-failed-emails` uses an undefined `client`.
+  `/checkin-has-failed` calls `getNextAvailableTable`, which lives only in
+  `checkinRouter.js`.
+- `/update-bias-scores` saves through an undefined `User` (the import is
+  `userSchema`), so **bias values are never stored**.
+- `POST /api/checkin1` uses `mongoose`, `ejs`, `path` and `roomNumberToName`
+  without importing them, so the desk check-in throws before doing anything.
+  (That's likely why the bulk "check-in has failed" fallback exists.)
+- `utils/judging-api.js` is ES-module syntax (`export function`) loaded with
+  `require`; it only works on Node versions that auto-detect ESM.
+- **Verifier:** `_fixUnderJudgedProjects` appends extra slots without checking
+  for clashes at the new slot, and `verifyAll` then reports success **without
+  re-running** the simultaneous-judging, same-start and workload checks. A
+  "valid" assignment set can contain clashes.
+- **Rejudge advances the queue:** scoring a skipped team through
+  `/rejudge/:table` posts to the normal submit, which increments
+  `currentProject`, so the judge's next real team is silently skipped.
+- **Assignment sheet** loops from index 1, so every judge's first team is
+  missing, and "judged" is decided by position rather than by what was scored.
+- Scores are validated only in the browser. The server accepts anything,
+  doesn't check the judge was assigned that team, allows duplicate scores per
+  judge and team, and hangs (crashes) when a table number doesn't exist.
+- Judges are looked up by **name** when assignments are saved; two judges with
+  the same name overwrite each other.
+- Import: `team.TeamMem1First || "" + " " + team.TeamMem1Last || ""` only ever
+  stores the first name (operator precedence), and the CSV header repeats
+  `TeamMem1*` four times, so members 2–4 are lost. `HardwareJudge.toLowerCase()`
+  crashes when the column is empty.
+- Also from the earlier review: CSV logins and `GET /auth/user` returning the
+  judge's password (B16); `moment().format('… HH:MM:SS')` (`MM` is the month)
+  computed once at startup; guessable check-in links; 50 MB body limit;
+  sessions with `sameSite: 'none'` and CORS allowing any origin with
+  credentials; unused `openai`, `ai` and SendGrid dependencies.
 
-### B24e. Assignment generation
-- [ ] Port `utils/judging-assignments.js` (generator + verifier) into pure
-      modules: given teams, judges, rooms and `judgesPerTeam`, return
-      assignments, then verify them (every team judged k times, hardware
-      teams only get hardware judges, balanced load). Run the verifier on
-      every generated set and refuse to save one that fails.
-- [ ] `POST /api/admin/judging/assignments` (admin) creates a new **version**.
-      Regenerating never deletes scores already submitted.
-- **Depends on:** B24b, B24c.
+### Merge plan
+Module layout (our conventions: Express 4, CommonJS, named handlers,
+`routes → controllers → schemas`, JSDoc):
 
-### B24f. Scoring
-- [ ] Rubric configured per event (`criteria: [{ key, label, min, max,
-      weight }]`), not `score1..score6`.
-- [ ] `POST /api/judging/scores { teamId, scores, comments }` (`isJudge`):
-      validate every criterion is an integer in range; the judge must be
-      assigned that team; unique (judge, team) with **upsert**, so a rejudge
-      replaces the score instead of adding one; unknown team → 404.
-- [ ] Judge queue: `GET /api/judging/queue` (next team, progress, skipped);
-      `POST /api/judging/skip` / unskip.
+```
+backend/
+  routes/judging.js              /api/judging/*        (isJudge)
+  routes/adminJudging.js         /api/admin/judging/*  (isAdmin)
+  controllers/judgingController.js
+  controllers/adminJudgingController.js
+  schemas/judgingRoom.js  project.js  judgeProfile.js  judgingAssignment.js
+          judgingScore.js  judgingSettings.js  prize.js
+  utils/judging/assignments.js   (pure: generator + verifier)
+  utils/judging/bias.js          (pure)
+  utils/judging/results.js       (pure)
+```
+
+Order: **B47 (judge role) and B24a (port the algorithms) can start in
+parallel**; then B24b → B24c → B24d/B24e → B24f → B24g → B24h; B24i last.
+Each is one PR, behind the `judging` feature flag (B25) until B24i.
+
+### B24a. Port the algorithms as pure modules (do first)
+- [ ] Copy `generateJudgingAssignments` + `AssignmentGenerator` +
+      `AssignmentVerifier` from `utils/judging-api.js` into
+      `utils/judging/assignments.js`, converted to CommonJS, with no `console.log`
+      noise (return a `log` array instead). `utils/judging-assignments.js` (the
+      CLI/demo version) is not used by the app; don't port it.
+- [ ] **Characterization tests before changing anything** (T11): run it on the
+      2025 shape (the 5 regular rooms 33/49/33/40/22 + hardware room 31,
+      ~160 teams, 3 judgings per team) with a seeded RNG, and snapshot the
+      invariants.
+- [ ] Make randomness injectable (`rng` parameter, default `Math.random`) so
+      tests are deterministic.
+- [ ] Then fix the verifier: after `_fixUnderJudgedProjects`, re-run **all**
+      checks; place fixes only where the slot is free; fail loudly if it can't.
+- [ ] Extract the bias formula from `/update-bias-scores` into
+      `utils/judging/bias.js` (`computeBias(tutorialScoresByJudge, rubric)` →
+      `{ judgeId: { general, category } }`). Keep the formula identical so the
+      2025 numbers can be reproduced.
+- **Depends on:** none. **Related:** T11.
+
+### B24b. Rooms, projects and the Devpost import
+- [ ] `schemas/judgingRoom.js`: `name` (e.g. "S131"), `order`, `capacity`
+      (tables), `hardware: Boolean`. Admin CRUD. This replaces `ROOM_CONFIG`
+      and `roomNumberToName`.
+- [ ] `schemas/project.js`: `name`, `devpostUrl`, `submitterEmail`,
+      `members: [User]`, `unmatchedMembers: [{ name, email }]`,
+      `category` (the judged track), `optInPrizes: [String]`, `mlhTracks`,
+      `hardware: Boolean`, `needsPower: Boolean`, `room`, `tableNumber`,
+      `deskCheckedInAt`, `tableCheckedInAt`, `withdrawn`. Unique index on
+      (`room`, `tableNumber`) for projects that have a table. Name it
+      `Project`, not `Team`: the unused `schemas/team.js` (B15) is a different
+      thing.
+- [ ] **Devpost import (decided: projects come from Devpost; no in-dashboard
+      submission):** `POST /api/admin/judging/import` (multipart CSV) → parse
+      by **column position + header**, because Devpost repeats member column
+      names → validate each row → return a **preview** (new / updated /
+      unchanged / errors, unmatched member emails) → `POST …/import/:id/confirm`
+      applies it. Re-importing updates by Devpost URL and never duplicates.
+      Match members to dashboard users by email (case-insensitive); report the
+      rest.
+- [ ] The hardware flag and category come from Devpost columns; admins can
+      override per project.
+- **Depends on:** B47 (for the admin screens' guards). **Related:** F21c.
+
+### B24c. Two-step team check-in (desk → table)
+Keep the 2025 flow: it makes sure teams are physically at the table judges
+will walk to.
+- [ ] **Desk check-in** (phase 2): `POST /api/staff/judging/desk-checkin
+      { qrId }` (moderators + admins). Resolve the attendee from their QR with
+      the shared `resolveAttendee`, find their project (409 if they're on
+      several; staff pick one), and assign the next table **inside a
+      transaction**. Keep the 2025 logic: rooms in `order`, hardware projects
+      → hardware rooms, global continuous numbering, room full → clear error.
+      Rely on the unique index + retry for races.
+- [ ] **Table signs:** `GET /api/admin/judging/table-signs` → a printable PDF/HTML
+      sheet per table with a big table number, room, and a QR holding a random
+      per-table token (stored on a `JudgingTable` record or in the room's
+      table list).
+- [ ] **Table check-in** (phase 3): a logged-in team member scans the table QR
+      on their dashboard → `POST /api/judging/table-checkin { token }`. It must
+      match their project's assigned table, otherwise "Wrong table: you're at
+      table 12, go to table 34 in S131". Desk check-in is required first.
+- [ ] Email the team their table + room after desk check-in (built-in template
+      `judging_table_assigned`, via B26).
+- [ ] **Fallback** (phase 3b), admin-only `POST`: bulk-assign tables to every
+      project and mark both steps done, with a confirmation that states the
+      count.
+- [ ] Undo for mistakes: admin can clear a project's table (frees the number,
+      logged).
+- **Depends on:** B24b; check-in from `feature/qr-checkin`.
+
+### B24d. Judge calibration (tutorial) and bias
+- [ ] `JudgingSettings.calibrationProjects` (default 3, matching 2025): each
+      has a title and an optional description or link. All judges score the
+      same ones, in the same order, typically at the judges' briefing.
+- [ ] `schemas/judgeProfile.js` (one per judge user): `user`, `hardware`,
+      `calibrationScores: [{ round, scores, comments }]`, `bias: { general,
+      category, computedAt }`.
+- [ ] `POST /api/judging/calibration/:round` (isJudge): rubric-validated,
+      **upsert** per round (rescoring replaces), rounds in order.
+- [ ] `POST /api/admin/judging/bias` runs `utils/judging/bias.js` over everyone
+      who finished calibration and stores the result. Judges who skipped
+      calibration get `bias: null` and are flagged in results (B24g).
+- **Depends on:** B24a, B47.
+
+### B24e. Assignment generation (versioned)
+- [ ] `POST /api/admin/judging/assignments { judgingsPerProject = 3 }`: take
+      projects with **both** check-ins, split into regular and hardware pools
+      (hardware projects only get `hardware` judges), and run the ported
+      generator per pool, with rooms and capacities from `JudgingRoom`.
+- [ ] Store the result as a new `JudgingAssignment` version: `{ version,
+      createdBy, createdAt, params, verifierReport, queues: [{ judge,
+      projects: [Project] }] }`. Judges keyed by **user id**, not name. Refuse
+      to save a set that fails the verifier; return the report.
+- [ ] Activate a version explicitly. Regenerating or activating a new version
+      never deletes scores: scores for projects still in a judge's new queue
+      count as done; others stay in results.
+- [ ] Late changes without regenerating everything: add or remove a judge, and
+      withdraw a project (removes it from all queues).
+- [ ] **Decision needed:** the generator is slot-based (no two judges at one
+      table in the same slot), but in 2025 judges moved at their own pace, so
+      slots drifted. Options: (a) keep it, plus an optional per-slot timer on the
+      judge screen; (b) later, assign the next project dynamically when a
+      judge finishes (Gavel-style). Recommend (a) for this year.
+- **Depends on:** B24a, B24c, B47.
+
+### B24f. Judge queue and scoring
+- [ ] Rubric in `JudgingSettings.criteria: [{ key, label, help, min, max,
+      weight, kind: "general" | "category" }]`, seeded with the 2025 six (see
+      "How it works") and editable by admins until judging starts.
+- [ ] `GET /api/judging/queue` (isJudge): current project (name, table, room,
+      category, Devpost link), position "4 of 12", skipped list, done list.
+- [ ] `POST /api/judging/scores { projectId, scores, comments }`: every
+      criterion present, an integer within its range (the server enforces this
+      now); the project must be in the caller's active queue (403 otherwise);
+      **upsert** on (judge, project). Submitting **only advances the queue when
+      it's the current project**, so rescoring a skipped team never jumps past
+      the next one (the 2025 bug). Unknown project → 404.
+- [ ] `POST /api/judging/skip` (current → skipped), and scoring a skipped
+      project removes it from skipped.
+- [ ] Freeze: once an admin closes judging, every score write → 409.
 - **Depends on:** B24e.
 
-### B24g. Results
-- [ ] `GET /api/admin/judging/results`: per team and per category, raw and
-      bias-adjusted averages, number of judges, and flags for teams with too
-      few scores. Admin only; CSV export.
-- [ ] Freeze switch: lock scoring once judging closes.
+### B24g. Progress board, results and exports
+- [ ] **Progress** (the 2025 "leaderboard"): `GET /api/admin/judging/progress`,
+      per project scores in / assigned, per judge done / total, and the
+      projects still missing scores. Visible to moderators and admins.
+- [ ] **Results** (missing in 2025): `GET /api/admin/judging/results`, admin
+      only. Per project: number of scores; the raw general total (weighted
+      sum of the `general` criteria); the **bias-adjusted** total (subtract
+      each judge's general bias before averaging); the category score raw and
+      bias-adjusted; and flags (fewer scores than `judgingsPerProject`, judges
+      without calibration). Rank overall and per category. Implement in
+      `utils/judging/results.js` (pure) so it can be tested.
+- [ ] CSV exports: all scores (the dump 2025 had commented out), results,
+      per-judge progress.
 - **Depends on:** B24d, B24f.
 
 ### B24h. Prizes and winners
-The old dashboard had prizes as data, not just Devpost text.
-- [ ] `schemas/prize.js`: `name`, `sponsor`, `description`, `criteria`,
-      `track` (the judging category it maps to), `quantity`, `winners: [Team]`.
-- [ ] Admin CRUD; teams opt into prizes (from the Devpost import, or chosen in
-      the dashboard if B24b adds submission).
-- [ ] Assign winners from the results (B24g); publish the winners list.
+The old Rails dashboard had prizes as data; 2025 handled them outside the app.
+- [ ] `schemas/prize.js`: `name`, `sponsor`, `description`, `category` (the
+      judged track it maps to, or none for sponsor prizes), `quantity`,
+      `winners: [Project]`.
+- [ ] Admin CRUD. Projects' prize opt-ins come from the Devpost import.
+- [ ] Assign winners from the results (B24g), suggested by category rank; then
+      publish (winners page + email the winning teams).
 - **Don't repeat:** the old `prizes` controller guarded `show`/`new`/`edit` but
   **not** `create`/`update`/`destroy`, so any logged-in user could change
   prizes by POSTing directly.
 - **Depends on:** B24b, B24g.
+
+### B24i. Cut-over and decommission
+- [ ] Dry run on a staging copy before the event: import last year's Devpost
+      export **with emails replaced**, run check-in → calibration →
+      assignments → scoring with test judges, and compare the results against
+      a hand calculation.
+- [ ] Turn on the `judging` feature flag for the event.
+- [ ] Archive the old repo once B16 is done (credentials rotated, history
+      purged). **Don't import 2025 data**; it's last year's event, and its
+      files must not be copied into this repo.
+- [ ] Update `feature-parity.md`, `README.md` and `AGENTS.md` (roles).
+- **Depends on:** B24a–B24h, B16.
 
 ---
 
@@ -605,15 +802,15 @@ pay out what's owed.
   integrated.
 - **Depends on:** B34.
 
-### B39. Attendee travel reimbursements (deferred)
+### B39. Attendee travel reimbursements (not this year)
 The 2018 `hackumass-web` branch `travel-reimbursements` let attendees file
 travel claims with a receipt, grouped into travel groups (name, budget
 amount, departure city); organizers toggled "approved", had "approve all", and
 printed cost sheets. It was never merged.
-- [ ] **Decision needed:** offer travel reimbursement this year? If yes, reuse
-      the B36 pipeline: attendee submitters (their own requests only),
-      a "Travel" budget line, caps per travel group or region, admin approve +
-      pay.
+- **Decided: not offered this year.** Nothing to build. If it comes back,
+  reuse the B36 pipeline: attendees submit their own requests only, against a
+  "Travel" budget line, with caps per travel group or region, and admin
+  approve + pay.
 - **Don't repeat:** `approved` was in the submitter's permitted form fields, so
   anyone could approve their own claim. `update`/`destroy` had no owner
   check. Money was a `float`.
@@ -723,13 +920,13 @@ moderate `ip-address`, moderate `csv-parse` (fix is a major bump to v7).
 
 ## Later / needs a decision
 
-### B31. Mentorship tickets
+### B31. Mentorship tickets (on Discord, not in the dashboard)
 The old dashboard had mentor tickets (attendee posts a request with a
-screenshot, mentors claim and resolve). **Decision needed:** keep using
-Discord for this, or build it? If built: `mentor` role, ticket CRUD, claim/
-resolve, notify via Discord webhook. **Don't repeat:** the old
-`mentorship_requests` controller guarded only `show` and `destroy`, so anyone
-could edit anyone's ticket.
+screenshot, mentors claim and resolve). **Decided: mentorship tickets are
+created on Discord**, so there's nothing to build here beyond linking to it:
+- [ ] Optional `ORG_DISCORD_MENTORSHIP_URL` (the mentorship channel or
+      ticket-bot link), shown on the attendee home page next to the Discord
+      invite.
 
 ### B32. RSVP / confirm attendance after acceptance
 The old dashboard had an RSVP step (plus custom RSVP questions, e.g. travel,

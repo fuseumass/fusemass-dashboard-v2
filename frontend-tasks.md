@@ -258,7 +258,8 @@ serving.
 - [ ] Workshop page `/dashboard/workshops/[id]`: details + the announcement
       feed (read-only, newest first, pinned posts on top, file chips that
       download through the signed-URL endpoint, linkified text, relative
-      times; polls every ~15 s).
+      times; polls every ~15 s). **Every accepted attendee can open it and
+      download materials**, signed up or not.
 - [ ] **Attendance (Top Hat-style):** while the organizer has attendance
       open, the workshop page (and a banner on the home page) shows "Enter the
       code on screen": a large, auto-uppercase, 4–6 character input that
@@ -267,8 +268,11 @@ serving.
       aren't, show "Check in at the front desk first" instead of the input.
       Friendly errors for a wrong or stale code, attendance being closed, or
       too many tries.
-- [ ] **Raffle results:** "You won <prize>, pick it up from <organizer>" on
-      the workshop page and the home page.
+- [ ] **Raffle:** the page explains "Attend and enter the code to be in the
+      raffle, drawn after the workshop". Only attendees can win; signing up or
+      viewing materials doesn't count. Winners get a "You won <prize>, collect
+      it from <organizer room + location> after the workshop" card on the
+      workshop page and the home page (the same text as the email).
 - **Depends on:** B18, B19, B20, B21. **Related:** T9.
 
 ### F18. Workshop organizer screens
@@ -286,17 +290,21 @@ Visible only to `workshop_organizer`s for **their** workshops (plus admins).
     optional QR; a live attendee count; "Add attendee" by scanning their QR
     (reuse `CheckInStation`) for people without a phone; signed up vs
     attended.
-  - **Raffle** (from attendees only): prize name + number of winners → draw
-    with a short reveal in Present mode; mark claimed or redraw for no-shows;
-    history of draws.
+  - **Raffle** (from attendees only): the Draw button unlocks when the
+    workshop ends (with an "end early" override); prize name + number of
+    winners → draw with a short reveal in Present mode; shows "Winners have
+    been emailed to collect from <organizer room>"; mark claimed or redraw
+    for no-shows; history of draws.
 - **Depends on:** B17, B20, B21, F13 (kiosk layout for Present mode).
 
 ### F19. Admin workshop management
 - [ ] `/dashboard/admin/workshops`: `DataTable` + create/edit `Dialog` (title,
       host, location, time, capacity, published, raffle on/off);
       cancel-workshop flow that warns how many people will be notified.
-- [ ] Assign organizers: user search (`Command`) → add/remove; offer to set
-      the user's role to `workshop_organizer` if they're an applicant.
+- [ ] Assign organizers: user search (`Command`) → add/remove. **Moderators
+      and admins can be assigned as-is**; for an applicant, offer to make them
+      a `workshop_organizer` first; judges can't be picked. Assigned mods and
+      admins see the workshop under "Organize" too.
 - **Depends on:** B17, B18.
 
 ---
@@ -322,33 +330,106 @@ Visible only to `workshop_organizer`s for **their** workshops (plus admins).
 
 ## Judging (merge HackUMass-Judging-New; replaces F6)
 
-### F21. Judging screens
-The old judging app's EJS pages (`login`, `tutorial`, `judge`, `skip`,
-`assignments`, `leaderboard`, `checkin1-admin`, `checkin2-participant`)
-become dashboard pages on the design system. **Judges score on phones while
-walking the floor: build mobile-first.**
-- [ ] **Judge** `/dashboard/judging`: progress ("4 of 12"), the current team's
-      name/table/room/Devpost link, the rubric as segmented controls or sliders
-      with labels (not bare number inputs), comments, Submit / Skip; a
-      "Skipped" list to come back to; the tutorial rounds before real
-      judging.
-- [ ] **Admin** `/dashboard/admin/judging`: import teams (CSV upload → preview →
-      confirm), rooms/tables setup, generate assignments (shows the verifier
-      report before saving), judge progress per judge, results/leaderboard
-      (raw vs bias-adjusted toggle, per category, CSV export), freeze
-      scoring. All actions are buttons that POST, never links.
-- [ ] **Team table check-in:** desk screen (scan a member's QR → table
-      assignment) and the participant flow (logged-in member scans the table
-      QR).
-- [ ] **Prizes** (B24h): admin CRUD, the winners picker from results, and a
-      published winners page.
-- **Depends on:** B24a–B24g. **Related:** T11.
+How the 2025 judging platform works, and its bugs, are written up in
+`backend-tasks.md` → **Judging**. These screens replace its EJS views. The
+mapping is in the table below. **Judges score on phones while walking the
+floor: build the judge screens mobile-first, in the kiosk layout (F13).**
+
+| 2025 view | Dashboard screen | Task |
+| --------- | ---------------- | ---- |
+| `login.ejs` (CSV login) | Normal login + judge invite / set-password page | F27 |
+| `tutorial.ejs`, `thankyoututorial.ejs` | Judge → Calibration | F21a |
+| `judge.ejs`, `thankyou.ejs` | Judge → Current project | F21a |
+| `skip.ejs` | Judge → Skipped | F21a |
+| `assignments.ejs` | Judge → My assignments | F21a |
+| `checkin1-admin.ejs` | Staff → Judging desk | F21b |
+| `checkin2-participant.ejs` | Attendee home → "Check in at your table" | F21b |
+| `leaderboard.ejs` (progress) | Admin → Judging → Progress | F21c |
+| — (didn't exist) | Admin → Judging → Import, Rooms, Rubric, Assignments, Results, Prizes | F21c |
+| `landing.ejs`, `emails/*.ejs` | Not needed (dashboard home; email templates) | — |
+
+### F21a. Judge screens
+- [ ] `/dashboard/judging` routes the judge to calibration until it's done,
+      then to their current project.
+- [ ] **Calibration:** "Practice project 1 of 3", the same rubric form as real
+      judging, a short explainer ("everyone scores the same projects so we
+      can correct for strict and generous judges"), then "Calibration done".
+- [ ] **Current project:** a large table number + room, then project name,
+      category, Devpost link; progress "4 of 12"; the rubric with each
+      criterion's **guiding questions** (from the rubric's `help`), entered as
+      segmented 0–N buttons (no free number inputs: the 2025 form only clamped
+      in the browser); comments; **Submit & next** and **Skip**. Prevent double
+      submit. When the queue is done: "All done, thank you".
+- [ ] **Skipped:** list with table/room, tap to score. Scoring a skipped
+      project returns you to your *current* project and doesn't skip ahead
+      (the 2025 bug).
+- [ ] **My assignments:** the full list in order, including the first (2025
+      dropped it), each marked done / skipped / upcoming from real scores.
+- [ ] Optional slot timer per project if B24e's decision picks (a).
+- [ ] Offline tolerance: keep the unsent form in local storage and retry on
+      reconnect, since venue Wi-Fi drops.
+- **Depends on:** B24d, B24f, F27.
+
+### F21b. Team check-in screens (desk → table)
+- [ ] **Judging desk** (`/dashboard/staff/judging-desk`, kiosk layout, reusing
+      `CheckInStation`): scan any team member's attendee QR → show the
+      project, members and the assigned **table + room in huge type** →
+      done. Errors: no project found, already assigned (show its table),
+      room full. If they're on several projects, pick one.
+- [ ] **Table check-in** for attendees: once their project has a table, the
+      home page shows "Go to table 34 in S131, then scan the QR on your table"
+      with the camera scanner. Results: done / wrong table (say the right
+      one) / not desk-checked-in yet.
+- [ ] Admin: print table signs (from B24c), the bulk fallback ("check-in
+      failed: assign everyone"), with a typed confirmation, and clear a
+      project's table.
+- **Depends on:** B24c.
+
+### F21c. Admin judging console
+`/dashboard/admin/judging`, with tabs:
+- [ ] **Import:** upload the Devpost CSV → preview table (new / updated /
+      errors, unmatched member emails) → confirm.
+- [ ] **Rooms & tables:** room list (name, order, capacity, hardware) with
+      totals vs project count, so admins see shortages before the event.
+- [ ] **Rubric:** criteria editor (label, guiding questions, min/max, weight,
+      general/category), locked once scores exist; calibration projects.
+- [ ] **Judges:** list with hardware flag, invite status, calibration done,
+      bias, progress; invite and bulk-invite (F27).
+- [ ] **Assignments:** parameters (judgings per project) → Generate → show the
+      verifier report and per-judge queues → Activate. Version history; add
+      or remove a judge; withdraw a project.
+- [ ] **Progress** (the 2025 "leaderboard"): per project scores in / assigned,
+      per judge done / total, missing scores first; auto-refresh; a lobby
+      screen version.
+- [ ] **Results:** ranking overall and per category, with a raw vs
+      bias-adjusted toggle, score counts and warning badges (too few scores,
+      uncalibrated judges); freeze scoring; CSV exports.
+- [ ] **Prizes:** CRUD, suggested winners from the category ranking, assign
+      and publish (B24h).
+- Every action is a button that POSTs, with a confirmation where it's
+  destructive. Nothing changes data through a link.
+- **Depends on:** B24b–B24h.
+
+### F27. Judge role in the UI
+- [ ] Judges get their own nav: **Judging** only (calibration, current
+      project, skipped, my assignments). No Application, QR card, workshops,
+      meals or schedule items. The home page for a judge is the judging card.
+- [ ] Users page: add `judge` to the role list; admins can't demote themselves
+      (existing rule).
+- [ ] Judge invite acceptance: `/judge/accept?token=…` → set a password (or
+      continue with Google) → land on `/dashboard/judging`. Expired or used
+      token → a clear message and "ask an organizer to resend".
+- [ ] Admin → Judging → Judges: invite one, bulk-invite from CSV (preview,
+      then send), resend invite, remove judge.
+- [ ] Client guards on every judging page (judges + admins only); the API
+      enforces it anyway (B47).
+- **Depends on:** B47. **Related:** F13 (nav config with `roles`).
 
 ### F5. Hardware data view (moderators)
 Replaced by **F20**.
 
 ### F6. Judging progress view (moderators)
-Replaced by **F21**.
+Replaced by **F21a–F21c**.
 
 ---
 

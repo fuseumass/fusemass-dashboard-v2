@@ -84,9 +84,10 @@ for the frontend, wired into CI.
       workshop list contains only A; they get 403 on `/api/admin/*` and
       `/api/staff/*`.
 - [ ] **Announcements:** wrong file type / oversized file → 400 before any
-      upload; non-signed-up user can't list posts or fetch files (per the B20
-      decision); the file endpoint returns a short-lived URL, never a
-      permanent one.
+      upload; any accepted attendee can list posts and fetch files, signed up
+      or not, while non-accepted users and other roles' outsiders get 403;
+      unpublished workshops are hidden; the file endpoint returns a
+      short-lived URL, never a permanent one.
 - [ ] **Attendance codes** (pure unit tests on the code function, with a fake
       clock): the code changes every period; the current and previous codes
       are accepted, the one before that isn't; different sessions give
@@ -104,6 +105,12 @@ for the frontend, wired into CI.
       distinct winners; no repeat winners in the same workshop; a redraw
       excludes the no-show; the event-wide win cap holds; every draw is
       stored with its pool size.
+- [ ] **Raffle timing and email:** drawing before `endsAt` → 409 unless the
+      organizer used the end-early override; a signed-up attendee who never
+      entered the code is never drawn; the winner email (mail mock) names the
+      prize, the workshop and the configured organizer room + location.
+- [ ] **Assigned staff:** a moderator listed in `organizers` can manage that
+      workshop and gets 403 on another; a judge can't be assigned.
 - [ ] **Calendar invites:** sign-up email has an `icalEvent` with a stable UID;
       a time change re-sends with `SEQUENCE` + 1; cancelling sends
       `METHOD:CANCEL` with the same UID.
@@ -123,24 +130,45 @@ for the frontend, wired into CI.
 - **Depends on:** B22, B23.
 
 ## T11. Judging (merged platform)
-- [ ] **Bias (pure unit tests):** hand-computed fixtures for 3 judges × 2
-      tutorial rounds; a judge who scores everyone +2 gets a bias of +2 and is
-      corrected in results; judges with no tutorial scores are left
-      unadjusted (and flagged).
-- [ ] **Assignments (property-style):** for random team/judge/room sets, the
-      generator's output always passes the verifier: every team judged k
-      times, hardware teams only get hardware judges, load within ±1 per
-      judge. A deliberately broken assignment fails the verifier.
-- [ ] **Scoring:** out-of-range / non-integer / missing criteria → 400; a judge
-      scoring a team not assigned to them → 403; rejudge replaces the score
-      (still one row per judge-team); unknown team → 404, not a hang; scoring
-      after freeze → 409.
-- [ ] **Table assignment:** 30 parallel desk check-ins → no two teams share a
-      (room, table); hardware teams land in hardware rooms; the table QR from
-      another table is rejected.
-- [ ] **Permissions:** judges get 403 on every `/api/admin/judging/*` route;
-      none of those routes accept `GET` for changes.
-- **Depends on:** B24a–B24g.
+Write the algorithm tests **before** changing the ported code (B24a): they
+pin down what the 2025 code does, then catch regressions when its bugs are
+fixed.
+- [ ] **Characterization (assignments):** with a seeded RNG, run the ported
+      generator on the 2025 shape (regular rooms 33/49/33/40/22, hardware room
+      31, ~160 projects, 3 judgings each) and on small shapes. Assert the
+      invariants: every project judged exactly k times; no judge sees a
+      project twice; no two judges at one table in the same slot; no two
+      judges start at the same table; load within ±2; hardware projects only
+      get hardware judges (separate pools).
+- [ ] **Verifier fix:** a hand-built case where the 2025
+      `_fixUnderJudgedProjects` creates a slot clash. The old verifier reports
+      success; the fixed one re-runs every check and fails (or places it
+      correctly).
+- [ ] **Bias (pure):** a fixture of 3 judges × 3 calibration rounds computed by
+      hand with the 2025 formula (judge's mean of the general criteria minus
+      the mean of all judges' means, per round, averaged; category the same);
+      a judge who scores everything +2 gets general bias +2; a judge with no
+      calibration gets `null`.
+- [ ] **Results (pure):** the bias-adjusted ranking flips the order of two
+      projects where a strict judge saw one and a generous judge the other;
+      projects with fewer than k scores are flagged.
+- [ ] **Devpost import:** a fixture CSV with the real repeated `TeamMem1*`
+      headers keeps all 4 members with full names (2025 kept one first name);
+      an empty hardware column doesn't crash; re-import updates instead of
+      duplicating; unmatched emails are reported.
+- [ ] **Desk + table check-in:** 30 parallel desk check-ins → unique, continuous
+      table numbers across rooms in order; hardware projects go to the
+      hardware room; room full → clear error; table check-in with another
+      table's token → "wrong table" naming the right one; table check-in
+      before desk → rejected; only projects with both steps get assignments.
+- [ ] **Scoring:** out-of-range / non-integer / missing criteria → 400; a
+      project not in the caller's queue → 403; rescoring is an upsert (one
+      row per judge and project); **scoring a skipped project doesn't advance
+      the queue** (2025 bug); unknown project → 404, not a hang; after freeze →
+      409; the assignment sheet includes the first project.
+- [ ] **Versions:** activating a regenerated version keeps existing scores;
+      removing a judge takes them out of the active queues.
+- **Depends on:** B24a–B24h, B47.
 
 ## T16. Finance
 - [ ] **Money is cents:** amounts are stored and summed as integers; `12.10 +
@@ -177,9 +205,12 @@ approval, every judging admin action). Finance makes this matter more.
 - [ ] One table-driven test file: for **every** mounted route (method + path)
       and every role (`none`, `applicant`, `workshop_organizer`, `judge`,
       `moderator`, `admin`), the expected status class (2xx/4xx/401/403).
+      Judges in particular: 2xx only on `/api/judging/*` and `/api/auth/*`;
+      403 on applications, the attendee QR, staff, admin, workshops and
+      finance.
 - [ ] A guard test that walks Express's router stack and **fails when a route
       exists that isn't in the matrix**, so new routes can't skip review.
-- **Depends on:** B17 (new roles); extend as modules land.
+- **Depends on:** B17, B47 (new roles); extend as modules land.
 
 ## T13. End-to-end event-day flow (Playwright)
 - [ ] Seeded run: apply → admin accepts → (mail mock) acceptance has a QR →

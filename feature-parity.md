@@ -32,8 +32,8 @@ were presumably tracked in spreadsheets, so B33–B37 are a new design.
 | Email confirmation on sign-up (Devise `confirmable`) | 📋 | B40 |
 | Google sign-in | ➕ ✅ | — |
 | Roles: admin / organizer / attendee | ✅ as admin / moderator / applicant | — |
-| Mentor role | ⏸ | B31 |
-| Judge role (judging app used a CSV of logins) | 📋 | B24a |
+| Mentor role | ✖ mentorship runs on Discord | B31 |
+| Judge role (judging app used a CSV of logins) | 📋 | B47 |
 | Workshop organizer role | ➕ 📋 | B17 |
 | Admin role management (`pages#permissions`) | ✅ Users page | — |
 | "Redeem code" to upgrade your own role | ✖ security hole (let anyone become admin) | B17 |
@@ -81,8 +81,8 @@ were presumably tracked in spreadsheets, so B33–B37 are a new design.
 | Events with `rsvpable` + `max_seats` | 📋 (old never enforced seats) | B18, B19 |
 | RSVP / un-RSVP to an event | 📋 | B19, F17 |
 | Per-event attendance check-in | 📋 Top Hat-style code; requires event check-in | B21 |
-| Workshop materials / announcements | ➕ 📋 | B20 |
-| Workshop raffle | ➕ 📋 (draws from attendees checked in to the event) | B21 |
+| Workshop materials / announcements | ➕ 📋 visible to every accepted attendee | B20 |
+| Workshop raffle | ➕ 📋 after the workshop ends, attendees only; winner emailed to collect from the organizer room | B21 |
 | Calendar invites per workshop | ➕ 📋 | B19 |
 
 ## Hardware
@@ -101,28 +101,31 @@ were presumably tracked in spreadsheets, so B33–B37 are a new design.
 
 | Old feature | Status | Task |
 | ----------- | ------ | ---- |
-| Help tickets with screenshot, resolve / deny, search | ⏸ | B31 |
-| Mentor notifications by tech tag; Slack DM link | ⏸ | B31 |
+| Help tickets with screenshot, resolve / deny, search | ✖ created on Discord instead | B31 |
+| Mentor notifications by tech tag; Slack DM link | ✖ Discord | B31 |
 
 ## Projects, prizes & judging
 
 | Old feature | Status | Task |
 | ----------- | ------ | ---- |
-| Project submission with team members | ⏸ Devpost import recommended | B24b |
-| Public project gallery | ⏸ | B24b |
+| Project submission with team members | ✖ projects are imported from Devpost | B24b |
+| Public project gallery | ✖ Devpost hosts it | — |
 | Power-outlet needs per project | 📋 | B24b |
 | Prizes / tracks, participants pick prizes, assign winners | 📋 | B24h |
-| Judge assignments (tags, mass assign), table assignment | 📋 | B24c, B24e |
-| Printed judging forms / table sheets (`paper_judging`) | 📋 | B24c |
-| Judging results + CSV | 📋 | B24g |
-| Judge bias calibration (judging app) | 📋 | B24d |
-| Team table check-in (judging app) | 📋 | B24c |
+| Judge assignments (old Rails: tags, mass assign) | ✖ replaced by the 2025 judging platform's slotted generator | B24a, B24e |
+| Printed judging forms (`paper_judging`) | 🟡 printable table signs only | B24c |
+| Judging results + CSV | 📋 (the 2025 app never computed results) | B24g |
+| **2025 judging:** two-step desk → table check-in | 📋 | B24c |
+| **2025 judging:** calibration rounds + judge bias | 📋 | B24d |
+| **2025 judging:** time-slotted assignments + verifier | 📋 | B24a, B24e |
+| **2025 judging:** one-at-a-time scoring, skip, rejudge, assignment sheet | 📋 | B24f |
+| **2025 judging:** progress board ("leaderboard") | 📋 | B24g |
 
 ## Finance
 
 | Old feature | Status | Task |
 | ----------- | ------ | ---- |
-| Attendee travel reimbursements (2018 branch, never merged) | ⏸ | B39 |
+| Attendee travel reimbursements (2018 branch, never merged) | ✖ not offered this year | B39 |
 | Organizer teams | ➕ 📋 | B33 |
 | Budget with lines (components) owned by teams | ➕ 📋 | B34 |
 | Team expenses, closed when paid by the hackathon | ➕ 📋 | B35 |
