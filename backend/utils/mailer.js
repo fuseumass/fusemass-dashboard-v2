@@ -16,6 +16,21 @@ var QR_IMG_HTML =
   'style="display:block;max-width:100%;height:auto;" />';
 var QR_TEXT = "(Your check-in QR code is attached to this email as an image.)";
 
+// Bare http(s) URLs in a rendered (already HTML-escaped) body. Trailing
+// sentence punctuation is left out of the link.
+var URL_PATTERN = /https?:\/\/[^\s<]+[^\s<.,;:!?)'"]/g;
+
+/**
+ * Make bare URLs in an HTML-escaped email body clickable.
+ * @param {string} html - Escaped HTML.
+ * @returns {string}
+ */
+function linkify(html) {
+  return html.replace(URL_PATTERN, function toLink(url) {
+    return '<a href="' + url + '">' + url + "</a>";
+  });
+}
+
 /**
  * Whether SMTP is configured for outgoing email.
  * @returns {boolean}
@@ -92,6 +107,8 @@ function sendPasswordReset(to, resetUrl) {
  * @param {object} [options] - Extra send options.
  * @param {string} [options.qrId] - Embed this check-in code as a QR image,
  *   where the template says {{qrcode}} or else at the end of the email.
+ * @param {object} [options.icalEvent] - Calendar invite, passed to
+ *   nodemailer as-is: { filename, method, content }.
  * @returns {Promise<void>}
  */
 function sendTemplateEmail(to, templateKey, values, options) {
@@ -118,7 +135,13 @@ function sendTemplateEmail(to, templateKey, values, options) {
       var qrId = options && options.qrId;
       var orgName = process.env.ORG_NAME || "the hackathon";
       var from = process.env.MAIL_FROM || process.env.SMTP_USER;
-      var renderValues = Object.assign({}, values, { orgName: orgName, qrcode: qrId ? QR_MARKER : "" });
+      // Org-wide links come from env so every template can use them.
+      var renderValues = Object.assign({}, values, {
+        orgName: orgName,
+        websiteUrl: process.env.ORG_WEBSITE_URL || "",
+        discordUrl: process.env.ORG_DISCORD_URL || "",
+        qrcode: qrId ? QR_MARKER : "",
+      });
       var body = template.body || "";
       // Templates seeded before {{qrcode}} existed (or edited to drop it)
       // still have to deliver the code, so it goes at the end.
@@ -127,36 +150,39 @@ function sendTemplateEmail(to, templateKey, values, options) {
       }
       var renderedSubject = renderTemplate(template.subject, renderValues);
       var renderedText = renderTemplate(body, renderValues);
-      var renderedHtml = renderTemplate(body, renderValues, { escapeHtml: true }).replace(/\n/g, "<br />");
+      var renderedHtml = linkify(renderTemplate(body, renderValues, { escapeHtml: true })).replace(/\n/g, "<br />");
+
+      var mail = {
+        from: from,
+        to: to,
+        subject: renderedSubject,
+        text: renderedText,
+        html: renderedHtml,
+      };
+      if (options && options.icalEvent) {
+        // Sent as a text/calendar part, which Gmail and Outlook show as an
+        // invite with "Add to calendar".
+        mail.icalEvent = options.icalEvent;
+      }
 
       if (!qrId) {
-        return buildTransport().sendMail({
-          from: from,
-          to: to,
-          subject: renderedSubject,
-          text: renderedText,
-          html: renderedHtml,
-        });
+        return buildTransport().sendMail(mail);
       }
 
       return qrCode.toPngBuffer(qrId).then(function afterRender(png) {
-        return buildTransport().sendMail({
-          from: from,
-          to: to,
-          subject: renderedSubject,
-          text: renderedText.split(QR_MARKER).join(QR_TEXT),
-          html: renderedHtml.split(QR_MARKER).join(QR_IMG_HTML),
-          // Inline (cid:) attachment rather than a data: URL, which Gmail and
-          // Outlook strip from emails.
-          attachments: [
-            {
-              filename: "checkin-qr.png",
-              content: png,
-              contentType: "image/png",
-              cid: QR_CID,
-            },
-          ],
-        });
+        mail.text = renderedText.split(QR_MARKER).join(QR_TEXT);
+        mail.html = renderedHtml.split(QR_MARKER).join(QR_IMG_HTML);
+        // Inline (cid:) attachment rather than a data: URL, which Gmail and
+        // Outlook strip from emails.
+        mail.attachments = [
+          {
+            filename: "checkin-qr.png",
+            content: png,
+            contentType: "image/png",
+            cid: QR_CID,
+          },
+        ];
+        return buildTransport().sendMail(mail);
       });
     })
     .then(function afterSend() {

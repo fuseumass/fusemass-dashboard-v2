@@ -115,6 +115,24 @@ export default function DashboardHome() {
             >
               Your check-in QR code
             </h2>
+            {user.checkedIn
+              ? <p
+                  style={{
+                    marginBottom: "0.5rem",
+                    color: "var(--success)",
+                    fontWeight: 600,
+                  }}
+                >
+                  ✓ You&apos;re checked in
+                  {user.checkedInAt
+                    ? ` (${new Date(user.checkedInAt).toLocaleString([], {
+                        weekday: "short",
+                        hour: "numeric",
+                        minute: "2-digit",
+                      })})`
+                    : ""}
+                </p>
+              : null}
             <p className="muted" style={{ marginBottom: "1rem" }}>
               Show this at event check-in and at every meal. It&apos;s the same
               code as in your acceptance email.

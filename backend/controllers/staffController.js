@@ -7,7 +7,10 @@ const Application = require("../schemas/application");
 const CheckIn = require("../schemas/checkin");
 const MealService = require("../schemas/mealService");
 const MealCheckIn = require("../schemas/mealCheckin");
+const ScheduleEvent = require("../schemas/scheduleEvent");
 const qrCode = require("../utils/qrCode");
+const calendar = require("../utils/calendar");
+const mailer = require("../utils/mailer");
 
 // Event-day staff endpoints (moderators + admins): the first check-in, meal
 // check-ins, and the attendee search used when someone can't show their QR.
@@ -100,6 +103,72 @@ function sendAlreadyCheckedIn(res, attendee, record, message) {
   });
 }
 
+/**
+ * Email a just-arrived attendee the "checked_in" template: Discord + website
+ * links and the run of show, which is also attached as a calendar invite.
+ * Fire-and-forget: a mail failure is logged, never surfaced to the scanner.
+ * @param {object} user - The attendee's User document.
+ * @param {string} name - Name to greet them by.
+ * @returns {Promise<void>}
+ */
+function sendCheckedInEmail(user, name) {
+  return ScheduleEvent.find({})
+    .then(function afterFind(events) {
+      const options = {};
+      if (events.length) {
+        options.icalEvent = {
+          filename: "run-of-show.ics",
+          method: "PUBLISH",
+          content: calendar.buildRunOfShowIcs(events, {
+            orgName: process.env.ORG_NAME || "the hackathon",
+            websiteUrl: process.env.ORG_WEBSITE_URL || "",
+          }),
+        };
+      }
+      return mailer.sendTemplateEmail(
+        user.email,
+        "checked_in",
+        { name: name, runOfShow: calendar.formatRunOfShow(events) },
+        options
+      );
+    })
+    .catch(function onMailError(err) {
+      console.error("Failed to send checked-in email:", err);
+    });
+}
+
+/**
+ * Make sure the user's checkedIn flag matches an existing check-in record
+ * (repairs it if the flag write ever failed after the record was created).
+ * @param {object} user - User document.
+ * @param {object} record - Their CheckIn record.
+ * @returns {Promise<void>}
+ */
+async function syncCheckedInFlag(user, record) {
+  if (!user.checkedIn && record) {
+    await User.updateOne({ _id: user._id }, { $set: { checkedIn: true, checkedInAt: record.checkedInAt } });
+  }
+}
+
+//  GET /api/staff/checkin/stats
+/**
+ * How many accepted attendees there are and how many have checked in, for
+ * the check-in screen's counter.
+ * @param {object} _req - Express request.
+ * @param {object} res - Express response.
+ * @returns {Promise<void>}
+ */
+async function checkInStats(_req, res) {
+  try {
+    const accepted = await Application.distinct("applicant", { status: "accepted" });
+    const checkedIn = await User.countDocuments({ _id: { $in: accepted }, checkedIn: true });
+    return res.json({ accepted: accepted.length, checkedIn: checkedIn });
+  } catch (err) {
+    console.error("checkInStats failed:", err);
+    return res.status(500).json({ error: "Server error" });
+  }
+}
+
 //  GET /api/staff/attendees?q=
 /**
  * Search accepted attendees by name or email (the fallback for anyone without
@@ -159,7 +228,9 @@ async function searchAttendees(req, res) {
 
 //  POST /api/staff/checkin
 /**
- * Mark an accepted attendee as checked in to the event (once per attendee).
+ * Mark an accepted attendee as checked in to the event (once per attendee):
+ * records who/when in CheckIn, sets the user's checkedIn flag, and emails them
+ * the "checked_in" template.
  * Body: { qrId } from a scan, or { userId } from the search.
  * @param {object} req - Express request (req.user set by parseToken).
  * @param {object} res - Express response.
@@ -177,9 +248,13 @@ async function checkInMark(req, res) {
 
     const existing = await CheckIn.findOne({ user: found.user._id }).populate("checkedInBy", "name");
     if (existing) {
+      await syncCheckedInFlag(found.user, existing);
       return sendAlreadyCheckedIn(res, attendee, existing, alreadyMessage);
     }
 
+    // The unique index on CheckIn.user is the guard: of two simultaneous
+    // scans only one create succeeds, so only that request sets the flag and
+    // sends the email.
     let checkIn;
     try {
       checkIn = await CheckIn.create({
@@ -187,7 +262,6 @@ async function checkInMark(req, res) {
         checkedInBy: req.user.id,
       });
     } catch (err) {
-      // Two scans of the same code at once: the unique index let only one in.
       if (err && err.code === 11000) {
         const winner = await CheckIn.findOne({ user: found.user._id }).populate("checkedInBy", "name");
         return sendAlreadyCheckedIn(res, attendee, winner, alreadyMessage);
@@ -195,11 +269,18 @@ async function checkInMark(req, res) {
       throw err;
     }
 
-    return res.status(201).json({
+    await User.updateOne(
+      { _id: found.user._id },
+      { $set: { checkedIn: true, checkedInAt: checkIn.checkedInAt } }
+    );
+
+    res.status(201).json({
       success: true,
       attendee: attendee,
       checkIn: checkIn,
     });
+    sendCheckedInEmail(found.user, attendee.name);
+    return undefined;
   } catch (err) {
     console.error("checkInMark failed:", err);
     return res.status(500).json({ error: "Server error" });
@@ -334,6 +415,7 @@ async function mealCheckInMark(req, res) {
 }
 
 module.exports = {
+  checkInStats: checkInStats,
   searchAttendees: searchAttendees,
   checkInMark: checkInMark,
   getCheckInStatus: getCheckInStatus,

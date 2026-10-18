@@ -67,6 +67,17 @@ var userSchema = new Schema(
       unique: true,
       sparse: true,
     },
+    // Whether the attendee has arrived (first event check-in). Flipped once,
+    // atomically, by POST /api/staff/checkin; the CheckIn collection keeps the
+    // who/when record.
+    checkedIn: {
+      type: Boolean,
+      default: false,
+      index: true,
+    },
+    checkedInAt: {
+      type: Date,
+    },
   },
   { timestamps: true }
 );

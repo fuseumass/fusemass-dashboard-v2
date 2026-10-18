@@ -23,11 +23,20 @@ var DEFAULT_TEMPLATES = [
     body:
       "Hi {{name}},\n\nThank you for applying to {{orgName}}. After review, your application was not selected.\n\nStatus: {{status}}",
   },
+  {
+    // Sent when staff check an attendee in on arrival. The run of show is
+    // also attached as a calendar invite.
+    key: "checked_in",
+    subject: "You're checked in to {{orgName}}!",
+    body:
+      "Hi {{name}},\n\nYou're checked in to {{orgName}}. Welcome!\n\nIf you haven't joined our Discord yet, join now. It's where announcements, mentors and team-finding happen: {{discordUrl}}\n\n{{runOfShow}}\n\nSchedule updates, FAQs, maps and prizes are on our website: {{websiteUrl}}\n\nHappy hacking!",
+  },
 ];
 
 // Derived from DEFAULT_TEMPLATES rather than written out again, so the two can
-// never drift. These three keys are referenced by name from application and
-// decision flows, so renaming or deleting one silently stops those emails.
+// never drift. These keys are referenced by name from the application,
+// decision and check-in flows, so renaming or deleting one silently stops
+// those emails.
 var BUILT_IN_KEYS = DEFAULT_TEMPLATES.map(function pickKey(template) {
   return template.key;
 });

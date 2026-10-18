@@ -18,6 +18,14 @@ router.get(
     staffController.searchAttendees
 );
 
+// Registered before /checkin/:userId so "stats" isn't read as a user id.
+router.get(
+    "/checkin/stats",
+    isAuthenticated,
+    isModerator,
+    staffController.checkInStats
+);
+
 // Body: { qrId } (scanned) or { userId } (from the attendee search).
 router.post(
     "/checkin",

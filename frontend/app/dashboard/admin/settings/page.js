@@ -37,9 +37,18 @@ var TEMPLATE_LABELS = {
   application_received: "Application Received",
   application_accepted: "Application Accepted",
   application_rejected: "Application Rejected",
+  checked_in: "Checked In",
 };
 
-var PLACEHOLDER_GUIDE = ["{{name}}", "{{status}}", "{{orgName}}", "{{qrcode}}"];
+var PLACEHOLDER_GUIDE = [
+  "{{name}}",
+  "{{status}}",
+  "{{orgName}}",
+  "{{websiteUrl}}",
+  "{{discordUrl}}",
+  "{{qrcode}}",
+  "{{runOfShow}}",
+];
 
 function renderPreview(template, values) {
   if (!template) return "";
@@ -150,6 +159,10 @@ function EmailTemplateEditor() {
     status: "accepted",
     orgName: "FuseMass",
     qrcode: "[check-in QR code]",
+    websiteUrl: "https://hackathon.com",
+    discordUrl: "https://discord.gg/your-invite",
+    runOfShow:
+      "Run of show (also attached as a calendar invite):\nSat, Oct 24, 10:00 AM – 11:00 AM: Opening ceremony (Main hall)",
   };
 
   return (
@@ -267,7 +280,10 @@ function EmailTemplateEditor() {
                 >
                   {"{{qrcode}}"} places the attendee&apos;s check-in QR code
                   (acceptance email only). If it&apos;s left out, the code is
-                  added at the end.
+                  added at the end. {"{{runOfShow}}"} lists the schedule
+                  (checked-in email only). {"{{websiteUrl}}"} and{" "}
+                  {"{{discordUrl}}"} come from the server&apos;s ORG_WEBSITE_URL
+                  / ORG_DISCORD_URL.
                 </div>
               </div>
 
