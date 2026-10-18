@@ -25,6 +25,9 @@ admin **Meals** and **Run of show** pages, and the shared
 `components/QRScanner` + `components/CheckInStation`, which the hardware and
 judging screens below should reuse.
 
+Every old-platform feature and its task is tracked in
+[`feature-parity.md`](./feature-parity.md).
+
 > **Before writing routing code:** this is Next.js 16 (App Router) with breaking
 > changes. Read the relevant guide in `frontend/node_modules/next/dist/docs/`
 > first (see `frontend/AGENTS.md`).
@@ -237,6 +240,9 @@ serving.
 - [ ] "Today" view: next run-of-show items, my workshops (F17), my hardware
       (F20), Discord + website links, QR always one tap away (pinned on
       mobile).
+- [ ] `/dashboard/schedule`: the full run of show + workshops for attendees
+      (the old dashboard had one), grouped by day, in the event time zone,
+      with the current item highlighted and "Add to calendar".
 - **Depends on:** B27. **Related:** F14.
 
 ---
@@ -253,10 +259,14 @@ serving.
       feed (read-only, newest first, pinned posts on top, file chips that
       download through the signed-URL endpoint, linkified text, relative
       times; polls every ~15 s).
-- [ ] **Raffle:** "Enter raffle code" input on the workshop page (large,
-      auto-uppercase, 6 characters); shows "You're in the raffle" once
-      entered; friendly errors for an expired or wrong code and for rate
-      limits.
+- [ ] **Attendance (Top Hat-style):** while the organizer has attendance
+      open, the workshop page (and a banner on the home page) shows "Enter the
+      code on screen": a large, auto-uppercase, 4–6 character input that
+      submits on the last character. Then "You're checked in, and you're in
+      the raffle". Friendly errors for a wrong or stale code, attendance being
+      closed, or too many tries.
+- [ ] **Raffle results:** "You won <prize>, pick it up from <organizer>" on
+      the workshop page and the home page.
 - **Depends on:** B18, B19, B20, B21. **Related:** T9.
 
 ### F18. Workshop organizer screens
@@ -268,10 +278,15 @@ Visible only to `workshop_organizer`s for **their** workshops (plus admins).
     upload), post, pin/unpin, edit, delete; the feed below like a chat
     history.
   - **Sign-ups:** count vs capacity, list, CSV download.
-  - **Raffle:** generate/regenerate the code, countdown to expiry, live entry
-    count, **Present** mode (full-screen code for the projector, huge
-    monospace characters, high contrast), draw N winners with a reveal, and
-    the winners history.
+  - **Attendance:** open (duration), extend and close; **Present** mode, a
+    full-screen view for the projector with the rotating code in huge
+    monospace characters, a countdown ring to the next rotation, and an
+    optional QR; a live attendee count; "Add attendee" by scanning their QR
+    (reuse `CheckInStation`) for people without a phone; signed up vs
+    attended.
+  - **Raffle** (from attendees only): prize name + number of winners → draw
+    with a short reveal in Present mode; mark claimed or redraw for no-shows;
+    history of draws.
 - **Depends on:** B17, B20, B21, F13 (kiosk layout for Present mode).
 
 ### F19. Admin workshop management
@@ -323,6 +338,8 @@ walking the floor: build mobile-first.**
 - [ ] **Team table check-in:** desk screen (scan a member's QR → table
       assignment) and the participant flow (logged-in member scans the table
       QR).
+- [ ] **Prizes** (B24h): admin CRUD, the winners picker from results, and a
+      published winners page.
 - **Depends on:** B24a–B24g. **Related:** T11.
 
 ### F5. Hardware data view (moderators)
@@ -330,6 +347,68 @@ Replaced by **F20**.
 
 ### F6. Judging progress view (moderators)
 Replaced by **F21**.
+
+---
+
+## Finance (moderators + admins only)
+
+Money is shown with `Intl.NumberFormat` in the budget's currency. Inputs take
+dollars and send cents (never send floats). Finance nav items are hidden from
+every other role (also enforced by the API, B33–B36).
+
+### F23. Teams and budget setup (admin)
+- [ ] `/dashboard/admin/finance/teams`: create teams, add/remove moderators
+      and admins (user search `Command`), mark leads; a warning badge on
+      members who are no longer staff.
+- [ ] `/dashboard/admin/finance/budget`: the budget's lines in a `DataTable`
+      grouped by team: allocated / committed / spent / remaining, an inline
+      progress bar per line (red when over), add/edit line `Dialog`,
+      reallocation with a required reason (shown in the line's history), and a
+      lock budget action with confirmation.
+- **Depends on:** B33, B34.
+
+### F24. Team budgets and expenses (mods + admins)
+- [ ] `/dashboard/finance`: one card per team I'm on, with allocated vs spent
+      vs committed and a small spend-over-time chart, then that team's lines.
+- [ ] Add expense (`Sheet` form): line (only my teams' lines), vendor,
+      description, amount, date, **"Who paid?"** = *the hackathon* (org card /
+      invoice) or *me* (turns it into a reimbursement request, F25), and
+      receipt drag-and-drop with image/PDF preview.
+- [ ] Expenses `DataTable`: filters (team, line, status, payer, date), status
+      `Badge`s (`open`, `closed`, `submitted`, `approved`, `paid`, `rejected`,
+      `voided`), row `Sheet` with receipts, the history timeline, and actions
+      allowed for my role: **Mark closed** (paid by the hackathon, with a
+      receipt), edit while open, void with a reason.
+- **Depends on:** B35. **Related:** F15 (forms, tables).
+
+### F25. Reimbursements and money owed
+- [ ] **Mine** (`/dashboard/finance/reimbursements`): my requests with status,
+      amount and dates; withdraw while submitted; my payout handle (Venmo/Zelle
+      username) in a profile field, with "only finance admins can see this".
+- [ ] **Admin queue** (`/dashboard/admin/finance/reimbursements`): tabs
+      *To review* / *Approved, unpaid* / *Paid* / *Rejected*. Approve or
+      reject (reason required); **Mark paid**, single or batch, with method +
+      reference. Controls are disabled with a tooltip on your own requests
+      (separation of duties).
+- [ ] **Owed** summary at the top: total approved-but-unpaid, awaiting review,
+      a per-person list (name, amount owed, oldest request age, payout handle),
+      and CSV export.
+- [ ] Reports page: budget vs actual by team and line, and an exports menu
+      (expenses CSV, reimbursements CSV, receipts zip for a date range) (B37).
+- **Depends on:** B36, B37. **Related:** T16.
+
+---
+
+## Admin insights
+
+### F26. Statistics page
+- [ ] `/dashboard/admin/stats`: KPI row (applications, accepted, checked in,
+      meals served, workshop attendance, hardware out), applications by
+      status over time, and breakdowns by school, education level,
+      graduation year, first-time hackers, and gender. Use the charts from
+      shadcn (Recharts) and the theme tokens (F11) for series colours.
+- [ ] Event-day mode: auto-refresh every 30 s for a lobby screen.
+- **Depends on:** B43.
 
 ---
 

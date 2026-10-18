@@ -87,10 +87,19 @@ for the frontend, wired into CI.
       upload; non-signed-up user can't list posts or fetch files (per the B20
       decision); the file endpoint returns a short-lived URL, never a
       permanent one.
-- [ ] **Raffle:** wrong code / expired code / regenerated old code → rejected;
-      one entry per user (parallel duplicates → one row); the rate limiter
-      trips; a draw never picks a previous winner and returns `count`
-      distinct users; draws are stored for audit.
+- [ ] **Attendance codes** (pure unit tests on the code function, with a fake
+      clock): the code changes every period; the current and previous codes
+      are accepted, the one before that isn't; different sessions give
+      different codes.
+- [ ] **Attendance API:** closed session or wrong code → rejected; parallel
+      duplicate submissions → one row and both answer 200; a `userId` in the
+      body is ignored; the rate limit and per-session lockout trip; staff add
+      via QR works only for `canManageWorkshop`.
+- [ ] **Raffle:** draws only ever pick attendees of *that* workshop (seed
+      sign-ups who never attended and assert they're never drawn); `count`
+      distinct winners; no repeat winners in the same workshop; a redraw
+      excludes the no-show; the event-wide win cap holds; every draw is
+      stored with its pool size.
 - [ ] **Calendar invites:** sign-up email has an `icalEvent` with a stable UID;
       a time change re-sends with `SEQUENCE` + 1; cancelling sends
       `METHOD:CANCEL` with the same UID.
@@ -129,10 +138,36 @@ for the frontend, wired into CI.
       none of those routes accept `GET` for changes.
 - **Depends on:** B24a–B24g.
 
+## T16. Finance
+- [ ] **Money is cents:** amounts are stored and summed as integers; `12.10 +
+      0.20` style inputs never produce float drift; non-integer cents or
+      negative amounts → 400.
+- [ ] **Totals:** for a seeded budget (lines across 2 teams; open, closed,
+      submitted, approved, paid, rejected and voided expenses), the summary
+      gives exact allocated / committed / spent / remaining per line, team and
+      budget; rejected and voided count nowhere.
+- [ ] **State machine:** every allowed transition works and every other one is
+      a 409 (e.g. `paid` → `approved`, closing a `personal` expense, approving
+      a withdrawn request); each transition appends to history.
+- [ ] **Separation of duties:** an admin can't approve or pay their own
+      request; another admin can; a single-admin deployment gets the
+      explanatory error.
+- [ ] **Scoping:** a moderator can add expenses only to their teams' lines
+      (other lines → 403) and sees only their teams' detail; demoting a member
+      to applicant removes finance access immediately; applicants, judges and
+      workshop organizers get 403 on every finance route.
+- [ ] **Locking:** a locked budget rejects every write under it.
+- [ ] **Receipts:** a personal expense without a receipt → 400; another team's
+      moderator can't fetch a receipt; the download is a short-lived URL.
+- [ ] **Owed view:** approved-unpaid total and per-person amounts match the
+      seeded data; a batch "mark paid" updates all of them with one reference
+      and sends one email each (mail mock).
+- **Depends on:** B33–B37.
+
 ## T12. Role × route permission matrix
 Missing permission checks were the most common bug in both old platforms
-(hardware checkout, RSVPs, prizes, mentorship tickets, every judging admin
-action).
+(hardware checkout, RSVPs, prizes, mentorship tickets, travel-reimbursement
+approval, every judging admin action). Finance makes this matter more.
 - [ ] One table-driven test file: for **every** mounted route (method + path)
       and every role (`none`, `applicant`, `workshop_organizer`, `judge`,
       `moderator`, `admin`), the expected status class (2xx/4xx/401/403).

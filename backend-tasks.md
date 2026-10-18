@@ -28,9 +28,11 @@ the `checked_in` email (Discord + website links from `ORG_WEBSITE_URL` /
 
 ### Where these tasks come from
 
-Most of the new tasks port features from the two platforms we used before,
-fixing their bugs on the way. Each task has a **Don't repeat** list of the bugs
-found in the old code.
+Most of the new tasks port features from the platforms we used before, fixing
+their bugs on the way. Each task has a **Don't repeat** list of the bugs found
+in the old code. **[`feature-parity.md`](./feature-parity.md) lists every old
+feature, its status here, and its task;** update it when you land or drop
+something.
 
 - **Old dashboard** ([fuseumass/dashboard](https://github.com/fuseumass/dashboard),
   Rails, last commit 2023). It had registration, QR check-in, hardware
@@ -106,9 +108,16 @@ platform had to bolt on a `/check-failed-emails` page for the same reason.
       infrastructure).
 - [ ] Admin: list failures, resend one, and **resend acceptance emails**
       (needed for anyone accepted before QR codes shipped).
-- [ ] Bulk email to a segment (accepted / checked in / workshop sign-ups /
-      people still holding hardware). This replaces the old dashboard's
-      mass-email and Slack-blast features.
+- [ ] Bulk email to a segment (not applied / pending / accepted / waitlisted /
+      rejected / checked in / workshop sign-ups / people still holding
+      hardware / "test to myself"). This replaces the old dashboard's
+      mailing lists and Slack blasts.
+- [ ] **Consent:** add `User.marketingEmailConsent` (asked at sign-up,
+      editable in profile, off by default) and an unsubscribe link. Bulk
+      *announcement* emails go only to people who consented; transactional
+      ones (decisions, QR, check-in, workshop invites, hardware receipts) always
+      send. The old dashboard enforced this (`non_transactional_email_consent`)
+      and had a branch for the SendGrid opt-in/opt-out rules; we don't yet.
 - **Depends on:** none. **Related:** B21 (raffle winners), B22 (hardware
   reminders), B24c (table emails).
 
@@ -239,28 +248,57 @@ organizers post, attendees don't reply.
       needed. No websockets.
 - **Depends on:** B17, B18. **Related:** F18, T9.
 
-### B21. Workshop raffle codes
-At the workshop the organizer shows a code on screen; attendees in the room
-enter it on the dashboard to get a raffle entry; the organizer draws a winner.
-- [ ] Organizer generates a code: `POST /api/workshops/:id/raffle/code`
-      (`canManageWorkshop`). Make it 6 characters from an unambiguous alphabet
-      (no 0/O/1/I), random via `crypto.randomInt`, valid for a configurable
-      window (default 15 min), regenerable (the old code stops working).
-- [ ] Attendee enters it: `POST /api/workshops/:id/raffle/enter { code }`. One
-      entry per user per workshop (unique index), only while the code is
-      live. **Decision needed:** require being signed up and/or event
-      checked-in? Recommend requiring event check-in only.
-- [ ] Rate-limit attempts per user + IP (e.g. 10/min). Six characters from 30
-      symbols is ~730M codes, but only with a limiter.
-- [ ] `GET /api/workshops/:id/raffle/entries` (organizer: count + list).
-- [ ] `POST /api/workshops/:id/raffle/draw { count }`: pick winners with
-      `crypto.randomInt`, excluding previous winners of the same workshop.
-      Store each draw (who, when, winners) for audit; email winners via B26.
-- [ ] An admin view across workshops, so one person can't win every raffle
-      (configurable: max wins per attendee).
-- **Don't repeat:** don't reuse the old `redeem_code` pattern (B17). A raffle
-  code only ever creates a raffle entry.
-- **Depends on:** B18, B19. **Related:** F17, F18, T9.
+### B21. Workshop attendance (Top Hat-style) + raffle
+Raffles happen **after** a Top Hat-style attendance check-in at each workshop:
+1. During the workshop the organizer opens attendance, and a short code shows
+   on the projector.
+2. Attendees in the room type it on their dashboard, which records
+   attendance.
+3. At the end the organizer draws raffle winners **from the attendees**. No
+   separate raffle code.
+
+**Attendance**
+- [ ] `schemas/workshopAttendance.js`: `user`, `workshop`, `checkedInAt`,
+      `method` (`code` | `staff`), `addedBy?`; unique index on
+      (user, workshop).
+- [ ] Attendance session: `POST /api/workshops/:id/attendance/open`
+      (`canManageWorkshop`) with a duration (default 10 min); `extend` and
+      `close` endpoints. One open session per workshop at a time.
+- [ ] **Rotating code**, like Top Hat: 4–6 characters from an unambiguous
+      alphabet (no 0/O/1/I), changing every 30–60 s so a code texted to
+      friends outside goes stale. Derive it as
+      `HMAC(sessionSecret, floor(now / period))` so nothing is stored per
+      rotation. Accept the **current and previous** code to allow for typing
+      lag.
+- [ ] `GET /api/workshops/:id/attendance/code` (organizer): current code +
+      seconds until it rotates, for Present mode (F18). Optionally also return
+      a URL with the code embedded, for a QR attendees can scan.
+- [ ] Attendee: `POST /api/workshops/:id/attendance { code }`. Only accepted
+      applicants with an open session and a valid code; idempotent (a repeat
+      is a 200 "already here", not an error). Ignore any user id in the body.
+      **Decision needed:** require event check-in and/or a workshop sign-up?
+      Recommend event check-in only, so walk-ins count.
+- [ ] Brute-force protection: rate-limit attempts per user + IP (e.g. 10/min)
+      and lock a user out of the session after ~10 wrong codes.
+- [ ] Staff override: organizer adds someone without a phone by scanning their
+      dashboard QR (`resolveAttendee` + `CheckInStation`), `method: "staff"`.
+- [ ] Stats: signed up vs attended vs walk-ins, attendance CSV.
+
+**Raffle**
+- [ ] Eligible pool = this workshop's attendees (`raffleEnabled` on the
+      workshop). Optional event-wide cap: max raffle wins per attendee across
+      all workshops.
+- [ ] `POST /api/workshops/:id/raffle/draw { count, prize }`
+      (`canManageWorkshop`): pick `count` distinct winners with
+      `crypto.randomInt`, excluding this workshop's previous winners. Store
+      every draw (who drew, when, prize, pool size, winners) for audit.
+- [ ] Claiming: organizer marks a winner `claimed`, or `redraw` for a no-show.
+      A redraw excludes the no-show and is recorded too.
+- [ ] Email winners (B26) and show "You won …" on their dashboard (F17).
+- [ ] Admin view across workshops: all draws and winners, for prize stock.
+- **Don't repeat:** don't reuse the old `redeem_code` pattern (B17). A
+  workshop code only ever records attendance.
+- **Depends on:** B18, B26. **Related:** F17, F18, T9.
 
 ---
 
@@ -317,6 +355,9 @@ check them back in on return.
 - [ ] Optional: request/reserve an item for pickup (a queue staff see on the
       checkout screen). Neither old platform had this; build only if
       organizers want it.
+- [ ] **Facilities:** an admin-editable list of on-site resources that aren't
+      checked out (makerspaces, soldering, 3D printing, laser cutter, …;
+      `hum-xii` had this as a static page), with location and access notes.
 - **Depends on:** B22. **Related:** F20.
 
 ---
@@ -361,7 +402,9 @@ in this order; each subtask is its own PR.
 ### B24b. Teams / projects
 - [ ] `schemas/team.js`: `name`, `members: [User]` (not `Mem1Name..Mem4Email`
       columns), `contactEmail`, `devpostUrl`, `categories: [String]`
-      (tracks/prizes), `hardware: Boolean`, `room`, `table`, `tableCheckedIn`.
+      (tracks/prizes), `hardware: Boolean`, `needsPower: Boolean` (the old
+      dashboard seated these near outlets), `room`, `table`,
+      `tableCheckedIn`.
 - [ ] Admin import from the Devpost CSV export: upload → server-side validation
       → preview diff → confirm. Match members to Users by email and report
       unmatched ones. Re-importing updates rather than duplicates.
@@ -381,6 +424,8 @@ in this order; each subtask is its own PR.
       `sha256("Table N")`.
 - [ ] Email each team its room/table via the mailer + a template (B26), not
       SendGrid.
+- [ ] Printable output (the old `paper_judging` made PDFs): table signs with
+      the table QR, and a paper rubric per team as a backup if Wi-Fi dies.
 - **Depends on:** B24b.
 
 ### B24d. Judge calibration (tutorial rounds) + bias
@@ -419,6 +464,218 @@ in this order; each subtask is its own PR.
       few scores. Admin only; CSV export.
 - [ ] Freeze switch: lock scoring once judging closes.
 - **Depends on:** B24d, B24f.
+
+### B24h. Prizes and winners
+The old dashboard had prizes as data, not just Devpost text.
+- [ ] `schemas/prize.js`: `name`, `sponsor`, `description`, `criteria`,
+      `track` (the judging category it maps to), `quantity`, `winners: [Team]`.
+- [ ] Admin CRUD; teams opt into prizes (from the Devpost import, or chosen in
+      the dashboard if B24b adds submission).
+- [ ] Assign winners from the results (B24g); publish the winners list.
+- **Don't repeat:** the old `prizes` controller guarded `show`/`new`/`edit` but
+  **not** `create`/`update`/`destroy`, so any logged-in user could change
+  prizes by POSTing directly.
+- **Depends on:** B24b, B24g.
+
+---
+
+## Finance
+
+No old platform had budgets or organizer expenses. The only finance code ever
+written is a 2018 travel-reimbursement branch that was never merged (B39).
+This is a new design. **Rules for every finance task:**
+- Money is an **integer number of cents** plus a currency code (default
+  `USD`, per deployment). Never floats; the 2018 code used `float`.
+- Only **moderators and admins** see finance; it's invisible to applicants,
+  judges and workshop organizers (T12).
+- Every status change is appended to the record's history (`status`, `by`,
+  `at`, `note`). Records are voided, never hard-deleted.
+- **Nobody approves or pays their own reimbursement**, admins included.
+- Receipts are private (same Azure private container + short-lived SAS URL
+  pattern as B20).
+
+### B33. Organizer teams
+- [ ] `schemas/orgTeam.js`: `name` (Logistics, Food, Marketing, Tech, …),
+      `description`, `members: [User]`, `leads: [User]`.
+      Members must be moderators or admins: enforce on add, and when someone
+      is demoted, flag them on their teams for an admin to remove.
+- [ ] Admin CRUD + membership (`/api/admin/teams`). A person can be on several
+      teams.
+- [ ] `utils/isTeamMember` guard: admins pass; otherwise the caller must be a
+      member of the team in `req.params` (or of the team that owns the budget
+      line being touched).
+- [ ] General-purpose: later tasks can reuse teams (e.g. hardware desk or
+      check-in shifts).
+- **Depends on:** none. **Related:** F23, T16.
+
+### B34. Budget and budget lines
+- [ ] `schemas/budget.js`: `name` (e.g. "HackUMass XIII"), `currency`,
+      `periodStart`/`periodEnd`, `status` (`open` | `locked`). Locking makes
+      everything under it read-only once the books close.
+- [ ] `schemas/budgetLine.js`: one **component** of the budget (Catering,
+      Venue, Swag, Prizes, Travel, …): `budget`, `team` (B33, the owner),
+      `name`, `category`, `allocatedCents`, `notes`.
+- [ ] Admin CRUD. Changing `allocatedCents` records a reallocation entry
+      (old → new, who, why).
+- [ ] Computed per line, per team and per budget:
+      **allocated**; **committed** (open hackathon-paid expenses + submitted
+      or approved reimbursements); **spent** (closed expenses + paid
+      reimbursements); **remaining** = allocated − spent − committed.
+      Flag lines that are over budget.
+- [ ] `GET /api/finance/summary`: admins get everything; moderators get their
+      teams' lines in detail. **Decision needed:** may mods see other teams'
+      totals? Recommend totals only, no line items.
+- **Depends on:** B33. **Related:** F23, F24.
+
+### B35. Team expenses
+Any moderator or admin can add an expense to a budget line owned by one of
+their teams (admins: any line).
+- [ ] `schemas/expense.js`: `budgetLine`, `team` (copied from the line),
+      `submittedBy`, `vendor`, `description`, `amountCents`, `currency`,
+      `incurredAt`, `paidBy` (`hackathon` | `personal`),
+      `receipts: [{ blobName, name, size, contentType }]`, `status`,
+      `history`, `closedAt`, `closedBy`.
+- [ ] **`paidBy: "hackathon"`** (org card, an invoice the university or
+      student government pays, a purchase order): starts `open`, which counts
+      as **committed**. Any member of the owning team, or an admin, marks it
+      **`closed`** once the hackathon has paid; it then counts as **spent**.
+      Closing requires a receipt or invoice (configurable), and is recorded
+      with who and when.
+- [ ] **`paidBy: "personal"`**: the person paid out of pocket, so it's a
+      reimbursement request and follows B36.
+- [ ] Editable by the submitter or an admin only while `open`/`submitted`.
+      After approval or closing, changing the amount means **reopening**
+      (admin, with a reason, recorded in history).
+- [ ] Void instead of delete (`status: "voided"`, reason required).
+- [ ] Receipts: multipart upload (pdf/jpg/png/heic, ≤10 MB each), private blob
+      storage, download through an access-checked SAS redirect.
+- [ ] List and filter by team, line, status, payer, date; mods see their
+      teams' expenses plus their own.
+- **Depends on:** B33, B34. **Related:** F24, T16.
+
+### B36. Reimbursements and money owed
+All moderators and admins can submit reimbursement requests; admins track and
+pay out what's owed.
+- [ ] Submitting = creating a `paidBy: "personal"` expense (B35) on a line of
+      one of the submitter's teams; a receipt is **required**. **Decision
+      needed:** allow "uncategorized" requests for admins to file later?
+      Recommend no: pick a line; admins can move it.
+- [ ] States: `submitted` → `approved` | `rejected` (reason required) →
+      `paid` (closed). The submitter can `withdraw` while `submitted`.
+      Enforce these transitions in one place (`utils/expenseStatus.js`); any
+      other transition gets a 409.
+- [ ] **Separation of duties:** the approver and the payer must not be the
+      submitter, even for admins. With a single admin, finance actions on that
+      admin's own requests are blocked until a second admin exists. Say so in
+      the error.
+- [ ] Payment record: `paidAt`, `paidByUser`, `method` (check, Venmo, Zelle,
+      direct deposit, university reimbursement form), `reference` (check
+      number / transaction id), `note`. **Don't store bank or account
+      numbers.** A submitter's payout handle (e.g. Venmo username) lives on
+      their profile and is visible only to admins.
+- [ ] Batch payout: mark many approved requests `paid` in one action with a
+      shared reference (a weekly payout run).
+- [ ] **Owed** view for admins (`GET /api/admin/finance/owed`):
+      approved-but-unpaid total (the money still to be paid out), submitted
+      awaiting review, per person owed, per team, oldest first, with age in
+      days.
+- [ ] Email the submitter on every transition (B26).
+- **Depends on:** B35. **Related:** F25, T16.
+
+### B37. Finance reports and exports
+- [ ] CSV exports: expenses (any filter), reimbursements with payment details,
+      budget vs actual by team and line.
+- [ ] Receipts bundle: a zip of every receipt in a date range, named
+      `<date>_<vendor>_<amount>`, for the university finance office.
+- [ ] Spend over time per team (for the F24 chart).
+- **Depends on:** B34–B36.
+
+### B38. Funding and sponsorship income (+ HackerForce)
+- [ ] `schemas/income.js`: `budget`, `source` (sponsor, grant, university,
+      other), `name`, `amountCents`, `status` (`pledged` | `received`),
+      `receivedAt`, `notes`. Show funded vs allocated vs spent per budget.
+- [ ] **Decision needed:** HackerForce (`fuseumass/hackerforce`, Django) already
+      tracks sponsor companies, contacts, tiers, perks, each sponsorship's
+      `contribution` and status, and the fundraising goal. Options: (a) keep it
+      separate and import confirmed sponsorships as `income` (CSV); (b) port it
+      into this dashboard as a Sponsors module. Recommend (a) for this year.
+- **Depends on:** B34.
+
+### B39. Attendee travel reimbursements (deferred)
+The 2018 `hackumass-web` branch `travel-reimbursements` let attendees file
+travel claims with a receipt, grouped into travel groups (name, budget
+amount, departure city); organizers toggled "approved", had "approve all", and
+printed cost sheets. It was never merged.
+- [ ] **Decision needed:** offer travel reimbursement this year? If yes, reuse
+      the B36 pipeline: attendee submitters (their own requests only),
+      a "Travel" budget line, caps per travel group or region, admin approve +
+      pay.
+- **Don't repeat:** `approved` was in the submitter's permitted form fields, so
+  anyone could approve their own claim. `update`/`destroy` had no owner
+  check. Money was a `float`.
+- **Depends on:** B36.
+
+---
+
+## Registration gaps (found in the parity review)
+
+### B40. Email verification on sign-up
+The old dashboard confirmed emails (Devise `confirmable`); we don't, so anyone
+can register with someone else's address, and their acceptance QR goes there.
+- [ ] Send a verification link on register (token hashed in the DB, like the
+      reset token; 24 h expiry); `POST /api/auth/verify-email`; resend
+      endpoint (rate-limited).
+- [ ] Applying requires a verified email. Google sign-ins count as verified.
+- [ ] Existing users: treat as verified (or re-verify on next login: decide).
+- **Depends on:** none.
+
+### B41. Waitlist email and waitlist mode
+- [ ] Deciding "waitlisted" currently sends **no email**: `DECISION_TEMPLATE_KEYS`
+      in `adminController` only has accepted/rejected. Add a built-in
+      `application_waitlisted` template and send it.
+- [ ] Optional waitlist mode (the old dashboard had it): once a round reaches a
+      configured number of accepted applicants, new applications are
+      waitlisted automatically and told so.
+- **Depends on:** none.
+
+### B42. Flag suspicious applications
+- [ ] `Application.flagged`, `flagReasons: [String]`, `flaggedBy`; moderators
+      can flag/unflag with a reason; review list filter + count.
+- [ ] Optional automatic checks on submit: resume text too short, resume
+      doesn't mention the applicant's name, duplicate phone or resume across
+      accounts.
+- **Don't repeat:** the old auto-flag (`event_application.rb`) had a misplaced
+  `!` in its university/major check, so it flagged the wrong applications.
+  Write the rule as a small pure function with tests.
+- **Depends on:** none.
+
+### B43. Admin statistics
+- [ ] `GET /api/admin/stats`: applications by status and round, by
+      school/education level/gender/major/graduation year, first-time
+      hackers, submissions per day; on event day, checked-in count, meals
+      served, workshop attendance, hardware out.
+- [ ] Aggregations in Mongo (`$group`), not loading every document.
+- **Depends on:** none. **Related:** F26.
+
+### B44. Force check-in (admin override)
+- [ ] Admins can check in someone whose application isn't accepted (a walk-in
+      approved at the desk), with a required reason, recorded on the CheckIn.
+      The old dashboard had this, but as a client-side `force_check_in` flag
+      anyone could send; ours must check `isAdmin` on the server.
+- **Depends on:** check-in on `feature/qr-checkin`.
+
+### B45. Public schedule feed for the hackathon website
+- [ ] `GET /api/public/schedule` (no auth, cached): published run-of-show
+      items + published workshops, so the hackathon website (e.g.
+      `fuseumass/hackumass-website`) can show the live schedule instead of
+      copying it. Also a public `.ics` of the same.
+- **Depends on:** B18.
+
+### B46. Error reporting
+The old dashboard reported errors to Sentry (Raven); we only `console.error`.
+- [ ] Optional Sentry (or similar) via `SENTRY_DSN` on backend and frontend;
+      off when unset. Scrub emails, tokens and resume URLs before sending.
+- **Depends on:** none.
 
 ---
 

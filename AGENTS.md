@@ -42,6 +42,9 @@ platform — no hackathon-specific names in code; branding comes from env vars.
 - Backlog lives in [`backend-tasks.md`](./backend-tasks.md),
   [`frontend-tasks.md`](./frontend-tasks.md), and
   [`testing-tasks.md`](./testing-tasks.md) (cross-linked as `B#`/`F#`/`T#`).
+  [`feature-parity.md`](./feature-parity.md) tracks every feature of the old
+  platforms (old dashboard, judging app, HackerForce) against this one;
+  update its row when you land or drop a feature.
 - **Roles:** `applicant` (default) → can only apply; `moderator` → reviews
   applications (approve/reject) and later hardware/judging views; `admin` →
   everything, including org setup (settings, rounds, promoting users, editing
