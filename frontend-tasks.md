@@ -18,19 +18,198 @@ fields), the applicant home, and the admin **Review**, **Users** (search +
 promote), and **Settings** (Google toggle, rounds + dates, per-round form
 builder, email-template editor) pages.
 
+**In review on `feature/qr-checkin`** (don't start these again): the applicant's
+QR card on the home page, the staff **Check-in** screen (camera + handheld
+scanner + name search + arrivals counter), the **Meal check-in** screen, the
+admin **Meals** and **Run of show** pages, and the shared
+`components/QRScanner` + `components/CheckInStation`, which the hardware and
+judging screens below should reuse.
+
+> **Before writing routing code:** this is Next.js 16 (App Router) with breaking
+> changes. Read the relevant guide in `frontend/node_modules/next/dist/docs/`
+> first (see `frontend/AGENTS.md`).
+
 ---
 
-## Design / branding polish
+## Design system: shadcn/ui + Tailwind (do these first, in order)
+
+Every page today is hand-rolled inline `style={{…}}` objects plus a few global
+classes (`.btn`, `.card`, `.input`) in `globals.css`. That's why pages drift
+apart in spacing, type sizes and states. Goal: one component library, one set
+of tokens, no inline styles in pages. **F10 → F11 → F12 → F13** are the
+foundation; after that, F14 pages can be split across people.
+
+### F10. Set up shadcn/ui (plain JS, Tailwind v4)
+- [ ] `npx shadcn@latest init` in `frontend/` with **`"tsx": false`** in
+      `components.json`. The repo bans TypeScript (`AGENTS.md` golden rule
+      1), so components must be generated as `.jsx`/`.js`. Check no
+      `tsconfig.json`, `.ts` or `.tsx` lands in the PR.
+- [ ] Tailwind v4 is already installed (`@import "tailwindcss"` in
+      `globals.css`). Use shadcn's Tailwind v4 setup (`@theme inline`,
+      `tw-animate-css`), not the v3 `tailwind.config.js` instructions.
+- [ ] Aliases: `@/components/ui`, `@/lib/utils` (`cn()` = `clsx` +
+      `tailwind-merge`). `@/` already points at `frontend/`.
+- [ ] Add the base set: `button`, `input`, `label`, `textarea`, `select`,
+      `checkbox`, `switch`, `card`, `badge`, `alert`, `dialog`,
+      `alert-dialog`, `sheet`, `dropdown-menu`, `tabs`, `table`, `tooltip`,
+      `separator`, `skeleton`, `sonner`, `form`, `command`, `popover`,
+      `calendar`, `avatar`, `sidebar`, `breadcrumb`, `scroll-area`.
+- [ ] Icons: `lucide-react` (shadcn default). Remove the emoji icons from
+      `Sidebar.js`.
+- [ ] Make Biome happy with the generated code (`npm run lint` must pass). Fix
+      the code, or scope `biome.json` overrides narrowly to
+      `components/ui/**`, never repo-wide.
+- [ ] Treat generated components as ours: edit them in place to match our
+      tokens; don't wrap them in another layer.
+- **Depends on:** none. **Related:** F11.
+
+### F11. Design tokens and theme
+- [ ] Replace the ad-hoc variables in `globals.css` with shadcn's token set:
+      `--background --foreground --card --popover --primary
+      --primary-foreground --secondary --secondary-foreground --muted
+      --muted-foreground --accent --accent-foreground --destructive --border
+      --input --ring --radius`, plus our own `--success`, `--warning`,
+      `--info` (each with a `-foreground`), mapped in `@theme inline` so
+      `bg-primary`, `text-muted-foreground`, etc. work.
+- [ ] Light and dark values for every token. Dark mode is currently only the
+      OS media query: add a `.dark` class strategy (`next-themes`) with a
+      toggle in the user menu, defaulting to system.
+- [ ] Type scale and spacing written down in one place (F16), e.g. page title
+      `text-2xl font-semibold tracking-tight`, section title
+      `text-base font-semibold`, body `text-sm`; 4 px spacing grid.
+- [ ] Delete the legacy `.btn`, `.btn-primary`, `.btn-ghost`, `.card`,
+      `.input`, `.select`, `.textarea`, `.alert-*`, `.muted`, `.chip`,
+      `.ac-*` classes **after** F14 migrates their last user (keep a list in
+      the PR description).
+- [ ] No raw hex colours in components (today: `#d97706` in
+      `CheckInStation.js` and `admin/page.js`, the status colours); use tokens.
+- **Depends on:** F10.
+
+### F12. Fix the primary/secondary colour flags (bug)
+**Symptom:** setting the brand colours per hackathon doesn't change the
+site. **Causes found:**
+1. `NEXT_PUBLIC_BRAND_COLOR` is **inlined at build time**, and every page is
+   prerendered static (`next build` shows ○ for all routes). Changing the env
+   var on a deployment, or running one image for several hackathons, has no
+   effect until a rebuild.
+2. **There is no secondary colour.** Only `--brand` exists (set inline on
+   `<html>` in `app/layout.js`); nothing reads a `SECONDARY` setting
+   anywhere.
+3. `--brand-foreground` is hard-coded `#ffffff`, so a light brand colour (e.g.
+   yellow) gives unreadable buttons.
+4. Several colours bypass the variable entirely (hard-coded hex values,
+   `--success`, the Google button).
+5. A malformed value (e.g. `4f46e5` without `#`) fails silently and falls back
+   to the default.
+
+**Fix:**
+- [ ] Read branding at **runtime** from `GET /api/meta/branding` (B28) in the
+      root layout (a server component), and write
+      `--primary`/`--secondary`/`--accent` (+ computed `-foreground`) into a
+      `<style>` on `<html>`. Revalidate on an interval (e.g.
+      `fetch(..., { next: { revalidate: 60 } })`) so pages can stay static.
+      Read the Next 16 docs on caching/revalidation before choosing.
+- [ ] Compute each `-foreground` (black or white) from the colour's
+      contrast, aiming for WCAG AA 4.5:1. Derive hover/ring shades from the
+      base colour with `color-mix()` rather than asking for more settings.
+- [ ] Admin Settings → Branding: colour pickers + hex input with validation, a
+      live preview (button, badge, link, sidebar item, on light and dark), a
+      contrast warning, and logo upload.
+- [ ] Keep `NEXT_PUBLIC_*` only as a last-resort fallback when the API is
+      unreachable; document the order (admin setting → server env → default)
+      in `.env.local.example`.
+- [ ] Use `--secondary` somewhere meaningful (secondary buttons, sidebar
+      active state, chart series), not just define it.
+- **Depends on:** F11, B28. **Related:** T14.
+
+### F13. App shell and navigation
+- [ ] Rebuild `app/dashboard/layout.js` + `Sidebar.js` on shadcn `Sidebar`:
+      collapsible on desktop, a `Sheet` drawer on mobile (today the 240 px
+      sidebar never collapses, so phones get a squeezed page), and keyboard
+      navigable.
+- [ ] One nav config file (`lib/nav.js`): items with `href`, `label`, `icon`,
+      `roles`, `feature` (B25 flag), and group (Event day / Organize /
+      Admin). The sidebar and any command palette both read it. Role and flag
+      filtering happen there.
+- [ ] Top bar: breadcrumbs, page title, user menu (`DropdownMenu`: profile,
+      theme toggle, log out). The org logo comes from the branding API.
+- [ ] Highlight the active item for nested routes too (today
+      `/dashboard/admin` is "active" only on exact match).
+- [ ] Staff/kiosk mode: a full-width layout without the sidebar for the
+      scanning screens (check-in, meals, hardware, raffle display) so they
+      work on a phone at a table.
+- **Depends on:** F10, F11. **Related:** F0b.
+
+### F14. Migrate every page to the design system
+One PR per row is fine. Each page: no inline `style={{}}`, shadcn components
+only, loading = `Skeleton`, empty = a designed empty state (F15), errors =
+`Alert` or toast, confirmations = `AlertDialog` (no `window.confirm`).
+
+| Page | Notes |
+| ---- | ----- |
+| `login`, `signup`, `forgot-password`, `reset-password`, `AuthShell` | `Card` + `Form`; field-level errors under inputs; password show/hide; one shared auth layout. |
+| `dashboard` (home) | Status card with a `Badge`, QR card, "today" strip (next schedule item, my workshops, my hardware) once those exist (F17, F20, F22). |
+| `dashboard/application` | Long form → sections with a sticky step indicator and autosave indicator; `Combobox` (`Command` + `Popover`) for university/skills (replaces `Autocomplete`/`TagAutocomplete`); file `Input` with upload progress; dynamic `formConfig` fields rendered by one `FieldRenderer`. |
+| `dashboard/admin` (Review) | TanStack Table `DataTable`: sortable columns, status/round filters, search, pagination, column visibility; row click opens a `Sheet` with the full application + resume link + decision buttons; bulk accept/reject with confirmation. |
+| `dashboard/admin/users` | `DataTable` + role `Select`; confirmation dialog when granting admin. |
+| `dashboard/admin/settings` | `Tabs`: General, Branding (F12), Rounds, Application form, Email templates, Features (B25). Email template editor in a `Dialog` with a split preview pane. |
+| `dashboard/admin/meals`, `dashboard/admin/schedule` | `DataTable` + create/edit in a `Dialog`; a date-time picker (`Calendar` + time input) instead of raw `datetime-local`; times shown in the event time zone. |
+| `dashboard/staff/checkin`, `dashboard/staff/meals` | Kiosk layout (F13); full-width result banner (`Alert`, success/warning/destructive variants), large type; `sonner` toast + optional sound/vibration on scan; name search as a `Command` list. |
+
+- **Depends on:** F10–F13. **Related:** T7.
+
+### F15. Shared UX patterns
+Build these once in `components/` and use them everywhere:
+- [ ] **Forms:** `react-hook-form` + `zod` (plain JS schemas) via shadcn `Form`;
+      server errors mapped back onto fields; submit buttons show pending state
+      and can't double-submit.
+- [ ] **Data tables:** one `DataTable` wrapper (TanStack Table) with
+      server-side pagination/sort/filter props, used by every admin list.
+- [ ] **Empty states:** icon + one sentence + the primary action ("No meals
+      yet. Create the first one.").
+- [ ] **Loading:** `Skeleton` shaped like the content, not a "Loading…" line.
+- [ ] **Errors:** `app/error.js` + `app/dashboard/error.js` boundaries and a
+      `not-found.js`; `apiFetch` errors shown via toast with a retry action.
+- [ ] **Dates:** one `lib/datetime.js` that formats in the **event time zone**
+      (`EVENT_TIMEZONE`, via the branding/meta API), so organizers in other
+      zones see event times.
+- [ ] **Copy:** sentence case, no exclamation marks in UI chrome, verbs on
+      buttons ("Create meal", not "Submit").
+- **Depends on:** F10.
+
+### F16. Design guidelines ("sleek, not AI slop") + PR checklist
+Write `frontend/DESIGN.md` and link it from the PR template. Concrete rules:
+- [ ] **Restraint:** one primary action per screen; the brand colour only for
+      primary actions, focus and selection, not backgrounds or headings.
+      Neutral surfaces, 1 px borders, minimal shadows.
+- [ ] **No generic AI look:** no purple-to-blue gradients, glowing blobs,
+      glassmorphism, emoji as icons, cards inside cards, centred hero text on
+      internal pages, or decorative illustrations on data screens. No
+      "✨ Welcome back!" copy.
+- [ ] **Density:** staff/admin screens are tools; aim for Linear / Vercel
+      dashboard density (`text-sm` tables, 36–40 px rows), not marketing
+      spacing.
+- [ ] **Type:** one font family (Geist, already loaded), at most 4 sizes per
+      page, weights 400/500/600 only; tabular numbers for counts and times.
+- [ ] **Motion:** 150–200 ms ease-out for overlays only; respect
+      `prefers-reduced-motion`.
+- [ ] **States are designed:** every list has empty, loading, error and
+      "many items" states; every button has disabled + pending states.
+- [ ] **Accessibility baseline (folds in F0b):** visible focus rings, labels on
+      every input, 4.5:1 text contrast, full keyboard use, `aria-live` for scan
+      results.
+- [ ] **PR checklist:** screenshots light + dark + 375 px mobile; no inline
+      styles; no raw hex; lint passes.
+- **Depends on:** none (write it alongside F10).
 
 ### F0. Visual design pass on auth + dashboard
-The current UI is functional with a small design-system layer (`globals.css`).
-Apply the real brand design (typography scale, spacing, empty states, mobile
-sidebar drawer). Keep existing logic/handlers intact.
-- **Depends on:** none. **Related:** all pages.
+Superseded by F10–F16 (design system, tokens, shell, page migration,
+guidelines). Close this when F14 is done.
 
 ### F0b. Responsive + accessibility pass
-Mobile layout for the sidebar (collapsible), keyboard nav, ARIA, contrast.
-- **Depends on:** none.
+Folded into F13 (mobile shell) and F16 (accessibility baseline). Do a final
+audit with axe / Lighthouse on every page once F14 lands.
+- **Depends on:** F13, F14.
 
 ---
 
@@ -39,25 +218,118 @@ Mobile layout for the sidebar (collapsible), keyboard nav, ARIA, contrast.
 ### F2. First check-in UI (moderators + admins) - Jeng-Aun Chou
 A staff page to look up an accepted applicant (search by name/email) and mark
 them checked in; show who/when. Visible to moderators and admins.
+- **Status:** done in review on `feature/qr-checkin` (QR scan + search,
+  `/dashboard/staff/checkin`).
 - **Depends on:** B5 (done). **Related:** T2.
 
 ### F3. Meal check-in UI + admin meal setup - Richarla Preston @charlajp
 Admin: create/manage meal services (name, time window). Staff (mod+admin):
 select the active meal and check attendees in, with a guard against double
 serving.
+- **Status:** done in review on `feature/qr-checkin` (`/dashboard/admin/meals`,
+  `/dashboard/staff/meals`).
 - **Depends on:** B6 (done), B7. **Related:** T3.
+
+### F22. Event-day applicant home
+- [ ] Show accepted status even after applications close (needs B27; today the
+      page says "Applications aren't open right now" to accepted attendees on
+      event day).
+- [ ] "Today" view: next run-of-show items, my workshops (F17), my hardware
+      (F20), Discord + website links, QR always one tap away (pinned on
+      mobile).
+- **Depends on:** B27. **Related:** F14.
 
 ---
 
-## Moderator data views (later — placeholders)
+## Workshops
+
+### F17. Workshops for attendees
+- [ ] `/dashboard/workshops`: browse published workshops (time, host,
+      location, spots left), filter by day; sign up / cancel with optimistic
+      UI and a clear "Full" / "Waitlisted" state; overlap warning.
+- [ ] "My workshops" tab in time order, each with **Add to calendar** (`.ics`
+      download + Google Calendar link) and a link to the workshop's page.
+- [ ] Workshop page `/dashboard/workshops/[id]`: details + the announcement
+      feed (read-only, newest first, pinned posts on top, file chips that
+      download through the signed-URL endpoint, linkified text, relative
+      times; polls every ~15 s).
+- [ ] **Raffle:** "Enter raffle code" input on the workshop page (large,
+      auto-uppercase, 6 characters); shows "You're in the raffle" once
+      entered; friendly errors for an expired or wrong code and for rate
+      limits.
+- **Depends on:** B18, B19, B20, B21. **Related:** T9.
+
+### F18. Workshop organizer screens
+Visible only to `workshop_organizer`s for **their** workshops (plus admins).
+- [ ] `/dashboard/organize`: list of my assigned workshops only.
+- [ ] Workshop console `/dashboard/organize/[id]`:
+  - **Announcements composer**, chat-style: multiline text + drag-and-drop
+    files (multiple, with per-file progress and type/size errors before
+    upload), post, pin/unpin, edit, delete; the feed below like a chat
+    history.
+  - **Sign-ups:** count vs capacity, list, CSV download.
+  - **Raffle:** generate/regenerate the code, countdown to expiry, live entry
+    count, **Present** mode (full-screen code for the projector, huge
+    monospace characters, high contrast), draw N winners with a reveal, and
+    the winners history.
+- **Depends on:** B17, B20, B21, F13 (kiosk layout for Present mode).
+
+### F19. Admin workshop management
+- [ ] `/dashboard/admin/workshops`: `DataTable` + create/edit `Dialog` (title,
+      host, location, time, capacity, published, raffle on/off);
+      cancel-workshop flow that warns how many people will be notified.
+- [ ] Assign organizers: user search (`Command`) → add/remove; offer to set
+      the user's role to `workshop_organizer` if they're an applicant.
+- **Depends on:** B17, B18.
+
+---
+
+## Hardware (replaces F5)
+
+### F20. Hardware checkout and inventory
+- [ ] **Checkout station** `/dashboard/staff/hardware` (kiosk layout): scan the
+      attendee QR (reuse `CheckInStation`) → their open items appear → scan or
+      search an item → confirm. Returns from the same screen: scan the
+      attendee, tap "Return" per item. Clear errors for "not checked in", "out
+      of stock" and "limit reached".
+- [ ] **Inventory admin** `/dashboard/admin/hardware`: `DataTable` (name,
+      category, location, available/total), create/edit `Dialog`, CSV import
+      with a preview, printable QR label sheet.
+- [ ] **Outstanding** view: who has what, overdue first, "email everyone still
+      holding hardware" (B26).
+- [ ] **Participant** `/dashboard/hardware`: browse what's available (search,
+      category chips, availability badge) and "My hardware" with due times.
+- **Depends on:** B22, B23. **Related:** T10.
+
+---
+
+## Judging (merge HackUMass-Judging-New; replaces F6)
+
+### F21. Judging screens
+The old judging app's EJS pages (`login`, `tutorial`, `judge`, `skip`,
+`assignments`, `leaderboard`, `checkin1-admin`, `checkin2-participant`)
+become dashboard pages on the design system. **Judges score on phones while
+walking the floor: build mobile-first.**
+- [ ] **Judge** `/dashboard/judging`: progress ("4 of 12"), the current team's
+      name/table/room/Devpost link, the rubric as segmented controls or sliders
+      with labels (not bare number inputs), comments, Submit / Skip; a
+      "Skipped" list to come back to; the tutorial rounds before real
+      judging.
+- [ ] **Admin** `/dashboard/admin/judging`: import teams (CSV upload → preview →
+      confirm), rooms/tables setup, generate assignments (shows the verifier
+      report before saving), judge progress per judge, results/leaderboard
+      (raw vs bias-adjusted toggle, per category, CSV export), freeze
+      scoring. All actions are buttons that POST, never links.
+- [ ] **Team table check-in:** desk screen (scan a member's QR → table
+      assignment) and the participant flow (logged-in member scans the table
+      QR).
+- **Depends on:** B24a–B24g. **Related:** T11.
 
 ### F5. Hardware data view (moderators)
-Page for moderators to view hardware data once B10 lands.
-- **Depends on:** B10. **Status:** deferred, needs spec.
+Replaced by **F20**.
 
 ### F6. Judging progress view (moderators)
-Page for judging progress once B11 lands.
-- **Depends on:** B11. **Status:** deferred, needs spec.
+Replaced by **F21**.
 
 ---
 
@@ -66,5 +338,6 @@ Page for judging progress once B11 lands.
 ### F9. Logo assets - Richarla Preston @charlajp
 Drop real `public/logo.png` and `public/logo-v2.png`, set the
 `NEXT_PUBLIC_*` env vars per deployment. The `Logo` component already falls back
-to the org name text until then.
+to the org name text until then. (After F12/B28, logos are uploaded in Admin →
+Branding instead.)
 - **Depends on:** none.
