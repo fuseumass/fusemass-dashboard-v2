@@ -16,8 +16,6 @@ var applicationRoutes = require("./routes/applications");
 var adminRoutes = require("./routes/admin");
 var metaRoutes = require("./routes/meta");
 const staffRoutes = require("./routes/staff");
-const checkInRoutes = require("./routes/checkInRoutes");
-var emailRoutes = require("./routes/emailRoutes");
 
 var app = express();
 
@@ -68,8 +66,6 @@ app.use("/api/applications", applicationRoutes);
 app.use("/api/admin", adminRoutes);
 app.use("/api/meta", metaRoutes);
 app.use("/api/staff", staffRoutes);
-app.use("/api/checkin", qrScanRoutes);
-app.use("/api/email", emailRoutes);
 
 // --- Fallback error handler (Express 4 signature: err, req, res, next) ------
 app.use(function errorHandler(err, _req, res, _next) {

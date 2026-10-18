@@ -17,12 +17,16 @@ var mealServiceSchema = new Schema(
       required: true,
       trim: true,
     },
+    // Optional: the email of the one attendee this service is for (e.g. a
+    // special-diet plate). Empty for an event-wide meal like "Saturday Lunch".
     createdFor: {
       type: String,
-      required: true,
       trim: true,
+      default: "",
       validate: {
-        validator: validator.isEmail,
+        validator: function isEmptyOrEmail(value) {
+          return !value || validator.isEmail(value);
+        },
         message: "createdFor must be a valid email address.",
       },
     },

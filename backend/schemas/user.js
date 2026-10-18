@@ -2,6 +2,7 @@
 
 var mongoose = require("mongoose");
 var bcrypt = require("bcryptjs");
+var qrCode = require("../utils/qrCode");
 
 var Schema = mongoose.Schema;
 
@@ -57,6 +58,15 @@ var userSchema = new Schema(
     resetPasswordExpires: {
       type: Date,
     },
+    // Event-day check-in code (HMAC-SHA256 of the email, see utils/qrCode),
+    // encoded into the QR on the acceptance email. Staff scan it for the first
+    // check-in, meals and hardware checkout. Set on acceptance; stored rather
+    // than recomputed so an issued code keeps working if the secret changes.
+    qrId: {
+      type: String,
+      unique: true,
+      sparse: true,
+    },
   },
   { timestamps: true }
 );
@@ -80,6 +90,32 @@ userSchema.methods.verifyPassword = function verifyPassword(candidate) {
     return Promise.resolve(false);
   }
   return bcrypt.compare(candidate, this.passwordHash);
+};
+
+/**
+ * Return a user's check-in code, generating and saving it on first use. Safe
+ * to call repeatedly or concurrently: the code is derived from the email, so
+ * every caller computes and writes the same value.
+ * @param {*} userId - The user's _id.
+ * @returns {Promise<string|null>} The code, or null when there is no such user.
+ */
+userSchema.statics.ensureQrId = function ensureQrId(userId) {
+  var User = this;
+
+  return User.findById(userId)
+    .select("email qrId")
+    .then(function afterFind(user) {
+      if (!user) {
+        return null;
+      }
+      if (user.qrId) {
+        return user.qrId;
+      }
+      var qrId = qrCode.computeQrId(user.email);
+      return User.updateOne({ _id: user._id }, { $set: { qrId: qrId } }).then(function afterSave() {
+        return qrId;
+      });
+    });
 };
 
 // Strip sensitive fields whenever a user document is serialized to JSON.

@@ -39,7 +39,7 @@ var TEMPLATE_LABELS = {
   application_rejected: "Application Rejected",
 };
 
-var PLACEHOLDER_GUIDE = ["{{name}}", "{{status}}", "{{orgName}}"];
+var PLACEHOLDER_GUIDE = ["{{name}}", "{{status}}", "{{orgName}}", "{{qrcode}}"];
 
 function renderPreview(template, values) {
   if (!template) return "";
@@ -149,6 +149,7 @@ function EmailTemplateEditor() {
     name: "Alex Applicant",
     status: "accepted",
     orgName: "FuseMass",
+    qrcode: "[check-in QR code]",
   };
 
   return (
@@ -259,6 +260,14 @@ function EmailTemplateEditor() {
                       {token}
                     </span>
                   ))}
+                </div>
+                <div
+                  className="muted"
+                  style={{ fontSize: "0.78rem", marginTop: 6 }}
+                >
+                  {"{{qrcode}}"} places the attendee&apos;s check-in QR code
+                  (acceptance email only). If it&apos;s left out, the code is
+                  added at the end.
                 </div>
               </div>
 

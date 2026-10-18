@@ -4,6 +4,7 @@ var Application = require("../schemas/application");
 var ApplicationRound = require("../schemas/applicationRound");
 var EmailTemplate = require("../schemas/emailTemplate");
 var MealService = require("../schemas/mealService");
+var MealCheckIn = require("../schemas/mealCheckin");
 var User = require("../schemas/user");
 var mailer = require("../utils/mailer");
 var formConfigUtil = require("../utils/formConfig");
@@ -90,10 +91,25 @@ function decideApplication(req, res) {
         var templateKey = DECISION_TEMPLATE_KEYS[decision];
         var recipient = application.applicant && application.applicant.email;
         if (templateKey && recipient) {
-          mailer
-            .sendTemplateEmail(recipient, templateKey, {
-              name: application.name,
-              status: application.status,
+          // Accepted applicants get their event check-in QR code. Failing to
+          // issue it must not cost them the acceptance email itself; the code
+          // is also generated on demand from their dashboard.
+          var qrIdPromise =
+            decision === "accepted"
+              ? User.ensureQrId(application.applicant._id).catch(function onQrError(err) {
+                  console.error("Failed to issue check-in QR code:", err);
+                  return null;
+                })
+              : Promise.resolve(null);
+
+          qrIdPromise
+            .then(function afterQrId(qrId) {
+              return mailer.sendTemplateEmail(
+                recipient,
+                templateKey,
+                { name: application.name, status: application.status },
+                { qrId: qrId }
+              );
             })
             .catch(function onMailError(err) {
               console.error("Failed to send decision email:", err);
@@ -467,10 +483,14 @@ function parseDate(value) {
  * @returns {Promise<void>}
  */
 function listMeals(_req, res) {
-  return MealService.find({})
-    .sort({ startsAt: 1, createdAt: 1 })
-    .then(function afterFind(meals) {
-      res.status(200).json({ meals: meals });
+  return Promise.all([MealService.find({}).sort({ startsAt: 1, createdAt: 1 }), MealCheckIn.countsByMeal()])
+    .then(function afterFind(results) {
+      var counts = results[1];
+      res.status(200).json({
+        meals: results[0].map(function withCount(meal) {
+          return Object.assign(meal.toJSON(), { checkInCount: counts[String(meal._id)] || 0 });
+        }),
+      });
     })
     .catch(function onError(err) {
       console.error("listMeals failed:", err);
@@ -480,14 +500,15 @@ function listMeals(_req, res) {
 
 /**
  * POST /api/admin/meals — create a meal service.
- * Body: { name, startsAt, endsAt, active? }
+ * Body: { name, startsAt, endsAt, active?, createdFor? }
+ * createdFor is optional: leave it out for an event-wide meal.
  * @param {object} req
  * @param {object} res
  * @returns {Promise<void>}
  */
 function createMeal(req, res) {
   var name = req.body && req.body.name;
-  var createdFor = req.body && req.body.createdFor;
+  var createdFor = req.body && req.body.createdFor ? String(req.body.createdFor).trim() : "";
   var startsAt = req.body && req.body.startsAt;
   var endsAt = req.body && req.body.endsAt;
   var startDate = parseDate(startsAt);
@@ -498,7 +519,7 @@ function createMeal(req, res) {
     res.status(400).json({ error: "name is required." });
     return Promise.resolve();
   }
-  if (!validator.isEmail(createdFor.trim())) {
+  if (createdFor && !validator.isEmail(createdFor)) {
     res.status(400).json({ error: "createdFor must be a valid email address." });
     return Promise.resolve();
   }
@@ -522,7 +543,7 @@ function createMeal(req, res) {
 
   return MealService.findOne({
     name: name,
-    createdFor: createdFor.trim()
+    createdFor: createdFor
   })
     .then(function afterLookup(existingMeal) {
       if (existingMeal) {
@@ -532,7 +553,7 @@ function createMeal(req, res) {
 
       return MealService.create({
         name: name,
-        createdFor: createdFor.trim(),
+        createdFor: createdFor,
         startsAt: startDate.toUTCString(),
         endsAt: endDate.toUTCString(),
         active: req.body.active !== undefined ? Boolean(req.body.active) : true,
@@ -573,11 +594,12 @@ function updateMeal(req, res) {
     update.name = req.body.name;
   }
   if (req.body && req.body.createdFor !== undefined) {
-    if (!validator.isEmail(req.body.createdFor.trim())) {
+    var createdFor = req.body.createdFor ? String(req.body.createdFor).trim() : "";
+    if (createdFor && !validator.isEmail(createdFor)) {
       res.status(400).json({ error: "createdFor must be a valid email address." });
       return Promise.resolve();
     }
-    update.createdFor = req.body.createdFor.trim(); //if createdFor's value is valid email address, should be updated
+    update.createdFor = createdFor; //a valid email address, or "" to make the meal event-wide
   }
   if (req.body && req.body.active !== undefined) {
     update.active = Boolean(req.body.active);
@@ -635,13 +657,23 @@ function updateMeal(req, res) {
  * @returns {Promise<void>}
  */
 function deleteMeal(req, res) {
-  return MealService.findByIdAndDelete(req.params.id)
-    .then(function afterDelete(meal) {
-      if (!meal) {
-        res.status(404).json({ error: "Meal service not found." });
-        return;
+  // Once anyone has been served, deleting the meal would orphan its check-ins
+  // and let a re-created copy serve the same people twice. Deactivate instead.
+  return MealCheckIn.countDocuments({ mealService: req.params.id })
+    .then(function afterCount(served) {
+      if (served > 0) {
+        res.status(409).json({
+          error: "This meal already has " + served + " check-in(s). Deactivate it instead of deleting it.",
+        });
+        return undefined;
       }
-      res.status(200).json({ ok: true });
+      return MealService.findByIdAndDelete(req.params.id).then(function afterDelete(meal) {
+        if (!meal) {
+          res.status(404).json({ error: "Meal service not found." });
+          return;
+        }
+        res.status(200).json({ ok: true });
+      });
     })
     .catch(function onError(err) {
       console.error("deleteMeal failed:", err);

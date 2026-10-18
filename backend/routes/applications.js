@@ -55,5 +55,6 @@ function handleUploadError(err, _req, res, next) {
 // req.file and the other fields on req.body.
 router.post("/", isAuthenticated, upload.single("resume"), handleUploadError, applicationController.apply);
 router.get("/me", isAuthenticated, applicationController.getMine);
+router.get("/me/qr", isAuthenticated, applicationController.getMyQr);
 
 module.exports = router;

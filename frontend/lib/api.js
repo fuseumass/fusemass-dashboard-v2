@@ -110,8 +110,12 @@ async function readResponse(res, path, sentToken) {
     if (handleExpiredSession(res, path, sentToken)) {
       throw new Error(EXPIRED_MESSAGE);
     }
-    const message = data?.error || `Request failed (${res.status})`;
-    throw new Error(message);
+    const error = new Error(data?.error || `Request failed (${res.status})`);
+    // Callers that need more than the message (e.g. the check-in scanner
+    // telling "already checked in" apart from a real failure) read these.
+    error.status = res.status;
+    error.data = data;
+    throw error;
   }
 
   return data;
