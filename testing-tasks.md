@@ -91,6 +91,10 @@ for the frontend, wired into CI.
       clock): the code changes every period; the current and previous codes
       are accepted, the one before that isn't; different sessions give
       different codes.
+- [ ] **Event check-in required:** an accepted attendee who isn't checked in
+      to the event gets 403 with the right code (by code and via staff add),
+      and is never in a raffle pool; once checked in, the same request
+      succeeds.
 - [ ] **Attendance API:** closed session or wrong code → rejected; parallel
       duplicate submissions → one row and both answer 200; a `userId` in the
       body is ignored; the rate limit and per-session lockout trip; staff add
@@ -153,7 +157,9 @@ for the frontend, wired into CI.
       request; another admin can; a single-admin deployment gets the
       explanatory error.
 - [ ] **Scoping:** a moderator can add expenses only to their teams' lines
-      (other lines → 403) and sees only their teams' detail; demoting a member
+      (other lines → 403); their summary contains only their teams (no other
+      teams' totals, no budget-wide total, no income), and asking for another
+      team's summary → 403; demoting a member
       to applicant removes finance access immediately; applicants, judges and
       workshop organizers get 403 on every finance route.
 - [ ] **Locking:** a locked budget rejects every write under it.

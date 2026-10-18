@@ -19,7 +19,7 @@ Task IDs link to [`backend-tasks.md`](./backend-tasks.md) (`B#`),
 | Old dashboard | [fuseumass/dashboard](https://github.com/fuseumass/dashboard) | Rails | `master` (2023) is the full feature set. Event branches (`hum-xii`, `hackher2025`, …) only add content tweaks plus a Facilities page. |
 | Older dashboard | `fuseumass/hackumass-web` (private) | Rails | 2018 predecessor. Its `travel-reimbursements` branch is the **only finance code that ever existed**; it was never merged. |
 | Judging | [gamer-1478/HackUMass-Judging-New](https://github.com/gamer-1478/HackUMass-Judging-New) | Express 5 + EJS | Used Nov 2025. See B16 (leaked credentials) and B24. |
-| Sponsorship CRM | [fuseumass/hackerforce](https://github.com/fuseumass/hackerforce) | Django | Companies, contacts, sponsorship tiers/perks/contributions, email campaigns. See B38. |
+| Sponsorship CRM | [fuseumass/hackerforce](https://github.com/fuseumass/hackerforce) | Django | Companies, contacts, sponsorship tiers/perks/contributions, email campaigns. **Not being merged** (decided Oct 2026). |
 
 No repo had **budgets, team expenses or organizer reimbursements**. Those
 were presumably tracked in spreadsheets, so B33–B37 are a new design.
@@ -80,9 +80,9 @@ were presumably tracked in spreadsheets, so B33–B37 are a new design.
 | ----------- | ------ | ---- |
 | Events with `rsvpable` + `max_seats` | 📋 (old never enforced seats) | B18, B19 |
 | RSVP / un-RSVP to an event | 📋 | B19, F17 |
-| Per-event attendance check-in | 📋 Top Hat-style code | B21 |
+| Per-event attendance check-in | 📋 Top Hat-style code; requires event check-in | B21 |
 | Workshop materials / announcements | ➕ 📋 | B20 |
-| Workshop raffle | ➕ 📋 (draws from attendees) | B21 |
+| Workshop raffle | ➕ 📋 (draws from attendees checked in to the event) | B21 |
 | Calendar invites per workshop | ➕ 📋 | B19 |
 
 ## Hardware
@@ -128,7 +128,8 @@ were presumably tracked in spreadsheets, so B33–B37 are a new design.
 | Team expenses, closed when paid by the hackathon | ➕ 📋 | B35 |
 | Organizer reimbursement requests + amount-owed tracking | ➕ 📋 | B36 |
 | Finance reports / exports | ➕ 📋 | B37 |
-| Sponsorship income (HackerForce) | ⏸ | B38 |
+| Funding / income (entered by admins) | ➕ 📋 | B38 |
+| HackerForce sponsorship CRM (companies, contacts, tiers, campaigns) | ✖ no longer needed | — |
 
 ## Platform
 

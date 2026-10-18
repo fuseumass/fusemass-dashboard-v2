@@ -263,8 +263,10 @@ serving.
       open, the workshop page (and a banner on the home page) shows "Enter the
       code on screen": a large, auto-uppercase, 4–6 character input that
       submits on the last character. Then "You're checked in, and you're in
-      the raffle". Friendly errors for a wrong or stale code, attendance being
-      closed, or too many tries.
+      the raffle". Only attendees checked in to the event can enter: if they
+      aren't, show "Check in at the front desk first" instead of the input.
+      Friendly errors for a wrong or stale code, attendance being closed, or
+      too many tries.
 - [ ] **Raffle results:** "You won <prize>, pick it up from <organizer>" on
       the workshop page and the home page.
 - **Depends on:** B18, B19, B20, B21. **Related:** T9.
@@ -370,6 +372,8 @@ every other role (also enforced by the API, B33–B36).
 ### F24. Team budgets and expenses (mods + admins)
 - [ ] `/dashboard/finance`: one card per team I'm on, with allocated vs spent
       vs committed and a small spend-over-time chart, then that team's lines.
+      Moderators see **only their own teams**: no other teams, no
+      budget-wide totals, no income. Admins also get an "All teams" view.
 - [ ] Add expense (`Sheet` form): line (only my teams' lines), vendor,
       description, amount, date, **"Who paid?"** = *the hackathon* (org card /
       invoice) or *me* (turns it into a reimbursement request, F25), and

@@ -274,20 +274,23 @@ Raffles happen **after** a Top Hat-style attendance check-in at each workshop:
       seconds until it rotates, for Present mode (F18). Optionally also return
       a URL with the code embedded, for a QR attendees can scan.
 - [ ] Attendee: `POST /api/workshops/:id/attendance { code }`. Only accepted
-      applicants with an open session and a valid code; idempotent (a repeat
-      is a 200 "already here", not an error). Ignore any user id in the body.
-      **Decision needed:** require event check-in and/or a workshop sign-up?
-      Recommend event check-in only, so walk-ins count.
+      applicants who are **checked in to the event** (`User.checkedIn`), with
+      an open session and a valid code. Not checked in → 403 "Check in at the
+      front desk first". A workshop sign-up is **not** required, so walk-ins
+      count. Idempotent (a repeat is a 200 "already here", not an error).
+      Ignore any user id in the body.
 - [ ] Brute-force protection: rate-limit attempts per user + IP (e.g. 10/min)
       and lock a user out of the session after ~10 wrong codes.
 - [ ] Staff override: organizer adds someone without a phone by scanning their
       dashboard QR (`resolveAttendee` + `CheckInStation`), `method: "staff"`.
+      The same event check-in rule applies; there's no override for it.
 - [ ] Stats: signed up vs attended vs walk-ins, attendance CSV.
 
 **Raffle**
-- [ ] Eligible pool = this workshop's attendees (`raffleEnabled` on the
-      workshop). Optional event-wide cap: max raffle wins per attendee across
-      all workshops.
+- [ ] Eligible pool = this workshop's attendees who are **checked in to the
+      event**, filtered again at draw time (`raffleEnabled` on the workshop).
+      Optional event-wide cap: max raffle wins per attendee across all
+      workshops.
 - [ ] `POST /api/workshops/:id/raffle/draw { count, prize }`
       (`canManageWorkshop`): pick `count` distinct winners with
       `crypto.randomInt`, excluding this workshop's previous winners. Store
@@ -522,9 +525,11 @@ This is a new design. **Rules for every finance task:**
       or approved reimbursements); **spent** (closed expenses + paid
       reimbursements); **remaining** = allocated − spent − committed.
       Flag lines that are over budget.
-- [ ] `GET /api/finance/summary`: admins get everything; moderators get their
-      teams' lines in detail. **Decision needed:** may mods see other teams'
-      totals? Recommend totals only, no line items.
+- [ ] `GET /api/finance/summary`: admins get everything. **Moderators get only
+      their own teams**: their teams' totals and lines. They never see other
+      teams' totals, line items or expenses, the budget-wide total, or
+      income (B38). Filter on the server, not in the UI; a moderator
+      requesting another team's summary gets 403.
 - **Depends on:** B33. **Related:** F23, F24.
 
 ### B35. Team expenses
@@ -590,15 +595,14 @@ pay out what's owed.
 - [ ] Spend over time per team (for the F24 chart).
 - **Depends on:** B34–B36.
 
-### B38. Funding and sponsorship income (+ HackerForce)
+### B38. Funding and income
 - [ ] `schemas/income.js`: `budget`, `source` (sponsor, grant, university,
       other), `name`, `amountCents`, `status` (`pledged` | `received`),
-      `receivedAt`, `notes`. Show funded vs allocated vs spent per budget.
-- [ ] **Decision needed:** HackerForce (`fuseumass/hackerforce`, Django) already
-      tracks sponsor companies, contacts, tiers, perks, each sponsorship's
-      `contribution` and status, and the fundraising goal. Options: (a) keep it
-      separate and import confirmed sponsorships as `income` (CSV); (b) port it
-      into this dashboard as a Sponsors module. Recommend (a) for this year.
+      `receivedAt`, `notes`. Admins enter it by hand. Show funded vs
+      allocated vs spent per budget. **Admin only**; moderators never see
+      income (B34).
+- HackerForce (the old sponsorship CRM) is **not** being merged or
+  integrated.
 - **Depends on:** B34.
 
 ### B39. Attendee travel reimbursements (deferred)
