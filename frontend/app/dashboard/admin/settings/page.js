@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { apiFetch } from "@/lib/api";
 import { useUser } from "@/lib/userContext";
 
@@ -50,16 +50,7 @@ var PLACEHOLDER_GUIDE = [
   "{{runOfShow}}",
 ];
 
-function renderPreview(template, values) {
-  if (!template) return "";
-  return String(template).replace(
-    /\{\{\s*([a-zA-Z0-9_]+)\s*\}\}/g,
-    function replacer(_match, key) {
-      var value = values[key];
-      return value === undefined || value === null ? "" : String(value);
-    },
-  );
-}
+var QRCODE_TOKEN = /\{\{\s*qrcode\s*\}\}/;
 
 // ---- Email template editor -------------------------------------------------
 
@@ -71,6 +62,11 @@ function EmailTemplateEditor() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
+  const [preview, setPreview] = useState(null);
+  const [previewError, setPreviewError] = useState("");
+  const [testing, setTesting] = useState(false);
+  const [notice, setNotice] = useState("");
+  const bodyRef = useRef(null);
 
   const loadTemplates = useCallback(() => {
     setLoading(true);
@@ -83,6 +79,7 @@ function EmailTemplateEditor() {
           "application_received",
           "application_accepted",
           "application_rejected",
+          "checked_in",
         ];
         const sorted = [...raw].sort((a, b) => {
           const ai = order.indexOf(a.key);
@@ -122,7 +119,60 @@ function EmailTemplateEditor() {
     }
     setSubject(activeTemplate.subject || "");
     setBody(activeTemplate.body || "");
+    setNotice("");
   }, [activeTemplate]);
+
+  // Server-rendered preview of the unsaved draft: exactly what the email will
+  // look like, with the admin's own QR code where {{qrcode}} is.
+  useEffect(() => {
+    if (!activeTemplate) {
+      setPreview(null);
+      return;
+    }
+    const handle = setTimeout(() => {
+      apiFetch("/api/admin/email-templates/preview", {
+        method: "POST",
+        body: JSON.stringify({ subject, body }),
+      })
+        .then((data) => {
+          setPreview(data);
+          setPreviewError("");
+        })
+        .catch((err) => setPreviewError(err.message));
+    }, 400);
+    return () => clearTimeout(handle);
+  }, [activeTemplate, subject, body]);
+
+  // Put a placeholder at the cursor in the body.
+  function insertToken(token) {
+    const el = bodyRef.current;
+    const start = el ? el.selectionStart : body.length;
+    const end = el ? el.selectionEnd : body.length;
+    const next = body.slice(0, start) + token + body.slice(end);
+    setBody(next);
+    requestAnimationFrame(() => {
+      if (!el) return;
+      el.focus();
+      el.selectionStart = el.selectionEnd = start + token.length;
+    });
+  }
+
+  async function sendTest() {
+    setTesting(true);
+    setError("");
+    setNotice("");
+    try {
+      const data = await apiFetch("/api/admin/email-templates/test", {
+        method: "POST",
+        body: JSON.stringify({ subject, body }),
+      });
+      setNotice(`Test email sent to ${data.sentTo}.`);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setTesting(false);
+    }
+  }
 
   async function saveTemplate() {
     if (!activeTemplate) return;
@@ -154,16 +204,8 @@ function EmailTemplateEditor() {
     }
   }
 
-  var previewValues = {
-    name: "Alex Applicant",
-    status: "accepted",
-    orgName: "FuseMass",
-    qrcode: "[check-in QR code]",
-    websiteUrl: "https://hackathon.com",
-    discordUrl: "https://discord.gg/your-invite",
-    runOfShow:
-      "Run of show (also attached as a calendar invite):\nSat, Oct 24, 10:00 AM – 11:00 AM: Opening ceremony (Main hall)",
-  };
+  const missingQr =
+    activeTemplate?.key === "application_accepted" && !QRCODE_TOKEN.test(body);
 
   return (
     <div className="card" style={{ padding: "1.5rem", marginBottom: "1.5rem" }}>
@@ -180,13 +222,19 @@ function EmailTemplateEditor() {
         className="muted"
         style={{ fontSize: "0.85rem", marginBottom: "1rem" }}
       >
-        Edit the email content used for application received/accepted/rejected
-        messages.
+        Edit the emails sent when someone applies, is accepted or rejected, and
+        checks in at the event. The preview shows the real email, with your own
+        QR code.
       </p>
 
       {error
         ? <div className="alert-error" style={{ marginBottom: "0.75rem" }}>
             {error}
+          </div>
+        : null}
+      {notice
+        ? <div className="alert-success" style={{ marginBottom: "0.75rem" }}>
+            {notice}
           </div>
         : null}
 
@@ -236,6 +284,7 @@ function EmailTemplateEditor() {
               <label style={{ display: "block", marginBottom: "0.75rem" }}>
                 <span className="field-label">Body</span>
                 <textarea
+                  ref={bodyRef}
                   className="textarea"
                   style={{ minHeight: 140 }}
                   value={body}
@@ -243,6 +292,29 @@ function EmailTemplateEditor() {
                   placeholder="Email body"
                 />
               </label>
+
+              {missingQr
+                ? <div
+                    className="alert-error"
+                    style={{ marginBottom: "0.75rem" }}
+                  >
+                    This acceptance email has no {"{{qrcode}}"}, so accepted
+                    applicants won&apos;t get their check-in QR code.{" "}
+                    <button
+                      type="button"
+                      className="link"
+                      style={{
+                        background: "none",
+                        border: "none",
+                        padding: 0,
+                        cursor: "pointer",
+                      }}
+                      onClick={() => insertToken("{{qrcode}}")}
+                    >
+                      Insert it
+                    </button>
+                  </div>
+                : null}
 
               <div
                 style={{
@@ -265,25 +337,31 @@ function EmailTemplateEditor() {
                   className="muted"
                   style={{ fontSize: "0.82rem", marginBottom: 6 }}
                 >
-                  Available tokens:
+                  Click to insert at the cursor:
                 </div>
                 <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
                   {PLACEHOLDER_GUIDE.map((token) => (
-                    <span key={token} className="chip">
+                    <button
+                      type="button"
+                      key={token}
+                      className="chip"
+                      style={{ cursor: "pointer" }}
+                      onClick={() => insertToken(token)}
+                    >
                       {token}
-                    </span>
+                    </button>
                   ))}
                 </div>
                 <div
                   className="muted"
                   style={{ fontSize: "0.78rem", marginTop: 6 }}
                 >
-                  {"{{qrcode}}"} places the attendee&apos;s check-in QR code
-                  (acceptance email only). If it&apos;s left out, the code is
-                  added at the end. {"{{runOfShow}}"} lists the schedule
-                  (checked-in email only). {"{{websiteUrl}}"} and{" "}
-                  {"{{discordUrl}}"} come from the server&apos;s ORG_WEBSITE_URL
-                  / ORG_DISCORD_URL.
+                  {"{{qrcode}}"} puts the recipient&apos;s check-in QR code
+                  (SHA-256 of their email) right where you place it, in any
+                  template; templates without it don&apos;t include one.{" "}
+                  {"{{runOfShow}}"} lists the schedule (checked-in email).{" "}
+                  {"{{websiteUrl}}"} and {"{{discordUrl}}"} come from the
+                  server&apos;s ORG_WEBSITE_URL / ORG_DISCORD_URL.
                 </div>
               </div>
 
@@ -304,21 +382,33 @@ function EmailTemplateEditor() {
                 >
                   Preview
                 </div>
-                <div style={{ fontSize: "0.9rem", marginBottom: 6 }}>
-                  <strong>Subject:</strong>{" "}
-                  {renderPreview(subject, previewValues)}
-                </div>
-                <pre
-                  style={{
-                    margin: 0,
-                    whiteSpace: "pre-wrap",
-                    wordBreak: "break-word",
-                    fontFamily: "inherit",
-                    fontSize: "0.9rem",
-                  }}
-                >
-                  {renderPreview(body, previewValues)}
-                </pre>
+                {previewError
+                  ? <p className="muted" style={{ fontSize: "0.85rem" }}>
+                      Preview unavailable: {previewError}
+                    </p>
+                  : !preview
+                    ? <p className="muted" style={{ fontSize: "0.85rem" }}>
+                        Rendering…
+                      </p>
+                    : <>
+                        <div style={{ fontSize: "0.9rem", marginBottom: 6 }}>
+                          <strong>Subject:</strong> {preview.subject}
+                        </div>
+                        {/* Sandboxed: the HTML is escaped server-side, and the
+                            iframe keeps any email styling off this page. */}
+                        <iframe
+                          title="Email preview"
+                          sandbox=""
+                          srcDoc={`<!doctype html><html><body style="margin:0;padding:12px;font-family:Arial,sans-serif;font-size:14px;line-height:1.5;color:#171821;background:#fff">${preview.html}</body></html>`}
+                          style={{
+                            width: "100%",
+                            height: preview.hasQrCode ? 460 : 240,
+                            border: "1px solid var(--border)",
+                            borderRadius: 8,
+                            background: "#fff",
+                          }}
+                        />
+                      </>}
               </div>
 
               <div style={{ display: "flex", gap: 8 }}>
@@ -330,6 +420,15 @@ function EmailTemplateEditor() {
                   disabled={saving}
                 >
                   {saving ? "Saving..." : "Save template"}
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-ghost"
+                  style={{ width: "auto" }}
+                  onClick={sendTest}
+                  disabled={testing}
+                >
+                  {testing ? "Sending…" : "Send test email to me"}
                 </button>
                 <button
                   type="button"

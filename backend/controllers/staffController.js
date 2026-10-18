@@ -44,12 +44,13 @@ function attendeeSummary(user, application) {
 }
 
 /**
- * Find the accepted attendee a check-in request refers to.
+ * Find the user a check-in request refers to, by QR code or user id. A QR
+ * that matches nobody triggers one rebuild of missing codes (they're SHA-256
+ * of the email, so always recomputable) before giving up.
  * @param {object} body - Request body with `qrId` or `userId`.
- * @returns {Promise<object>} `{ user, application }` on success, or
- *   `{ status, error }` describing why the request can't proceed.
+ * @returns {Promise<object>} `{ user }`, or `{ status, error }`.
  */
-async function resolveAttendee(body) {
+async function findUser(body) {
   const rawQrId = body && body.qrId;
   const userId = body && body.userId;
   let user = null;
@@ -60,6 +61,9 @@ async function resolveAttendee(body) {
       return { status: 400, error: "That is not a valid check-in QR code." };
     }
     user = await User.findOne({ qrId: qrId });
+    if (!user && (await User.backfillQrIds()) > 0) {
+      user = await User.findOne({ qrId: qrId });
+    }
     if (!user) {
       return { status: 404, error: "No attendee matches this QR code." };
     }
@@ -75,15 +79,63 @@ async function resolveAttendee(body) {
     return { status: 400, error: "qrId or userId is required." };
   }
 
-  const application = await Application.findOne({ applicant: user._id, status: "accepted" });
-  if (!application) {
-    return {
-      status: 400,
-      error: user.name + "'s application has not been accepted or does not exist.",
-    };
+  return { user: user };
+}
+
+/**
+ * Find the accepted attendee a check-in request refers to.
+ * @param {object} body - Request body with `qrId` or `userId`.
+ * @param {object} [options]
+ * @param {boolean} [options.allowNotAccepted] - Forced check-in: also accept
+ *   people whose application isn't accepted (or who never applied).
+ * @param {boolean} [options.allowCheckedIn] - Also accept anyone already
+ *   checked in to the event (so force-checked-in people can eat).
+ * @returns {Promise<object>} `{ user, application, applicationStatus }` on
+ *   success, or `{ status, error, code?, attendee? }` describing why not.
+ */
+async function resolveAttendee(body, options) {
+  const opts = options || {};
+  const found = await findUser(body);
+  if (found.error) {
+    return found;
+  }
+  const user = found.user;
+
+  const accepted = await Application.findOne({ applicant: user._id, status: "accepted" });
+  if (accepted) {
+    return { user: user, application: accepted, applicationStatus: "accepted" };
   }
 
-  return { user: user, application: application };
+  const latest = await Application.findOne({ applicant: user._id }).sort({ updatedAt: -1 });
+  const applicationStatus = latest ? latest.status : "none";
+
+  if (opts.allowNotAccepted || (opts.allowCheckedIn && user.checkedIn)) {
+    return { user: user, application: latest, applicationStatus: applicationStatus };
+  }
+
+  return {
+    status: 400,
+    code: "not_accepted",
+    error: latest
+      ? user.name + "'s application is " + applicationStatus + ", not accepted."
+      : user.name + " hasn't applied.",
+    attendee: Object.assign(attendeeSummary(user, latest), { applicationStatus: applicationStatus }),
+  };
+}
+
+/**
+ * Answer a resolveAttendee failure, passing along the attendee and reason
+ * code when there is one (the check-in screen offers a forced check-in for
+ * `not_accepted`).
+ * @param {object} res - Express response.
+ * @param {object} found - Failed resolveAttendee result.
+ * @returns {void}
+ */
+function sendResolveError(res, found) {
+  const body = { error: found.error };
+  if (found.code) body.code = found.code;
+  if (found.attendee) body.attendee = found.attendee;
+  res.status(found.status).json(body);
 }
 
 /**
@@ -162,17 +214,20 @@ async function checkInStats(_req, res) {
   try {
     const accepted = await Application.distinct("applicant", { status: "accepted" });
     const checkedIn = await User.countDocuments({ _id: { $in: accepted }, checkedIn: true });
-    return res.json({ accepted: accepted.length, checkedIn: checkedIn });
+    const forced = await CheckIn.countDocuments({ forced: true });
+    return res.json({ accepted: accepted.length, checkedIn: checkedIn, forced: forced });
   } catch (err) {
     console.error("checkInStats failed:", err);
     return res.status(500).json({ error: "Server error" });
   }
 }
 
-//  GET /api/staff/attendees?q=
+//  GET /api/staff/attendees?q=&all=1
 /**
  * Search accepted attendees by name or email (the fallback for anyone without
- * their QR code). Returns up to 25, each with their check-in status.
+ * their QR code). Returns up to 25, each with their check-in status. With
+ * `all=1` (forced check-in), search every applicant account whatever its
+ * application status, and include that status.
  * @param {object} req - Express request.
  * @param {object} res - Express response.
  * @returns {Promise<void>}
@@ -180,14 +235,22 @@ async function checkInStats(_req, res) {
 async function searchAttendees(req, res) {
   try {
     const q = req.query && req.query.q ? String(req.query.q).trim() : "";
+    const all = req.query && (req.query.all === "1" || req.query.all === "true");
 
-    const applications = await Application.find({ status: "accepted" }).select("applicant name").lean();
+    const applications = await Application.find(all ? {} : { status: "accepted" })
+      .select("applicant name status updatedAt")
+      .sort({ updatedAt: 1 })
+      .lean();
     const nameByUser = {};
+    const statusByUser = {};
     applications.forEach(function addApplicant(application) {
-      nameByUser[String(application.applicant)] = application.name || nameByUser[String(application.applicant)];
+      const id = String(application.applicant);
+      nameByUser[id] = application.name || nameByUser[id];
+      // An accepted application wins; otherwise the most recent one.
+      if (statusByUser[id] !== "accepted") statusByUser[id] = application.status;
     });
 
-    const userFilter = { _id: { $in: Object.keys(nameByUser) } };
+    const userFilter = all ? { role: "applicant" } : { _id: { $in: Object.keys(nameByUser) } };
     if (q) {
       const rx = new RegExp(escapeRegex(q), "i");
       const matchedByApplicationName = Object.keys(nameByUser).filter(function matches(id) {
@@ -214,7 +277,9 @@ async function searchAttendees(req, res) {
       attendees: users.map(function toAttendee(user) {
         const checkIn = checkInByUser[String(user._id)];
         return Object.assign(attendeeSummary(user, { name: nameByUser[String(user._id)] }), {
+          applicationStatus: statusByUser[String(user._id)] || "none",
           checkedIn: Boolean(checkIn),
+          forced: Boolean(checkIn && checkIn.forced),
           checkedInAt: checkIn ? checkIn.checkedInAt : null,
           checkedInBy: checkIn && checkIn.checkedInBy ? checkIn.checkedInBy.name : null,
         });
@@ -232,16 +297,26 @@ async function searchAttendees(req, res) {
  * records who/when in CheckIn, sets the user's checkedIn flag, and emails them
  * the "checked_in" template.
  * Body: { qrId } from a scan, or { userId } from the search.
+ * Forced check-in: { ..., force: true, reason } also checks in someone whose
+ * application isn't accepted; the reason is required and stored.
  * @param {object} req - Express request (req.user set by parseToken).
  * @param {object} res - Express response.
  * @returns {Promise<void>}
  */
 async function checkInMark(req, res) {
   try {
-    const found = await resolveAttendee(req.body);
-    if (found.error) {
-      return res.status(found.status).json({ error: found.error });
+    const force = req.body && req.body.force === true;
+    const reason = req.body && req.body.reason ? String(req.body.reason).trim() : "";
+    if (force && reason.length < 3) {
+      return res.status(400).json({ error: "A forced check-in needs a reason." });
     }
+
+    const found = await resolveAttendee(req.body, { allowNotAccepted: force });
+    if (found.error) {
+      return sendResolveError(res, found);
+    }
+    // Forcing someone who is accepted anyway is just a normal check-in.
+    const forced = force && found.applicationStatus !== "accepted";
 
     const attendee = attendeeSummary(found.user, found.application);
     const alreadyMessage = attendee.name + " is already checked in.";
@@ -260,6 +335,9 @@ async function checkInMark(req, res) {
       checkIn = await CheckIn.create({
         user: found.user._id,
         checkedInBy: req.user.id,
+        forced: forced,
+        forcedReason: forced ? reason : "",
+        applicationStatus: found.applicationStatus,
       });
     } catch (err) {
       if (err && err.code === 11000) {
@@ -276,6 +354,7 @@ async function checkInMark(req, res) {
 
     res.status(201).json({
       success: true,
+      forced: forced,
       attendee: attendee,
       checkIn: checkIn,
     });
@@ -364,9 +443,10 @@ async function mealCheckInMark(req, res) {
       return res.status(400).json({ error: meal.name + " is not active." });
     }
 
-    const found = await resolveAttendee(req.body);
+    // Accepted attendees, plus anyone force-checked-in to the event.
+    const found = await resolveAttendee(req.body, { allowCheckedIn: true });
     if (found.error) {
-      return res.status(found.status).json({ error: found.error });
+      return sendResolveError(res, found);
     }
 
     const attendee = attendeeSummary(found.user, found.application);

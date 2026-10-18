@@ -10,6 +10,7 @@ var mailer = require("../utils/mailer");
 var formConfigUtil = require("../utils/formConfig");
 var applicationStatus = require("../utils/applicationStatus");
 var validator = require("validator");
+var mongoose = require("mongoose");
 
 var DECISION_TEMPLATE_KEYS = {
   accepted: "application_accepted",
@@ -91,25 +92,13 @@ function decideApplication(req, res) {
         var templateKey = DECISION_TEMPLATE_KEYS[decision];
         var recipient = application.applicant && application.applicant.email;
         if (templateKey && recipient) {
-          // Accepted applicants get their event check-in QR code. Failing to
-          // issue it must not cost them the acceptance email itself; the code
-          // is also generated on demand from their dashboard.
-          var qrIdPromise =
-            decision === "accepted"
-              ? User.ensureQrId(application.applicant._id).catch(function onQrError(err) {
-                  console.error("Failed to issue check-in QR code:", err);
-                  return null;
-                })
-              : Promise.resolve(null);
-
-          qrIdPromise
-            .then(function afterQrId(qrId) {
-              return mailer.sendTemplateEmail(
-                recipient,
-                templateKey,
-                { name: application.name, status: application.status },
-                { qrId: qrId }
-              );
+          // If the template contains {{qrcode}} (the accepted one does by
+          // default), the mailer issues the applicant's check-in code
+          // (SHA-256 of their email) and embeds it as a QR image.
+          mailer
+            .sendTemplateEmail(recipient, templateKey, {
+              name: application.name,
+              status: application.status,
             })
             .catch(function onMailError(err) {
               console.error("Failed to send decision email:", err);
@@ -423,6 +412,137 @@ function updateEmailTemplate(req, res) {
 }
 
 /**
+ * Sample values for previews and test sends, based on the admin themselves.
+ * @param {object} user - The admin's User document.
+ * @returns {object}
+ */
+function sampleTemplateValues(user) {
+  var calendar = require("../utils/calendar");
+  var start = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+  return {
+    name: user.name,
+    status: "accepted",
+    runOfShow: calendar.formatRunOfShow([
+      {
+        title: "Opening ceremony (sample)",
+        startsAt: start,
+        endsAt: new Date(start.getTime() + 60 * 60 * 1000),
+        location: "Main hall",
+      },
+    ]),
+  };
+}
+
+/**
+ * Read the template being edited from the body: `{ subject, body }` (unsaved
+ * edits), falling back to the stored template `:id`.
+ * @param {object} req
+ * @returns {Promise<object|null>} `{ subject, body }`, or null when not found.
+ */
+function templateFromRequest(req) {
+  var hasDraft = req.body && (req.body.subject !== undefined || req.body.body !== undefined);
+  if (hasDraft) {
+    return Promise.resolve({ subject: String(req.body.subject || ""), body: String(req.body.body || "") });
+  }
+  if (!req.params.id || !mongoose.isValidObjectId(req.params.id)) {
+    return Promise.resolve(null);
+  }
+  return EmailTemplate.findById(req.params.id).lean();
+}
+
+/**
+ * POST /api/admin/email-templates/preview
+ * Render `{ subject, body }` exactly as the email will look, using the admin's
+ * own name and check-in QR code (shown inline as an image when the body has
+ * {{qrcode}}).
+ * @param {object} req
+ * @param {object} res
+ * @returns {Promise<void>}
+ */
+function previewEmailTemplate(req, res) {
+  var user;
+  return User.findById(req.user.id)
+    .then(function afterUser(found) {
+      user = found;
+      if (!user) {
+        res.status(401).json({ error: "Authentication required." });
+        return null;
+      }
+      return templateFromRequest(req);
+    })
+    .then(function afterTemplate(template) {
+      if (!user) return null;
+      if (!template) {
+        res.status(404).json({ error: "Email template not found." });
+        return null;
+      }
+      var qrIdPromise = mailer.usesQrCode(template.body) ? User.ensureQrId(user._id) : Promise.resolve(null);
+      return qrIdPromise
+        .then(function afterQrId(qrId) {
+          return mailer.renderEmail(template, sampleTemplateValues(user), { qrId: qrId, dataUrlImages: true });
+        })
+        .then(function afterRender(rendered) {
+          res.status(200).json({
+            subject: rendered.subject,
+            html: rendered.html,
+            text: rendered.text,
+            hasQrCode: mailer.usesQrCode(template.body),
+          });
+        });
+    })
+    .catch(function onError(err) {
+      console.error("previewEmailTemplate failed:", err);
+      res.status(500).json({ error: "Could not render the preview." });
+    });
+}
+
+/**
+ * POST /api/admin/email-templates/:id/test (or /test with a draft body)
+ * Send the template (or the unsaved draft `{ subject, body }`) to the admin's
+ * own address through the real mailer, QR attachment included, so they can
+ * check it in an actual inbox.
+ * @param {object} req
+ * @param {object} res
+ * @returns {Promise<void>}
+ */
+function sendTestEmailTemplate(req, res) {
+  if (!mailer.isMailConfigured()) {
+    res.status(503).json({ error: "Email isn't configured on the server (SMTP_HOST / SMTP_USER)." });
+    return Promise.resolve();
+  }
+  var user;
+  return User.findById(req.user.id)
+    .then(function afterUser(found) {
+      user = found;
+      if (!user) {
+        res.status(401).json({ error: "Authentication required." });
+        return null;
+      }
+      return templateFromRequest(req);
+    })
+    .then(function afterTemplate(template) {
+      if (!user) return null;
+      if (!template) {
+        res.status(404).json({ error: "Email template not found." });
+        return null;
+      }
+      return mailer
+        .sendRenderedTemplate(
+          user.email,
+          { subject: "[Test] " + template.subject, body: template.body },
+          sampleTemplateValues(user)
+        )
+        .then(function afterSend() {
+          res.status(200).json({ ok: true, sentTo: user.email });
+        });
+    })
+    .catch(function onError(err) {
+      console.error("sendTestEmailTemplate failed:", err);
+      res.status(502).json({ error: "The test email could not be sent: " + (err && err.message ? err.message : "unknown error") });
+    });
+}
+
+/**
  * DELETE /api/admin/email-templates/:id
  * Delete an email template.
  * @param {object} req
@@ -694,6 +814,8 @@ module.exports = {
   createEmailTemplate: createEmailTemplate,
   updateEmailTemplate: updateEmailTemplate,
   deleteEmailTemplate: deleteEmailTemplate,
+  previewEmailTemplate: previewEmailTemplate,
+  sendTestEmailTemplate: sendTestEmailTemplate,
   listMeals: listMeals,
   createMeal: createMeal,
   updateMeal: updateMeal,

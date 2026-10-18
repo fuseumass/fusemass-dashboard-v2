@@ -89,7 +89,7 @@ test("first check-in: flag + checked-in email", async function checkedIn(t) {
 
   await t.test("sets the user's checkedIn flag", async function (t2) {
     await resetFixtures();
-    mailMock.mockTransport(t2);
+    var mail = mailMock.mockTransport(t2);
     var attendee = await createAcceptedAttendee();
     var moderator = await fixtures.createUser({ role: "moderator" });
 
@@ -108,6 +108,9 @@ test("first check-in: flag + checked-in email", async function checkedIn(t) {
 
     me = await request(app).get("/api/auth/me").set("Authorization", "Bearer " + attendee.token);
     assert.equal(me.body.user.checkedIn, true);
+    await waitFor(function () {
+      return mail.calls.length >= 1;
+    });
   });
 
   await t.test("emails Discord, website and the run of show as a calendar invite, once", async function (t2) {
@@ -218,7 +221,7 @@ test("first check-in: flag + checked-in email", async function checkedIn(t) {
 
   await t.test("stats count accepted attendees and arrivals", async function (t2) {
     await resetFixtures();
-    mailMock.mockTransport(t2);
+    var mail = mailMock.mockTransport(t2);
     var first = await createAcceptedAttendee();
     await createAcceptedAttendee();
     var moderator = await fixtures.createUser({ role: "moderator" });
@@ -227,10 +230,13 @@ test("first check-in: flag + checked-in email", async function checkedIn(t) {
     await request(app).post("/api/staff/checkin").set("Authorization", auth).send({ qrId: first.qrId });
     var res = await request(app).get("/api/staff/checkin/stats").set("Authorization", auth);
     assert.equal(res.status, 200);
-    assert.deepEqual(res.body, { accepted: 2, checkedIn: 1 });
+    assert.deepEqual(res.body, { accepted: 2, checkedIn: 1, forced: 0 });
 
     res = await request(app).get("/api/staff/checkin/stats").set("Authorization", "Bearer " + first.token);
     assert.equal(res.status, 403);
+    await waitFor(function () {
+      return mail.calls.length >= 1;
+    });
   });
 });
 

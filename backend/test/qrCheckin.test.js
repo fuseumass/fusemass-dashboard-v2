@@ -11,6 +11,7 @@ var mailMock = require("./helpers/mailMock");
 var waitFor = require("./helpers/waitFor");
 var app = require("../server");
 var qrCode = require("../utils/qrCode");
+var mailer = require("../utils/mailer");
 var User = require("../schemas/user");
 var EmailTemplate = require("../schemas/emailTemplate");
 var ApplicationRound = require("../schemas/applicationRound");
@@ -130,7 +131,7 @@ test("check-in QR codes", async function qrCodes(t) {
     assert.equal(saved.qrId, qrCode.computeQrId(applicant.user.email));
   });
 
-  await t.test("a template without {{qrcode}} still gets the QR appended", async function (t2) {
+  await t.test("no {{qrcode}} in the template means no QR", async function (t2) {
     await resetFixtures();
     await EmailTemplate.updateOne({ key: "application_accepted" }, { $set: { body: "Welcome, {{name}}!" } });
     var mail = mailMock.mockTransport(t2);
@@ -145,7 +146,92 @@ test("check-in QR codes", async function qrCodes(t) {
     await waitFor(function () {
       return mail.calls.length >= 1;
     });
-    assert.match(mail.calls[0].html, /^Welcome, .*<img src="cid:checkin-qrcode"/);
+    assert.equal(mail.calls[0].attachments, undefined);
+    assert.doesNotMatch(mail.calls[0].html, /<img/);
+  });
+
+  await t.test("{{qrcode}} works in any template, with the recipient's own code", async function (t2) {
+    await resetFixtures();
+    await EmailTemplate.updateOne(
+      { key: "application_received" },
+      { $set: { body: "Thanks {{name}}! Your code: {{ qrcode }} (keep it)" } }
+    );
+    var mail = mailMock.mockTransport(t2);
+    var applicant = await fixtures.createUser({ role: "applicant", email: "Grace@Example.com" });
+
+    await mailer.sendTemplateEmail(applicant.user.email, "application_received", { name: "Grace" });
+
+    var sent = mail.calls[0];
+    assert.equal(sent.attachments.length, 1);
+    assert.equal(sent.attachments[0].cid, "checkin-qrcode");
+    // The image sits where the variable was, not at the end.
+    assert.match(sent.html, /Your code: <img src="cid:checkin-qrcode"[^>]*> \(keep it\)/);
+    var saved = await User.findById(applicant.user._id);
+    assert.equal(saved.qrId, crypto.createHash("sha256").update("grace@example.com").digest("hex"));
+  });
+
+  await t.test("the QR image decodes to the SHA-256 of the email", async function (t2) {
+    await resetFixtures();
+    var mail = mailMock.mockTransport(t2);
+    var applicant = await createApplicant("pending", { email: "ada@example.com" });
+    var admin = await fixtures.createUser({ role: "admin" });
+
+    await request(app)
+      .patch("/api/admin/applications/" + applicant.application._id)
+      .set("Authorization", "Bearer " + admin.token)
+      .send({ decision: "accepted" });
+    await waitFor(function () {
+      return mail.calls.length >= 1;
+    });
+
+    // Render the same code with the same settings: the PNG must be identical,
+    // so what's in the email encodes exactly sha256("ada@example.com").
+    var expected = await qrCode.toPngBuffer(crypto.createHash("sha256").update("ada@example.com").digest("hex"));
+    assert.ok(mail.calls[0].attachments[0].content.equals(expected));
+  });
+
+  await t.test("seeding upgrades an unedited old acceptance template, never an edited one", async function () {
+    await db.clearDatabase();
+    var oldDefault =
+      "Hi {{name}},\n\nCongratulations! Your application to {{orgName}} has been accepted.\n\nStatus: {{status}}";
+    await EmailTemplate.create({ key: "application_accepted", subject: "s", body: oldDefault });
+    await EmailTemplate.seedDefaults();
+    var upgraded = await EmailTemplate.findOne({ key: "application_accepted" });
+    assert.match(upgraded.body, /\{\{qrcode\}\}/);
+
+    await EmailTemplate.updateOne({ key: "application_accepted" }, { $set: { body: oldDefault + " edited" } });
+    await EmailTemplate.seedDefaults();
+    var edited = await EmailTemplate.findOne({ key: "application_accepted" });
+    assert.equal(edited.body, oldDefault + " edited");
+  });
+
+  await t.test("admin preview renders the QR inline; test send emails the admin", async function (t2) {
+    await resetFixtures();
+    var mail = mailMock.mockTransport(t2);
+    var admin = await fixtures.createUser({ role: "admin", name: "Ada Admin" });
+    var auth = "Bearer " + admin.token;
+    var draft = { subject: "Hi {{name}}", body: "Scan this:\n{{qrcode}}" };
+
+    var res = await request(app).post("/api/admin/email-templates/preview").set("Authorization", auth).send(draft);
+    assert.equal(res.status, 200);
+    assert.equal(res.body.subject, "Hi Ada Admin");
+    assert.equal(res.body.hasQrCode, true);
+    assert.match(res.body.html, /<img src="data:image\/png;base64,/);
+
+    res = await request(app).post("/api/admin/email-templates/test").set("Authorization", auth).send(draft);
+    assert.equal(res.status, 200);
+    assert.equal(res.body.sentTo, admin.user.email);
+    assert.equal(mail.calls.length, 1);
+    assert.equal(mail.calls[0].to, admin.user.email);
+    assert.match(mail.calls[0].subject, /^\[Test\] Hi Ada Admin/);
+    assert.equal(mail.calls[0].attachments[0].cid, "checkin-qrcode");
+
+    var applicant = await fixtures.createUser({ role: "applicant" });
+    res = await request(app)
+      .post("/api/admin/email-templates/preview")
+      .set("Authorization", "Bearer " + applicant.token)
+      .send(draft);
+    assert.equal(res.status, 403);
   });
 
   await t.test("rejection emails carry no QR code", async function (t2) {
@@ -201,8 +287,9 @@ test("T2: event check-in", async function eventCheckIn(t) {
     assert.equal(res.status, 403, "an applicant cannot check themselves in");
   });
 
-  await t.test("checks an attendee in by QR, once", async function () {
+  await t.test("checks an attendee in by QR, once", async function (t2) {
     await resetFixtures();
+    var mail = mailMock.mockTransport(t2);
     var attendee = await createAcceptedAttendee({ name: "Ada Lovelace" });
     var moderator = await fixtures.createUser({ role: "moderator", name: "Mod Erator" });
     var auth = "Bearer " + moderator.token;
@@ -223,10 +310,14 @@ test("T2: event check-in", async function eventCheckIn(t) {
     assert.equal(res.status, 200);
     assert.equal(res.body.checkedIn, true);
     assert.equal(res.body.checkedInBy.name, "Mod Erator");
+    await waitFor(function () {
+      return mail.calls.length >= 1;
+    });
   });
 
-  await t.test("still works by userId (the search fallback)", async function () {
+  await t.test("still works by userId (the search fallback)", async function (t2) {
     await resetFixtures();
+    var mail = mailMock.mockTransport(t2);
     var attendee = await createAcceptedAttendee();
     var admin = await fixtures.createUser({ role: "admin" });
 
@@ -235,6 +326,9 @@ test("T2: event check-in", async function eventCheckIn(t) {
       .set("Authorization", "Bearer " + admin.token)
       .send({ userId: String(attendee.user._id) });
     assert.equal(res.status, 201);
+    await waitFor(function () {
+      return mail.calls.length >= 1;
+    });
   });
 
   await t.test("rejects bad, unknown and not-accepted codes", async function () {
@@ -261,6 +355,132 @@ test("T2: event check-in", async function eventCheckIn(t) {
 
     res = await request(app).post("/api/staff/checkin").set("Authorization", auth).send({ userId: "nope" });
     assert.equal(res.status, 400);
+  });
+
+  await t.test("forced check-in: needs a reason, records it, then works like a check-in", async function (t2) {
+    await resetFixtures();
+    var mail = mailMock.mockTransport(t2);
+    var walkIn = await createApplicant("rejected", { name: "Walk In" });
+    var walkInQr = await User.ensureQrId(walkIn.user._id);
+    var moderator = await fixtures.createUser({ role: "moderator" });
+    var auth = "Bearer " + moderator.token;
+
+    // A normal scan explains why and hands back who it was, so the screen can
+    // offer a forced check-in.
+    var res = await request(app).post("/api/staff/checkin").set("Authorization", auth).send({ qrId: walkInQr });
+    assert.equal(res.status, 400);
+    assert.equal(res.body.code, "not_accepted");
+    assert.equal(res.body.attendee.name, "Walk In");
+    assert.equal(res.body.attendee.applicationStatus, "rejected");
+
+    res = await request(app)
+      .post("/api/staff/checkin")
+      .set("Authorization", auth)
+      .send({ qrId: walkInQr, force: true });
+    assert.equal(res.status, 400, "a reason is required");
+
+    res = await request(app)
+      .post("/api/staff/checkin")
+      .set("Authorization", auth)
+      .send({ qrId: walkInQr, force: true, reason: "Approved walk-in" });
+    assert.equal(res.status, 201);
+    assert.equal(res.body.forced, true);
+
+    var record = await CheckIn.findOne({ user: walkIn.user._id });
+    assert.equal(record.forced, true);
+    assert.equal(record.forcedReason, "Approved walk-in");
+    assert.equal(record.applicationStatus, "rejected");
+    assert.equal((await User.findById(walkIn.user._id)).checkedIn, true);
+
+    res = await request(app)
+      .post("/api/staff/checkin")
+      .set("Authorization", auth)
+      .send({ qrId: walkInQr, force: true, reason: "again" });
+    assert.equal(res.status, 409, "still once per person");
+
+    // Someone with no application at all can be forced in too (by user id).
+    var noApp = await fixtures.createUser({ role: "applicant" });
+    res = await request(app)
+      .post("/api/staff/checkin")
+      .set("Authorization", auth)
+      .send({ userId: String(noApp.user._id), force: true, reason: "Organizer's guest" });
+    assert.equal(res.status, 201);
+
+    res = await request(app).get("/api/staff/checkin/stats").set("Authorization", auth);
+    assert.equal(res.body.forced, 2);
+
+    // Forcing an accepted attendee is just a normal check-in.
+    var accepted = await createAcceptedAttendee();
+    res = await request(app)
+      .post("/api/staff/checkin")
+      .set("Authorization", auth)
+      .send({ qrId: accepted.qrId, force: true, reason: "habit" });
+    assert.equal(res.status, 201);
+    assert.equal(res.body.forced, false);
+    // Forced check-ins get the same checked-in email (3 check-ins above).
+    await waitFor(function () {
+      return mail.calls.length >= 3;
+    });
+  });
+
+  await t.test("force-checked-in attendees can be served meals", async function (t2) {
+    await resetFixtures();
+    var mail = mailMock.mockTransport(t2);
+    var walkIn = await createApplicant("waitlisted");
+    var qrId = await User.ensureQrId(walkIn.user._id);
+    var moderator = await fixtures.createUser({ role: "moderator" });
+    var auth = "Bearer " + moderator.token;
+    var lunch = await createMeal("Saturday Lunch");
+
+    var res = await request(app).post("/api/staff/meals/" + lunch._id + "/checkin").set("Authorization", auth).send({ qrId: qrId });
+    assert.equal(res.status, 400, "not accepted and not checked in");
+
+    await request(app)
+      .post("/api/staff/checkin")
+      .set("Authorization", auth)
+      .send({ qrId: qrId, force: true, reason: "Approved walk-in" });
+    res = await request(app).post("/api/staff/meals/" + lunch._id + "/checkin").set("Authorization", auth).send({ qrId: qrId });
+    assert.equal(res.status, 201);
+    await waitFor(function () {
+      return mail.calls.length >= 1;
+    });
+  });
+
+  await t.test("a scan whose code was lost is rebuilt from the email", async function (t2) {
+    await resetFixtures();
+    var mail = mailMock.mockTransport(t2);
+    var attendee = await createAcceptedAttendee({ email: "lost@example.com" });
+    await User.updateOne({ _id: attendee.user._id }, { $unset: { qrId: 1 } });
+    var moderator = await fixtures.createUser({ role: "moderator" });
+
+    var res = await request(app)
+      .post("/api/staff/checkin")
+      .set("Authorization", "Bearer " + moderator.token)
+      .send({ qrId: crypto.createHash("sha256").update("lost@example.com").digest("hex") });
+    assert.equal(res.status, 201);
+    await waitFor(function () {
+      return mail.calls.length >= 1;
+    });
+    assert.equal((await User.findById(attendee.user._id)).qrId, attendee.qrId);
+  });
+
+  await t.test("search with all=1 finds everyone, with their application status", async function () {
+    await resetFixtures();
+    await createAcceptedAttendee({ name: "Ada Accepted", email: "ada@example.com" });
+    await createApplicant("rejected", { name: "Ada Rejected", email: "ada.r@example.com" });
+    await fixtures.createUser({ role: "applicant", name: "Ada Noapp", email: "ada.n@example.com" });
+    var moderator = await fixtures.createUser({ role: "moderator", name: "Ada Mod" });
+    var auth = "Bearer " + moderator.token;
+
+    var res = await request(app).get("/api/staff/attendees?q=ada&all=1").set("Authorization", auth);
+    var byName = {};
+    res.body.attendees.forEach(function (a) {
+      byName[a.name] = a.applicationStatus;
+    });
+    assert.deepEqual(byName, { "Ada Accepted": "accepted", "Ada Noapp": "none", "Ada Rejected": "rejected" });
+
+    res = await request(app).get("/api/staff/attendees?q=ada").set("Authorization", auth);
+    assert.equal(res.body.attendees.length, 1, "without all=1, accepted only");
   });
 
   await t.test("attendee search finds accepted attendees only, with status", async function () {

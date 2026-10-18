@@ -54,6 +54,11 @@ router.post(
   validateBody({ key: { required: true, type: "string" } }),
   adminController.createEmailTemplate
 );
+// Preview / test-send take the unsaved draft `{ subject, body }` from the
+// editor (or use the stored template :id). Registered before /:id routes.
+router.post("/email-templates/preview", isAdmin, adminController.previewEmailTemplate);
+router.post("/email-templates/test", isAdmin, adminController.sendTestEmailTemplate);
+router.post("/email-templates/:id/test", isAdmin, adminController.sendTestEmailTemplate);
 router.patch("/email-templates/:id", isAdmin, adminController.updateEmailTemplate);
 router.delete("/email-templates/:id", isAdmin, adminController.deleteEmailTemplate);
 

@@ -129,6 +129,55 @@ userSchema.statics.ensureQrId = function ensureQrId(userId) {
     });
 };
 
+/**
+ * The check-in code for whoever owns this email address: their stored code if
+ * they have an account, otherwise just SHA-256 of the email. Used when sending
+ * any email whose template contains {{qrcode}}.
+ * @param {string} email - Recipient email.
+ * @returns {Promise<string>}
+ */
+userSchema.statics.ensureQrIdForEmail = function ensureQrIdForEmail(email) {
+  var User = this;
+  var normalized = String(email || "").trim().toLowerCase();
+
+  return User.findOne({ email: normalized })
+    .select("_id")
+    .then(function afterFind(user) {
+      return user ? User.ensureQrId(user._id) : qrCode.computeQrId(normalized);
+    });
+};
+
+/**
+ * Recompute and save the check-in code of every user that's missing one. The
+ * code is just SHA-256 of the email, so lost codes can always be rebuilt
+ * (e.g. after a restore or a field being dropped).
+ * @returns {Promise<number>} How many users were updated.
+ */
+userSchema.statics.backfillQrIds = function backfillQrIds() {
+  var User = this;
+
+  return User.find({ $or: [{ qrId: { $exists: false } }, { qrId: null }, { qrId: "" }] })
+    .select("email")
+    .lean()
+    .then(function afterFind(users) {
+      if (!users.length) {
+        return 0;
+      }
+      return User.bulkWrite(
+        users.map(function toUpdate(user) {
+          return {
+            updateOne: {
+              filter: { _id: user._id },
+              update: { $set: { qrId: qrCode.computeQrId(user.email) } },
+            },
+          };
+        })
+      ).then(function afterWrite() {
+        return users.length;
+      });
+    });
+};
+
 // Strip sensitive fields whenever a user document is serialized to JSON.
 userSchema.set("toJSON", {
   transform: function transform(_doc, ret) {

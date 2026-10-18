@@ -1,12 +1,26 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import QRScanner from "@/components/QRScanner";
 
 // Shared pieces of the event-day scanning screens (first check-in and meals):
 // the camera + code box, the big result banner, and the per-device log.
 
 const RECENT_LIMIT = 8;
+
+// A check-in code is SHA-256 of the attendee's email: 64 hex characters.
+const FULL_CODE = /^[a-f0-9]{64}$/i;
+
+// Laptops/desktops (mouse or trackpad): keep the code box focused so a USB
+// scanner "typing" a code just works. Not on phones/tablets, where focusing
+// would pop up the keyboard over the camera.
+function hasFinePointer() {
+  return (
+    typeof window !== "undefined" &&
+    typeof window.matchMedia === "function" &&
+    window.matchMedia("(pointer: fine)").matches
+  );
+}
 
 const RESULT_STYLES = {
   success: { color: "var(--success)", icon: "✓" },
@@ -62,22 +76,55 @@ export function useStationLog() {
 }
 
 /**
- * Camera scanner, a code box (also what a handheld USB scanner "types"
- * into), and the outcome of the last check-in.
+ * Camera scanner ("Open camera", for phones and tablets), a code box for
+ * handheld USB/Bluetooth scanners (they act as keyboards), and the outcome of
+ * the last check-in.
  * @param {object} props
  * @param {string} props.title - Card heading.
  * @param {function(string): Promise<void>} props.onCode - Called with each scanned/typed code.
- * @param {object|null} props.result - Last result to show.
+ * @param {object|null} props.result - Last result to show; may carry an
+ *   `action: { label, onClick }` button (e.g. "Force check-in").
  */
 export default function CheckInStation({ title, onCode, result }) {
   const [code, setCode] = useState("");
+  const inputRef = useRef(null);
+  const busyRef = useRef(false);
 
-  async function handleSubmit(e) {
-    e.preventDefault();
-    const value = code.trim();
-    if (!value) return;
+  function refocus() {
+    if (hasFinePointer()) inputRef.current?.focus();
+  }
+
+  useEffect(() => {
+    if (hasFinePointer()) inputRef.current?.focus();
+  }, []);
+
+  async function submit(value) {
+    const trimmed = value.trim();
+    if (!trimmed || busyRef.current) return;
+    busyRef.current = true;
     setCode("");
-    await onCode(value);
+    try {
+      await onCode(trimmed);
+    } finally {
+      busyRef.current = false;
+      refocus();
+    }
+  }
+
+  function handleSubmit(e) {
+    e.preventDefault();
+    submit(code);
+  }
+
+  function handleChange(e) {
+    const value = e.target.value;
+    // Scanners that end with Tab (or nothing) instead of Enter: a complete
+    // code submits itself.
+    if (FULL_CODE.test(value.trim())) {
+      submit(value);
+      return;
+    }
+    setCode(value);
   }
 
   return (
@@ -95,12 +142,15 @@ export default function CheckInStation({ title, onCode, result }) {
         style={{ display: "flex", gap: "0.5rem", marginTop: "1rem" }}
       >
         <input
+          ref={inputRef}
           className="input"
           aria-label="Check-in code"
-          placeholder="Or type / scan a code here"
+          placeholder="Or scan with a USB scanner / paste the code"
           autoComplete="off"
+          autoCapitalize="off"
+          spellCheck={false}
           value={code}
-          onChange={(e) => setCode(e.target.value)}
+          onChange={handleChange}
         />
         <button
           type="submit"
@@ -144,6 +194,16 @@ function ResultBanner({ result }) {
         ? <div style={{ marginTop: 4, fontSize: "0.88rem" }}>
             {result.warning}
           </div>
+        : null}
+      {result.action
+        ? <button
+            type="button"
+            className="btn btn-ghost"
+            style={{ width: "auto", marginTop: "0.6rem" }}
+            onClick={result.action.onClick}
+          >
+            {result.action.label}
+          </button>
         : null}
     </div>
   );
