@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import Autocomplete from "@/components/Autocomplete";
+import SignedLinkButton from "@/components/SignedLinkButton";
 import TagAutocomplete from "@/components/TagAutocomplete";
 import { apiFetch, apiUpload } from "@/lib/api";
 import { config } from "@/lib/config";
@@ -44,7 +45,7 @@ function emptyForm() {
     },
     programmingSkills: [],
     hardwareSkills: [],
-    resumeUrl: "",
+    hasResume: false,
     answers: {},
   };
 }
@@ -90,7 +91,7 @@ export default function ApplicationPage() {
             },
             programmingSkills: a.programmingSkills || [],
             hardwareSkills: a.hardwareSkills || [],
-            resumeUrl: a.resumeUrl || "",
+            hasResume: Boolean(a.hasResume),
             answers: a.answers || {},
           });
         }
@@ -149,9 +150,7 @@ export default function ApplicationPage() {
 
       const data = await apiUpload("/api/applications", fd);
       setSubmittedStatus(data.application.status);
-      if (data.application.resumeUrl) {
-        setField("resumeUrl", data.application.resumeUrl);
-      }
+      setField("hasResume", Boolean(data.application.hasResume));
       setSuccess(
         status === "draft" ? "Draft saved." : "Application submitted!",
       );
@@ -326,21 +325,16 @@ export default function ApplicationPage() {
               type="file"
               accept=".pdf,.doc,.docx"
             />
-            {form.resumeUrl
-              ? <p
+            {form.hasResume
+              ? <div
                   className="muted"
                   style={{ fontSize: "0.82rem", marginTop: 4 }}
                 >
                   Current:{" "}
-                  <a
-                    className="link"
-                    href={form.resumeUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                  >
+                  <SignedLinkButton path="/api/applications/me/resume">
                     view uploaded resume
-                  </a>
-                </p>
+                  </SignedLinkButton>
+                </div>
               : null}
           </Field>
         </Section>

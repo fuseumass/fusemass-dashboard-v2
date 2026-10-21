@@ -109,15 +109,15 @@ function apply(req, res) {
         resumeStep = azureBlob.uploadResume(req.file, claims.id);
       }
 
-      return resumeStep.then(function afterResume(resumeUrl) {
+      return resumeStep.then(function afterResume(resumeBlobName) {
         var update = Object.assign({}, profile, {
           applicant: claims.id,
           round: round._id,
           status: status,
           answers: answersCheck.answers,
         });
-        if (resumeUrl) {
-          update.resumeUrl = resumeUrl;
+        if (resumeBlobName) {
+          update.resumeBlobName = resumeBlobName;
         }
 
         // A single atomic upsert performs the write and reports what was

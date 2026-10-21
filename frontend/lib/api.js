@@ -161,3 +161,27 @@ export async function apiUpload(path, formData, options = {}) {
 
   return readResponse(res, path, Boolean(token));
 }
+
+// --- Signed file links ------------------------------------------------------
+// Private files (resumes) live behind short-lived signed URLs that an
+// authenticated endpoint returns as `{ url }`. A plain <a href> to that
+// endpoint can't carry the JWT, so fetch the link, then navigate to it.
+// The tab is opened before the request, while we're still inside the click,
+// so popup blockers don't swallow it.
+
+export async function openSignedLink(path) {
+  const tab = window.open("", "_blank");
+  if (!tab) {
+    throw new Error(
+      "Your browser blocked the new tab. Allow pop-ups for this site and try again.",
+    );
+  }
+  try {
+    const data = await apiFetch(path);
+    tab.opener = null;
+    tab.location.href = data.url;
+  } catch (err) {
+    tab.close();
+    throw err;
+  }
+}
