@@ -11,6 +11,7 @@ var parseToken = require("./utils/parseToken");
 var passportUtil = require("./utils/passport");
 var EmailTemplate = require("./schemas/emailTemplate");
 var discord = require("./utils/discord");
+var outbox = require("./utils/outbox");
 var clientOrigin = require("./utils/clientOrigin");
 var healthController = require("./controllers/healthController");
 
@@ -104,6 +105,9 @@ if (require.main === module) {
     .then(function afterSeed() {
       app.listen(PORT, function onListen() {
         console.log("HackUMass backend listening on port " + PORT + ".");
+        // Retries emails that failed to send (see utils/outbox). Started only
+        // here, so requiring this module in tests never starts a timer.
+        outbox.startWorker();
       });
     })
     .catch(function onError(err) {

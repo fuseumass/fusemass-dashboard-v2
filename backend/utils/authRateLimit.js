@@ -55,4 +55,6 @@ module.exports = {
   // Team invites send an email each, so they're capped like the other
   // email-sending endpoints.
   teamInvite: makeAuthLimiter({ max: maxFor("TEAM_INVITE") }),
+  // Unsubscribe links are public and tokenized; this just stops guessing.
+  unsubscribe: makeAuthLimiter({ max: maxFor("UNSUBSCRIBE") }),
 };

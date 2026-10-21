@@ -387,7 +387,11 @@ function applyPublic(req, res) {
           return undefined;
         }
 
-        var userStep = existing ? Promise.resolve(existing) : User.create({ name: name, email: email, role: "applicant" });
+        // The form is multipart, so the opt-in checkbox arrives as a string.
+        var wantsAnnouncements = body.marketingEmailConsent === true || body.marketingEmailConsent === "true";
+        var userStep = existing
+          ? Promise.resolve(existing)
+          : User.create({ name: name, email: email, role: "applicant", marketingEmailConsent: wantsAnnouncements });
 
         return userStep.then(function afterUserReady(user) {
           return Application.exists({ applicant: user._id, round: round._id }).then(function afterExists(already) {

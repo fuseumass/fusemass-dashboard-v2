@@ -99,7 +99,26 @@ router.get(
   authController.googleCallback
 );
 
+// Public: the unsubscribe link in announcement emails (the token in the body
+// is the proof, so no login). Idempotent.
+router.post(
+  "/unsubscribe",
+  authRateLimit.unsubscribe,
+  validateBody({
+    u: { required: true, type: "string" },
+    t: { required: true, type: "string" },
+  }),
+  authController.unsubscribe
+);
+
 // Requires a valid token.
 router.get("/me", isAuthenticated, authController.me);
+// Own preferences: whether to get announcement emails.
+router.patch(
+  "/me",
+  isAuthenticated,
+  validateBody({ marketingEmailConsent: { required: true, type: "boolean" } }),
+  authController.updateMe
+);
 
 module.exports = router;

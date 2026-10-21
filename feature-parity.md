@@ -38,7 +38,8 @@ were presumably tracked in spreadsheets, so B33–B37 are a new design.
 | Admin role management (`pages#permissions`) | ✅ Users page | — |
 | "Redeem code" to upgrade your own role | ✖ security hole (let anyone become admin) | B17 |
 | Slack: join gate, DMs, account re-association | ✖ replaced by Discord link + email | B26 |
-| Marketing-email consent (`non_transactional_email_consent`) | 📋 | B26 |
+| Marketing-email consent (`non_transactional_email_consent`) | 🟡 backend done (off by default, sign-up/profile field, unsubscribe link, enforced for announcements); sign-up checkbox + profile toggle are UI follow-ups | B26 |
+| Failed-email page (`/check-failed-emails` in the judging app) | ➕ ✅ email outbox: log, backoff retries, resend, `/dashboard/admin/outbox` | B26 |
 
 ## Registration & review
 
@@ -57,8 +58,8 @@ were presumably tracked in spreadsheets, so B33–B37 are a new design.
 | Admin statistics (counts by school, gender, status, …) | 📋 | B43, F26 |
 | CSV export of applications | 📋 | B29 |
 | RSVP + custom RSVP questions + un-RSVP | ⏸ | B32 |
-| Mass email to lists (not applied / accepted / waitlisted / undecided / test to self) | 📋 | B26 |
-| Reminder emails | 📋 | B26 |
+| Mass email to lists (not applied / accepted / waitlisted / undecided / test to self) | 🟡 API done (`POST /api/admin/outbox/bulk`, consent-aware); compose UI pending. Workshop-signup and hardware-holder lists wait for B18 / hardware checkout | B26 |
+| Reminder emails | 🟡 send by hand as a bulk email to a segment; no scheduled reminders yet | B26 |
 
 ## Event day
 

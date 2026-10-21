@@ -2,6 +2,7 @@
 
 var express = require("express");
 var adminController = require("../controllers/adminController");
+var outboxController = require("../controllers/outboxController");
 var resumeController = require("../controllers/resumeController");
 var teamController = require("../controllers/teamController");
 var settingsController = require("../controllers/settingsController");
@@ -68,6 +69,18 @@ router.post("/email-templates/test", isAdmin, adminController.sendTestEmailTempl
 router.post("/email-templates/:id/test", isAdmin, adminController.sendTestEmailTemplate);
 router.patch("/email-templates/:id", isAdmin, adminController.updateEmailTemplate);
 router.delete("/email-templates/:id", isAdmin, adminController.deleteEmailTemplate);
+
+// Email outbox: every email the server sent, failures, retries, resends and
+// bulk sends. The fixed paths come before /:id.
+router.get("/outbox", isAdmin, outboxController.listOutbox);
+router.get("/outbox/segments", isAdmin, outboxController.listSegments);
+router.post("/outbox/bulk", isAdmin, outboxController.bulkSend);
+router.post("/outbox/resend-acceptance", isAdmin, outboxController.resendAcceptance);
+router.post("/outbox/retry-failed", isAdmin, outboxController.retryFailed);
+router.post("/outbox/cancel-queued", isAdmin, outboxController.cancelQueued);
+router.get("/outbox/:id", isAdmin, outboxController.getOutboxEmail);
+router.post("/outbox/:id/resend", isAdmin, outboxController.resendEmail);
+router.post("/outbox/:id/cancel", isAdmin, outboxController.cancelEmail);
 
 // Org settings (e.g. Google OAuth toggle).
 router.get("/settings", isAdmin, settingsController.getSettings);
