@@ -105,6 +105,15 @@ var userSchema = new Schema(
     checkedInAt: {
       type: Date,
     },
+    // Opt-in to announcement emails (news, reminders, sponsor offers sent in
+    // bulk from the admin outbox). Off until the person says yes: asked at
+    // sign-up, editable in their profile, switched off by the unsubscribe
+    // link. Transactional email (decisions, QR codes, check-in, password
+    // links, team invites) ignores it and always sends.
+    marketingEmailConsent: {
+      type: Boolean,
+      default: false,
+    },
   },
   { timestamps: true }
 );

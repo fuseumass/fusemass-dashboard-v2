@@ -93,12 +93,14 @@ var MATRIX = [
   row("POST", "/api/auth/forgot-password", "public"),
   row("POST", "/api/auth/reset-password", "public"),
   row("POST", "/api/auth/verify-email", "public"),
+  row("POST", "/api/auth/unsubscribe", "public"),
   row("POST", "/api/auth/setup-admin", "public"),
   row("GET", "/api/auth/google", "public"),
   row("GET", "/api/auth/google/callback", "public"),
 
   // ---- Any logged-in user --------------------------------------------------
   row("GET", "/api/auth/me", "authenticated"),
+  row("PATCH", "/api/auth/me", "authenticated"),
   row("GET", "/api/meta/links", "authenticated"),
   row("POST", "/api/auth/resend-verification", "authenticated"),
   row("POST", "/api/applications", "authenticated", { body: { name: "Sneaky" } }),
@@ -187,6 +189,17 @@ var MATRIX = [
   }),
   row("PATCH", "/api/admin/meals/:id", "admin", { use: { id: "meal" }, body: { name: "Renamed" } }),
   row("DELETE", "/api/admin/meals/:id", "admin", { use: { id: "meal" } }),
+  row("GET", "/api/admin/outbox", "admin"),
+  row("GET", "/api/admin/outbox/segments", "admin"),
+  row("POST", "/api/admin/outbox/bulk", "admin", {
+    body: { templateKey: "application_accepted", segment: "accepted", type: "transactional" },
+  }),
+  row("POST", "/api/admin/outbox/resend-acceptance", "admin"),
+  row("POST", "/api/admin/outbox/retry-failed", "admin"),
+  row("POST", "/api/admin/outbox/cancel-queued", "admin"),
+  row("GET", "/api/admin/outbox/:id", "admin"),
+  row("POST", "/api/admin/outbox/:id/resend", "admin"),
+  row("POST", "/api/admin/outbox/:id/cancel", "admin"),
   row("GET", "/api/admin/schedule", "admin"),
   row("POST", "/api/admin/schedule", "admin", {
     body: { title: "Sneaky event", startsAt: "2026-10-24T12:00:00Z", endsAt: "2026-10-24T13:00:00Z" },

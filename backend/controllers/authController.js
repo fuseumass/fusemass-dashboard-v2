@@ -2,20 +2,23 @@
 
 var crypto = require("crypto");
 var validator = require("validator");
+var mongoose = require("mongoose");
 var User = require("../schemas/user");
 var signToken = require("../utils/signToken");
 var mailer = require("../utils/mailer");
 var passwordToken = require("../utils/passwordToken");
 var emailVerification = require("../utils/emailVerification");
+var unsubscribeLink = require("../utils/unsubscribe");
 var primaryClientOrigin = require("../utils/clientOrigin").primaryClientOrigin;
 
 /**
  * POST /api/auth/register
  * Create a new applicant account and return a signed JWT.
  *
- * Body: { name, email, password }
+ * Body: { name, email, password, marketingEmailConsent? }
  * Everyone who registers this way is an "applicant"; admins are promoted later
- * by an existing admin via the admin routes.
+ * by an existing admin via the admin routes. `marketingEmailConsent` is the
+ * sign-up checkbox for announcement emails; anything but true means no.
  *
  * The email must be a real address (400 otherwise). When outgoing email is
  * configured the account starts unverified and a verification link is emailed
@@ -63,6 +66,7 @@ function register(req, res) {
           email: email,
           passwordHash: hash,
           role: "applicant",
+          marketingEmailConsent: req.body.marketingEmailConsent === true,
         };
         if (verification) {
           fields.emailVerified = false;
@@ -177,6 +181,68 @@ function me(req, res) {
     .catch(function onError(err) {
       console.error("me failed:", err);
       res.status(500).json({ error: "Could not load profile." });
+    });
+}
+
+/**
+ * PATCH /api/auth/me
+ * Update the caller's own preferences. Today that is only whether they want
+ * announcement emails (`marketingEmailConsent`); it never touches role or
+ * anything else, whatever else the body contains.
+ *
+ * Body: { marketingEmailConsent: boolean }
+ *
+ * @param {object} req - Express request (req.user set by parseToken).
+ * @param {object} res - Express response.
+ * @returns {Promise<void>}
+ */
+function updateMe(req, res) {
+  return User.findByIdAndUpdate(
+    req.user.id,
+    { $set: { marketingEmailConsent: req.body.marketingEmailConsent === true } },
+    { new: true }
+  )
+    .then(function afterUpdate(user) {
+      if (!user) {
+        res.status(404).json({ error: "User not found." });
+        return;
+      }
+      res.status(200).json({ user: user.toJSON() });
+    })
+    .catch(function onError(err) {
+      console.error("updateMe failed:", err);
+      res.status(500).json({ error: "Could not save your preferences." });
+    });
+}
+
+/**
+ * POST /api/auth/unsubscribe
+ * Turn a user's announcement emails off from the link at the bottom of one.
+ * Public: the link's token (a keyed hash of the user id) is the proof. Safe to
+ * repeat. Transactional email is unaffected.
+ *
+ * Body: { u: userId, t: token }
+ *
+ * @param {object} req - Express request.
+ * @param {object} res - Express response.
+ * @returns {Promise<void>}
+ */
+function unsubscribe(req, res) {
+  var userId = String(req.body.u || "");
+  var token = String(req.body.t || "");
+
+  if (!mongoose.isValidObjectId(userId) || !unsubscribeLink.verify(userId, token)) {
+    res.status(400).json({ error: "This unsubscribe link isn't valid." });
+    return Promise.resolve();
+  }
+
+  return User.updateOne({ _id: userId }, { $set: { marketingEmailConsent: false } })
+    .then(function afterUpdate() {
+      res.status(200).json({ ok: true });
+    })
+    .catch(function onError(err) {
+      console.error("unsubscribe failed:", err);
+      res.status(500).json({ error: "Could not unsubscribe you." });
     });
 }
 
@@ -451,6 +517,8 @@ module.exports = {
   register: register,
   login: login,
   me: me,
+  updateMe: updateMe,
+  unsubscribe: unsubscribe,
   googleCallback: googleCallback,
   forgotPassword: forgotPassword,
   resetPassword: resetPassword,

@@ -107,23 +107,50 @@ they need it.
 Every email today is fire-and-forget: if SMTP blips during a batch of
 acceptances, those emails (and their QR codes) are lost silently. The judging
 platform had to bolt on a `/check-failed-emails` page for the same reason.
-- [ ] `EmailLog` schema: `to`, `templateKey`, `user`, `status`
+- [x] `EmailLog` schema: `to`, `templateKey`, `user`, `status`
       (`queued|sent|failed`), `attempts`, `lastError`, `sentAt`.
-- [ ] `utils/mailer` writes a log row per send; retry failed sends with
+      (`schemas/emailLog.js`. Also `cancelled` status, `category`,
+      `nextAttemptAt`, a lease (`lockedUntil`), the template `values` so a
+      retry renders the same email, and a TTL index (`expiresAt`, 90 days,
+      `EMAIL_LOG_RETENTION_DAYS`). Attachments are never stored: the QR is
+      redrawn from the address. Emails carrying a single-use link
+      (password reset, account setup) are `redacted`: no values, no body.)
+- [x] `utils/mailer` writes a log row per send; retry failed sends with
       backoff (an in-process interval is fine at our scale; no new
       infrastructure).
-- [ ] Admin: list failures, resend one, and **resend acceptance emails**
+      (`utils/outbox.js`. The caller still sees the first attempt's result.
+      Backoff 1 min, 5 min, 30 min, 2 h, 6 h, then `failed` after 6 attempts;
+      permanent SMTP errors fail at once. Atomic claim + lease = no double
+      sends; a send interrupted by a restart is marked failed "may have been
+      delivered", never auto-resent. The worker pauses after 3 transient
+      failures in a row. Callers that await and report failures to staff pass
+      `retry: false`.)
+- [x] Admin: list failures, resend one, and **resend acceptance emails**
       (needed for anyone accepted before QR codes shipped).
+      (`/api/admin/outbox`: list/filter, `:id/resend`, `:id/cancel`,
+      `retry-failed`, `cancel-queued`, `resend-acceptance`. Page:
+      `/dashboard/admin/outbox`, not yet linked from the sidebar.)
 - [ ] Bulk email to a segment (not applied / pending / accepted / waitlisted /
       rejected / checked in / workshop sign-ups / people still holding
       hardware / "test to myself"). This replaces the old dashboard's
       mailing lists and Slack blasts.
-- [ ] **Consent:** add `User.marketingEmailConsent` (asked at sign-up,
+      (`POST /api/admin/outbox/bulk` with a stored template; segments in
+      `utils/emailSegments.js`, plus "started but didn't submit". **Not yet:**
+      workshop sign-ups (waits for B18) and people still holding hardware
+      (waits for hardware checkout, B22). Both are listed as unavailable, and
+      turn on by filling in one resolver each. The compose UI is a frontend
+      follow-up.)
+- [x] **Consent:** add `User.marketingEmailConsent` (asked at sign-up,
       editable in profile, off by default) and an unsubscribe link. Bulk
       *announcement* emails go only to people who consented; transactional
       ones (decisions, QR, check-in, workshop invites, hardware receipts) always
       send. The old dashboard enforced this (`non_transactional_email_consent`)
       and had a branch for the SendGrid opt-in/opt-out rules; we don't yet.
+      (Backend done: `register` and the public application take
+      `marketingEmailConsent`, `PATCH /api/auth/me` edits it, announcements
+      carry an unsubscribe link (`/unsubscribe` page, `POST
+      /api/auth/unsubscribe`) and consent is re-checked at send time. **The
+      sign-up checkbox and profile toggle are frontend follow-ups.**)
 - **Depends on:** none. **Related:** B21 (raffle winners), B22 (hardware
   reminders), B24c (table emails).
 

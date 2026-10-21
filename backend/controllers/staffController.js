@@ -586,10 +586,17 @@ async function resendQrEmail(req, res) {
     if (!mailer.isMailConfigured()) {
       return res.status(503).json({ error: "Email isn't configured on the server." });
     }
-    await mailer.sendTemplateEmail(found.user.email, "application_accepted", {
-      name: found.application.name || found.user.name,
-      status: "accepted",
-    });
+    // retry: false because the failure is reported to the staff member right
+    // here; a silent background retry as well could send it twice.
+    await mailer.sendTemplateEmail(
+      found.user.email,
+      "application_accepted",
+      {
+        name: found.application.name || found.user.name,
+        status: "accepted",
+      },
+      { retry: false, userId: found.user._id, requestedBy: req.user.id }
+    );
     console.log("[attendee help] " + req.user.email + " resent the QR code email to " + found.user.email);
     return res.status(200).json({ sent: true, attendee: attendeeDetails(found.user, found.application) });
   } catch (err) {
@@ -618,10 +625,15 @@ async function sendAccountLink(req, res) {
     let kind;
     if (passwordToken.needsPasswordSetup(user)) {
       const rawToken = await passwordToken.issuePasswordToken(user, passwordToken.SETUP_TTL_MS);
-      await mailer.sendTemplateEmail(user.email, "account_setup", {
-        name: (found.application && found.application.name) || user.name,
-        setupUrl: passwordToken.passwordLink(rawToken, { setup: true }),
-      });
+      await mailer.sendTemplateEmail(
+        user.email,
+        "account_setup",
+        {
+          name: (found.application && found.application.name) || user.name,
+          setupUrl: passwordToken.passwordLink(rawToken, { setup: true }),
+        },
+        { retry: false, userId: user._id, requestedBy: req.user.id }
+      );
       kind = "setup";
     } else {
       const rawToken = await passwordToken.issuePasswordToken(user, passwordToken.RESET_TTL_MS);

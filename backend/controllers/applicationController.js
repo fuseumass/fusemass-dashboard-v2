@@ -563,9 +563,17 @@ function applyPublic(req, res) {
 
         // Unverified until they set a password through an emailed link, which
         // is what proves the address is theirs (see authController.resetPassword).
+        // The form is multipart, so the opt-in checkbox arrives as a string.
+        var wantsAnnouncements = body.marketingEmailConsent === true || body.marketingEmailConsent === "true";
         var userStep = existing
           ? Promise.resolve(existing)
-          : User.create({ name: name, email: email, role: "applicant", emailVerified: false });
+          : User.create({
+              name: name,
+              email: email,
+              role: "applicant",
+              emailVerified: false,
+              marketingEmailConsent: wantsAnnouncements,
+            });
 
         return userStep.then(function afterUserReady(user) {
           return Application.exists({ applicant: user._id, round: round._id }).then(function afterExists(already) {
