@@ -88,12 +88,14 @@ var MATRIX = [
   row("POST", "/api/auth/login", "public"),
   row("POST", "/api/auth/forgot-password", "public"),
   row("POST", "/api/auth/reset-password", "public"),
+  row("POST", "/api/auth/verify-email", "public"),
   row("POST", "/api/auth/setup-admin", "public"),
   row("GET", "/api/auth/google", "public"),
   row("GET", "/api/auth/google/callback", "public"),
 
   // ---- Any logged-in user --------------------------------------------------
   row("GET", "/api/auth/me", "authenticated"),
+  row("POST", "/api/auth/resend-verification", "authenticated"),
   row("POST", "/api/applications", "authenticated", { body: { name: "Sneaky" } }),
   row("GET", "/api/applications/me", "authenticated"),
   row("GET", "/api/applications/me/qr", "authenticated"),

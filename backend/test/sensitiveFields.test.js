@@ -41,7 +41,14 @@ var MealService = require("../schemas/mealService");
 var Team = require("../schemas/team");
 var User = require("../schemas/user");
 
-var FORBIDDEN_KEYS = ["passwordHash", "resetPasswordToken", "resetPasswordExpires"];
+var FORBIDDEN_KEYS = [
+  "passwordHash",
+  "resetPasswordToken",
+  "resetPasswordExpires",
+  "emailVerificationToken",
+  "emailVerificationExpires",
+  "emailVerificationSentAt",
+];
 
 /**
  * Every key in a JSON value, with where it was found.
