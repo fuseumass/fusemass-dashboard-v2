@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import SignedLinkButton from "@/components/SignedLinkButton";
 import { apiFetch } from "@/lib/api";
 import { useUser } from "@/lib/userContext";
 
@@ -338,17 +339,14 @@ function ApplicationDrawer({ app, onClose }) {
                 .join(" · ")}
             />
           : null}
-        {app.resumeUrl
-          ? <p style={{ marginTop: "0.75rem" }}>
-              <a
-                className="link"
-                href={app.resumeUrl}
-                target="_blank"
-                rel="noopener noreferrer"
+        {app.hasResume
+          ? <div style={{ marginTop: "0.75rem" }}>
+              <SignedLinkButton
+                path={`/api/admin/applications/${app._id}/resume`}
               >
                 View resume
-              </a>
-            </p>
+              </SignedLinkButton>
+            </div>
           : null}
       </div>
     </div>

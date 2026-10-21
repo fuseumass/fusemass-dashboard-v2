@@ -75,12 +75,14 @@ Send `Authorization: Bearer <token>`; `parseToken` decodes it onto `req.user`.
 | GET    | `/api/auth/me`                  | user      | Current user                           |
 | POST   | `/api/applications`            | user      | Create/update application (multipart)  |
 | GET    | `/api/applications/me`          | user      | Open round + your application          |
+| GET    | `/api/applications/me/resume`   | user      | 5-min signed link to your resume       |
 | GET    | `/api/meta/config`              | public    | Org name + Google-enabled flag         |
 | GET    | `/api/meta/colleges?q=`         | public    | University autocomplete                |
 | GET    | `/api/meta/skills/programming?q=` | public  | Programming-skill autocomplete         |
 | GET    | `/api/meta/skills/hardware?q=`  | public    | Hardware-skill autocomplete            |
 | GET    | `/api/admin/applications`       | moderator | List applications (`?status=&round=`)  |
 | PATCH  | `/api/admin/applications/:id`   | moderator | Decide (`{ decision }`)                |
+| GET    | `/api/admin/applications/:id/resume` | moderator | 5-min signed link to its resume   |
 | GET    | `/api/admin/users?q=`           | admin     | Search users                           |
 | PATCH  | `/api/admin/users/:id/role`     | admin     | Set role (`applicant/moderator/admin`) |
 | GET    | `/api/admin/rounds`             | admin     | List rounds                            |

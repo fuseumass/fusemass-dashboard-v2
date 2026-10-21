@@ -3,6 +3,7 @@
 var express = require("express");
 var multer = require("multer");
 var applicationController = require("../controllers/applicationController");
+var resumeController = require("../controllers/resumeController");
 var isAuthenticated = require("../utils/isAuthenticated");
 
 var router = express.Router();
@@ -56,5 +57,6 @@ function handleUploadError(err, _req, res, next) {
 router.post("/", isAuthenticated, upload.single("resume"), handleUploadError, applicationController.apply);
 router.get("/me", isAuthenticated, applicationController.getMine);
 router.get("/me/qr", isAuthenticated, applicationController.getMyQr);
+router.get("/me/resume", isAuthenticated, resumeController.getMyResume);
 
 module.exports = router;

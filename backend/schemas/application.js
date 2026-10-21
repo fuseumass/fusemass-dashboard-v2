@@ -76,8 +76,10 @@ var applicationSchema = new Schema(
       enum: ["XS", "S", "M", "L", "XL", "XXL", ""],
       default: "",
     },
-    // URL of the resume in Azure Blob Storage.
-    resumeUrl: { type: String, default: "" },
+    // Name of the resume blob in the private Azure container. Never sent to
+    // clients (see the toJSON transform below): the resume endpoints hand out
+    // short-lived signed links after checking who is asking.
+    resumeBlobName: { type: String, default: "" },
 
     // ---- Socials -----------------------------------------------------------
     socials: { type: socialsSchema, default: function () { return {}; } },
@@ -120,5 +122,17 @@ var applicationSchema = new Schema(
 
 // One application per applicant per round.
 applicationSchema.index({ applicant: 1, round: 1 }, { unique: true });
+
+// Clients only need to know whether a resume exists; opening it goes through
+// an access-checked signed link. `resumeUrl` is the permanent blob URL older
+// builds stored — dropped so it can't leak from those documents either.
+applicationSchema.set("toJSON", {
+  transform: function transform(_doc, ret) {
+    ret.hasResume = Boolean(ret.resumeBlobName);
+    delete ret.resumeBlobName;
+    delete ret.resumeUrl;
+    return ret;
+  },
+});
 
 module.exports = mongoose.model("Application", applicationSchema);

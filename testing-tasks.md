@@ -37,7 +37,9 @@ checked-in email + calendar invite, and run-of-show CRUD.
 The automated suite deliberately skips these; verify by hand before the event:
 - Google OAuth end-to-end (real Google credentials) → `/auth/callback` stores
   token → dashboard.
-- Application submit + resume upload to Azure (real Azure connection string).
+- Application submit + resume upload to Azure (real Azure connection string),
+  then "View resume" as the applicant and as a moderator opens the file, and
+  the bare blob URL (without the signed query string) is refused.
 - **Add:** real-device QR scanning on iOS Safari + Android Chrome over HTTPS
   (camera permission prompt, back camera, low light, cracked screens), and a
   USB handheld scanner in the code box.
