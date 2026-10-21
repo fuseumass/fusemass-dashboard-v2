@@ -210,13 +210,21 @@ holding the token.
   for multipart/resume) so the JWT header is attached consistently.
 - Anything a `useSearchParams()` reads must be wrapped in a `<Suspense>`
   boundary (Next 16 requirement) — see the auth pages for the pattern.
-- Styling uses Tailwind v4 plus a small design-system layer of component classes
-  in `app/globals.css` (`.card`, `.input`, `.btn`, `.field-label`, …). The brand
-  accent is the `--brand` CSS variable, set from `NEXT_PUBLIC_BRAND_COLOR`.
+- UI is **shadcn/ui in plain JavaScript** (`components/ui/*.jsx`, generated once
+  and then ours to edit) on Tailwind v4. Colours, radius and dark mode come from
+  the design tokens in `app/globals.css` (`bg-card`, `text-muted-foreground`,
+  `bg-primary`, …); no raw hex in components. Dark mode is a `.dark` class from
+  `next-themes`. The brand accent is the `--brand` CSS variable, set from
+  `NEXT_PUBLIC_BRAND_COLOR`, which feeds `--primary` and `--ring`. The old
+  `.btn` / `.card` / `.input` classes are a legacy layer on the same tokens,
+  kept only until every page is migrated (F14): do not use them in new code.
+- **Read `frontend/DESIGN.md` before building a screen** (tokens, type scale,
+  forms, tables, copy, accessibility, PR checklist).
 - White-label branding is read via `lib/config.js` (org name + logos + color).
-  Reusable pieces live in `components/` (`Logo`, `Sidebar`, `GoogleButton`,
-  `Autocomplete`, `TagAutocomplete`, `AuthShell`). Further visual polish is a
-  task (see `frontend-tasks.md`, F0).
+  Navigation lives in one file, `lib/nav.js` (sidebar, breadcrumbs and the
+  Ctrl K palette all read it). Forms use `react-hook-form` + `zod`
+  (`components/ui/form.jsx`, `lib/forms.js`); lists use `components/DataTable.js`;
+  dates go through `lib/datetime.js`. See `components/` for the rest.
 - Import with the `@/` alias (configured in `jsconfig.json`).
 
 ---

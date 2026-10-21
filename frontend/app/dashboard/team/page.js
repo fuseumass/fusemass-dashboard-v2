@@ -524,7 +524,7 @@ function TeamCard({ team, isLeader, userId, busy, act }) {
       <button
         type="button"
         className="btn btn-ghost"
-        style={{ width: "auto", gap: "0.4rem", color: "var(--danger)" }}
+        style={{ width: "auto", gap: "0.4rem", color: "var(--destructive)" }}
         disabled={busy === "leave"}
         onClick={() => {
           const last = team.members.length === 1;

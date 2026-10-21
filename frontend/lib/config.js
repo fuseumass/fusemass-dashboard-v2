@@ -8,4 +8,7 @@ export const config = {
   logo: process.env.NEXT_PUBLIC_LOGO || "",
   logoV2: process.env.NEXT_PUBLIC_LOGO_V2 || process.env.NEXT_PUBLIC_LOGO || "",
   brandColor: process.env.NEXT_PUBLIC_BRAND_COLOR || "#4f46e5",
+  // IANA zone the event happens in (e.g. "America/New_York"); empty means
+  // "show times in the viewer's own zone". See lib/datetime.js.
+  eventTimezone: process.env.NEXT_PUBLIC_EVENT_TIMEZONE || "",
 };

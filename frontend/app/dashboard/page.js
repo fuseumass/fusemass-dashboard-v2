@@ -3,13 +3,26 @@
 import { ArrowRight, CircleCheck } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useState } from "react";
+import ApplicationStatusBadge from "@/components/ApplicationStatusBadge";
+import PageHeader from "@/components/PageHeader";
+import { CardSkeleton } from "@/components/skeletons";
+import { Button } from "@/components/ui/button";
+import {
+  Card,
+  CardAction,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
 import { apiFetch } from "@/lib/api";
 import { config } from "@/lib/config";
+import { formatDateTime } from "@/lib/datetime";
 import { useUser } from "@/lib/userContext";
 
 const STATUS_LABELS = {
-  draft: "Draft — not submitted",
-  pending: "Submitted — under review",
+  draft: "Draft, not submitted",
+  pending: "Submitted, under review",
   accepted: "Accepted",
   rejected: "Not accepted",
   waitlisted: "Waitlisted",
@@ -45,120 +58,93 @@ export default function DashboardHome() {
 
   return (
     <div>
-      <h1
-        style={{ fontSize: "1.6rem", fontWeight: 700, marginBottom: "0.35rem" }}
-      >
-        Welcome, {user.name.split(" ")[0]}
-      </h1>
-      <p className="muted" style={{ marginBottom: "1.5rem" }}>
-        Your {config.orgName} dashboard.
-      </p>
+      <PageHeader
+        title={`Welcome, ${user.name.split(" ")[0]}`}
+        description={`Your ${config.orgName} dashboard.`}
+      />
 
-      <div className="card" style={{ padding: "1.5rem", maxWidth: 560 }}>
-        <h2
-          style={{
-            fontSize: "1.05rem",
-            fontWeight: 600,
-            marginBottom: "0.75rem",
-          }}
-        >
-          Application
-        </h2>
-
+      <div className="grid items-start gap-4 md:grid-cols-2">
         {state.loading
-          ? <p className="muted">Loading…</p>
-          : !state.round
-            ? <p className="muted">
-                Applications aren&apos;t open right now. Check back soon.
-              </p>
-            : !state.application
-              ? <>
-                  <p className="muted" style={{ marginBottom: "1rem" }}>
-                    The <strong>{state.round.name}</strong> round is open. You
-                    haven&apos;t applied yet.
-                  </p>
-                  <Link
-                    href="/dashboard/application"
-                    className="btn btn-primary"
-                    style={{ maxWidth: 220 }}
-                  >
-                    Start your application
-                  </Link>
-                </>
-              : <>
-                  <p style={{ marginBottom: "0.5rem" }}>
-                    Round: <strong>{state.round.name}</strong>
-                  </p>
-                  <p style={{ marginBottom: "1rem" }}>
-                    Status:{" "}
-                    <strong>
-                      {STATUS_LABELS[state.application.status] ||
-                        state.application.status}
-                    </strong>
-                  </p>
-                  <Link href="/dashboard/application" className="link">
-                    View or edit your application{" "}
-                    <ArrowRight
-                      size={14}
-                      aria-hidden="true"
-                      style={{ verticalAlign: "-2px" }}
-                    />
-                  </Link>
-                </>}
-      </div>
+          ? <CardSkeleton lines={2} />
+          : <Card>
+              <CardHeader>
+                <CardTitle>Application</CardTitle>
+                {state.application
+                  ? <CardAction>
+                      <ApplicationStatusBadge
+                        status={state.application.status}
+                        label={
+                          STATUS_LABELS[state.application.status] ||
+                          state.application.status
+                        }
+                      />
+                    </CardAction>
+                  : null}
+                {state.round
+                  ? <CardDescription>{state.round.name} round</CardDescription>
+                  : null}
+              </CardHeader>
+              <CardContent className="space-y-4">
+                {!state.round
+                  ? <p className="text-muted-foreground">
+                      Applications aren&apos;t open right now. Check back soon.
+                    </p>
+                  : !state.application
+                    ? <>
+                        <p className="text-muted-foreground">
+                          The {state.round.name} round is open. You haven&apos;t
+                          applied yet.
+                        </p>
+                        <Button asChild>
+                          <Link href="/dashboard/application">
+                            Start your application
+                          </Link>
+                        </Button>
+                      </>
+                    : <Button asChild variant="outline">
+                        <Link href="/dashboard/application">
+                          View or edit your application
+                          <ArrowRight
+                            data-icon="inline-end"
+                            aria-hidden="true"
+                          />
+                        </Link>
+                      </Button>}
+              </CardContent>
+            </Card>}
 
-      {qr
-        ? <div
-            className="card"
-            style={{ padding: "1.5rem", maxWidth: 560, marginTop: "1rem" }}
-          >
-            <h2
-              style={{
-                fontSize: "1.05rem",
-                fontWeight: 600,
-                marginBottom: "0.25rem",
-              }}
-            >
-              Your check-in QR code
-            </h2>
-            {user.checkedIn
-              ? <p
-                  style={{
-                    marginBottom: "0.5rem",
-                    color: "var(--success)",
-                    fontWeight: 600,
-                  }}
-                >
-                  <CircleCheck
-                    size={16}
-                    aria-hidden="true"
-                    style={{ verticalAlign: "-3px" }}
-                  />{" "}
-                  You&apos;re checked in
-                  {user.checkedInAt
-                    ? ` (${new Date(user.checkedInAt).toLocaleString([], {
-                        weekday: "short",
-                        hour: "numeric",
-                        minute: "2-digit",
-                      })})`
-                    : ""}
-                </p>
-              : null}
-            <p className="muted" style={{ marginBottom: "1rem" }}>
-              Show this at event check-in and at every meal. It&apos;s the same
-              code as in your acceptance email.
-            </p>
-            {/* A data: URL generated by the API; next/image adds nothing here. */}
-            {/* biome-ignore lint/performance/noImgElement: data URL, not a static asset */}
-            <img
-              src={qr.qrCode}
-              alt="Your check-in QR code"
-              width={240}
-              height={240}
-              style={{ display: "block", background: "#fff", borderRadius: 8 }}
-            />
-          </div>
-        : null}
+        {qr
+          ? <Card>
+              <CardHeader>
+                <CardTitle>Your check-in QR code</CardTitle>
+                <CardDescription>
+                  Show this at event check-in and at every meal. It&apos;s the
+                  same code as in your acceptance email.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                {user.checkedIn
+                  ? <p className="flex items-center gap-1.5 font-medium text-success">
+                      <CircleCheck className="size-4" aria-hidden="true" />
+                      You&apos;re checked in
+                      {user.checkedInAt
+                        ? ` (${formatDateTime(user.checkedInAt)})`
+                        : ""}
+                    </p>
+                  : null}
+                {/* A data: URL generated by the API; next/image adds nothing here. */}
+                {/* biome-ignore lint/performance/noImgElement: data URL, not a static asset */}
+                <img
+                  src={qr.qrCode}
+                  alt="Your check-in QR code"
+                  width={240}
+                  height={240}
+                  className="block size-60 rounded-md bg-white"
+                />
+              </CardContent>
+            </Card>
+          : null}
+      </div>
     </div>
   );
 }

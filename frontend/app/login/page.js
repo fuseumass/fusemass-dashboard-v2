@@ -3,9 +3,33 @@
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useState } from "react";
+import { useForm } from "react-hook-form";
+import { z } from "zod";
 import AuthShell from "@/components/AuthShell";
 import GoogleButton from "@/components/GoogleButton";
+import PasswordInput from "@/components/PasswordInput";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Button } from "@/components/ui/button";
+import {
+  Form,
+  FormControl,
+  FormField,
+  FormItem,
+  FormLabel,
+  FormMessage,
+  FormRootError,
+} from "@/components/ui/form";
+import { Input } from "@/components/ui/input";
 import { apiFetch, EXPIRED_MESSAGE, saveToken } from "@/lib/api";
+import { applyServerError, zodResolver } from "@/lib/forms";
+
+const loginSchema = z.object({
+  email: z
+    .string()
+    .trim()
+    .refine((value) => value.includes("@"), "Enter a valid email address."),
+  password: z.string().min(1, "Password is required."),
+});
 
 export default function LoginPage() {
   return (
@@ -18,131 +42,119 @@ export default function LoginPage() {
 // Reasons we may have been sent here, rather than the visitor navigating in.
 function reasonFromParams(params) {
   if (params.get("expired") === "1") {
-    return EXPIRED_MESSAGE;
+    return { variant: "warning", message: EXPIRED_MESSAGE };
   }
   if (params.get("error") === "google") {
-    return "Google sign-in failed. Try again.";
+    return {
+      variant: "destructive",
+      message: "Google sign-in failed. Try again.",
+    };
   }
-  return "";
+  return null;
 }
 
 function LoginInner() {
   const router = useRouter();
   const params = useSearchParams();
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
-  const [error, setError] = useState(reasonFromParams(params));
-  const [submitting, setSubmitting] = useState(false);
+  const [reason, setReason] = useState(reasonFromParams(params));
 
-  async function handleSubmit(event) {
-    event.preventDefault();
-    setError("");
-    setSubmitting(true);
+  const form = useForm({
+    resolver: zodResolver(loginSchema),
+    defaultValues: { email: "", password: "" },
+  });
 
-    if (!email.trim() || !email.includes("@")) {
-      setError("Please enter a valid email address.");
-      setSubmitting(false);
-      return;
-    }
-
-    if (!password) {
-      setError("Password is required.");
-      setSubmitting(false);
-      return;
-    }
-
+  async function onSubmit(values) {
+    setReason(null);
+    form.clearErrors("root.server");
     try {
       const data = await apiFetch("/api/auth/login", {
         method: "POST",
-        body: JSON.stringify({ email, password }),
+        body: JSON.stringify(values),
       });
       saveToken(data.token);
       router.push("/dashboard");
     } catch (err) {
-      setError(err.message);
-    } finally {
-      setSubmitting(false);
+      applyServerError(form, err);
     }
   }
 
   return (
     <AuthShell
-      title="Welcome back"
-      subtitle="Log in to continue your application"
+      title="Log in"
+      subtitle="Continue your application"
+      footer={
+        <>
+          Don&apos;t have an account?{" "}
+          <Link
+            href="/signup"
+            className="font-medium text-link hover:underline"
+          >
+            Sign up
+          </Link>
+        </>
+      }
     >
       <GoogleButton label="Continue with Google" withDivider />
 
-      <form
-        onSubmit={handleSubmit}
-        style={{ display: "flex", flexDirection: "column", gap: "0.9rem" }}
-      >
-        <div>
-          <label className="field-label" htmlFor="email">
-            Email
-          </label>
-          <input
-            id="email"
-            type="email"
-            className="input"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            required
-          />
-        </div>
+      {reason
+        ? <Alert variant={reason.variant}>
+            <AlertDescription>{reason.message}</AlertDescription>
+          </Alert>
+        : null}
 
-        <div>
-          <div
-            style={{
-              display: "flex",
-              justifyContent: "space-between",
-              alignItems: "baseline",
-            }}
+      <Form {...form}>
+        <form
+          onSubmit={form.handleSubmit(onSubmit)}
+          noValidate
+          className="space-y-4"
+        >
+          <FormField
+            control={form.control}
+            name="email"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>Email</FormLabel>
+                <FormControl>
+                  <Input type="email" autoComplete="email" {...field} />
+                </FormControl>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+
+          <FormField
+            control={form.control}
+            name="password"
+            render={({ field }) => (
+              <FormItem>
+                <div className="flex items-baseline justify-between">
+                  <FormLabel>Password</FormLabel>
+                  <Link
+                    href="/forgot-password"
+                    className="text-xs font-medium text-link hover:underline"
+                  >
+                    Forgot password?
+                  </Link>
+                </div>
+                <FormControl>
+                  <PasswordInput autoComplete="current-password" {...field} />
+                </FormControl>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+
+          <FormRootError />
+
+          <Button
+            type="submit"
+            className="w-full"
+            loading={form.formState.isSubmitting}
           >
-            <label className="field-label" htmlFor="password">
-              Password
-            </label>
-            <Link
-              href="/forgot-password"
-              className="link"
-              style={{ fontSize: "0.8rem" }}
-            >
-              Forgot password?
-            </Link>
-          </div>
-          <input
-            id="password"
-            type="password"
-            className="input"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            required
-          />
-        </div>
-
-        {error
-          ? <div className="alert-error" role="alert">
-              {error}
-            </div>
-          : null}
-
-        <button type="submit" className="btn btn-primary" disabled={submitting}>
-          {submitting ? "Logging in…" : "Log in"}
-        </button>
-      </form>
-
-      <p
-        className="muted"
-        style={{
-          textAlign: "center",
-          marginTop: "1.25rem",
-          fontSize: "0.9rem",
-        }}
-      >
-        Don&apos;t have an account?{" "}
-        <Link href="/signup" className="link">
-          Sign up
-        </Link>
-      </p>
+            {form.formState.isSubmitting ? "Logging in" : "Log in"}
+          </Button>
+        </form>
+      </Form>
     </AuthShell>
   );
 }

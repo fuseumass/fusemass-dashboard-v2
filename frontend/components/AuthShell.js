@@ -1,56 +1,37 @@
 import Logo from "@/components/Logo";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
 
-// Centered card layout shared by all auth pages (login, signup, reset, etc.).
-export default function AuthShell({ title, subtitle, children }) {
+// The one layout every signed-out page uses (login, signup, password reset,
+// the Google callback): a single card on a plain page. `footer` is for the
+// "no account? Sign up" line under the card body.
+export default function AuthShell({ title, subtitle, children, footer }) {
   return (
-    <div
-      style={{
-        minHeight: "100vh",
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        padding: "1.5rem",
-        background:
-          "radial-gradient(1200px 600px at 50% -10%, color-mix(in srgb, var(--brand) 14%, transparent), transparent), var(--background)",
-      }}
-    >
-      <div
-        className="card"
-        style={{ width: "100%", maxWidth: 420, padding: "2rem" }}
-      >
-        <div
-          style={{
-            display: "flex",
-            justifyContent: "center",
-            marginBottom: "1.25rem",
-          }}
-        >
-          <Logo variant="v1" height={44} />
+    <main className="flex min-h-screen items-center justify-center p-4">
+      <div className="w-full max-w-sm space-y-6">
+        <div className="flex justify-center">
+          <Logo variant="v1" height={40} />
         </div>
-        <h1
-          style={{
-            fontSize: "1.4rem",
-            fontWeight: 700,
-            textAlign: "center",
-            marginBottom: subtitle ? "0.25rem" : "1.25rem",
-          }}
-        >
-          {title}
-        </h1>
-        {subtitle
-          ? <p
-              className="muted"
-              style={{
-                textAlign: "center",
-                marginBottom: "1.25rem",
-                fontSize: "0.9rem",
-              }}
-            >
-              {subtitle}
+        <Card className="gap-5 py-6">
+          <CardHeader className="px-6">
+            <CardTitle className="text-xl font-semibold tracking-tight">
+              <h1>{title}</h1>
+            </CardTitle>
+            {subtitle ? <CardDescription>{subtitle}</CardDescription> : null}
+          </CardHeader>
+          <CardContent className="space-y-4 px-6">{children}</CardContent>
+        </Card>
+        {footer
+          ? <p className="text-center text-sm text-muted-foreground">
+              {footer}
             </p>
           : null}
-        {children}
       </div>
-    </div>
+    </main>
   );
 }
