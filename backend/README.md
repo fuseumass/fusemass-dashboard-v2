@@ -91,7 +91,8 @@ config/db.js       Mongoose connection
 data/              colleges.csv + programming/hardware skills JSON
 schemas/           User, Application, ApplicationRound, OrgSettings, Team
 utils/             parseToken (global), isAuthenticated/isModerator/isAdmin,
-                   signToken, passport (Google), mailer, azureBlob, googleStatus
+                   signToken, passport (Google), mailer, azureBlob, googleStatus,
+                   applicationStatus, waitlist, applicationFlags, resumeText
 controllers/       auth, application, admin, settings, meta logic
 routes/            express.Router() tables (auth, applications, admin, meta)
 ```
@@ -127,7 +128,7 @@ emailed on acceptance (or via "Forgot password").
 | POST   | `/api/auth/setup-admin`         | env-gated | Bootstrap first admin (`SETUP_ADMIN`)  |
 | GET    | `/api/auth/me`                  | user      | Current user                           |
 | POST   | `/api/applications`            | user      | Create/update application (multipart)  |
-| GET    | `/api/applications/me`          | user      | Open round + your application          |
+| GET    | `/api/applications/me`          | user      | Open round + your application, plus `latest`: your standing across all rounds (status, round name, `checkedIn`) |
 | GET    | `/api/applications/public/round` | public*  | Open round + form, for applying without an account |
 | POST   | `/api/applications/public`      | public*   | Apply without an account (multipart, `email` + fields) |
 | GET    | `/api/applications/me/resume`   | user      | 5-min signed link to your resume       |
@@ -135,16 +136,39 @@ emailed on acceptance (or via "Forgot password").
 | GET    | `/api/meta/colleges?q=`         | public    | University autocomplete                |
 | GET    | `/api/meta/skills/programming?q=` | public  | Programming-skill autocomplete         |
 | GET    | `/api/meta/skills/hardware?q=`  | public    | Hardware-skill autocomplete            |
-| GET    | `/api/admin/applications`       | moderator | List applications (`?status=&round=`)  |
-| PATCH  | `/api/admin/applications/:id`   | moderator | Decide (`{ decision }`)                |
+| GET    | `/api/admin/applications`       | moderator | List applications (`?status=&round=&flagged=true`) + `flaggedCount` |
+| GET    | `/api/admin/applications/:id`   | moderator | One application in full (answers, round form, flag reasons) |
+| PATCH  | `/api/admin/applications/:id`   | moderator | Decide (`{ decision }`); accept, reject and waitlist email the applicant |
+| POST   | `/api/admin/applications/:id/flag` | moderator | Flag for a closer look (`{ reason }`)  |
+| DELETE | `/api/admin/applications/:id/flag` | moderator | Clear the flag and its reasons         |
 | GET    | `/api/admin/applications/:id/resume` | moderator | 5-min signed link to its resume   |
 | GET    | `/api/admin/users?q=`           | admin     | Search users                           |
 | PATCH  | `/api/admin/users/:id/role`     | admin     | Set role (`applicant/moderator/admin`) |
 | GET    | `/api/admin/rounds`             | admin     | List rounds                            |
 | POST   | `/api/admin/rounds`             | admin     | Create round                           |
-| PATCH  | `/api/admin/rounds/:id`         | admin     | Update round (dates, open, formConfig) |
+| PATCH  | `/api/admin/rounds/:id`         | admin     | Update round (dates, open, formConfig, `waitlistAfterAccepted`) |
 | DELETE | `/api/admin/rounds/:id`         | admin     | Delete round                           |
 | GET    | `/api/admin/settings`           | admin     | Org settings (+ Google env status)     |
-| PATCH  | `/api/admin/settings`           | admin     | Update settings (Google toggle)        |
+| PATCH  | `/api/admin/settings`           | admin     | Update settings (Google toggle, `autoFlagApplications`, …) |
+
+### Waitlist mode and flagged applications
+
+- **Waitlist mode** is per round: set `waitlistAfterAccepted` (a whole number
+  of 1 or more; `null` or empty turns it off) on the round. Once that many of
+  the round's applications are accepted, an application's *first submission*
+  is saved as `waitlisted` and the applicant gets the `application_waitlisted`
+  email instead of the "received" one. Applications already submitted are not
+  moved, reviewers can still accept past the limit, and editing a submitted
+  application keeps the status review gave it. The limit is never sent to
+  applicants.
+- **Flags** (`flagged`, `flagReasons`, `flaggedBy`) are staff-only; the
+  application JSON applicants receive leaves them out. Moderators flag with a
+  reason. With the admin setting `autoFlagApplications` on (off by default),
+  an application's first submission is also flagged automatically for: a
+  resume with almost no text, a resume that doesn't mention the applicant's
+  name, the same phone number on another account, or the same resume file on
+  another account. Resume text is read from Word files and from PDFs that
+  store plain-string text; any other file is skipped, never flagged. See
+  `utils/applicationFlags.js` (rules) and `utils/resumeText.js` (reading).
 
 See [`../backend-tasks.md`](../backend-tasks.md) for the backlog.

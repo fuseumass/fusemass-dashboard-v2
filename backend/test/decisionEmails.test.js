@@ -141,7 +141,7 @@ test("B3: decision emails on accept/reject", async function decisionEmails(t) {
     assert.match(mail.calls[1].subject, /not selected|rejected/i);
   });
 
-  await t.test("moving to waitlisted/pending sends no decision email", async function (t2) {
+  await t.test("waitlisting sends exactly one waitlist email", async function (t2) {
     await resetFixtures();
     var mail = mailMock.mockTransport(t2);
     var applicant = await fixtures.createUser({ role: "applicant" });
@@ -153,6 +153,80 @@ test("B3: decision emails on accept/reject", async function decisionEmails(t) {
       .set("Authorization", "Bearer " + admin.token)
       .send({ decision: "waitlisted" });
     assert.equal(res.status, 200);
+    assert.equal(res.body.application.status, "waitlisted");
+
+    await waitFor(function () {
+      return mail.calls.length >= 1;
+    });
+    await new Promise(function (resolve) {
+      setTimeout(resolve, 150);
+    });
+    assert.equal(mail.calls.length, 1);
+    assert.equal(mail.calls[0].to, applicant.user.email);
+    assert.match(mail.calls[0].subject, /waitlist/i);
+    assert.match(mail.calls[0].text, /Status: waitlisted/);
+  });
+
+  await t.test("re-applying the waitlisted decision does not re-send", async function (t2) {
+    await resetFixtures();
+    var mail = mailMock.mockTransport(t2);
+    var applicant = await fixtures.createUser({ role: "applicant" });
+    var admin = await fixtures.createUser({ role: "admin" });
+    var application = await createPendingApplication(applicant);
+
+    for (var i = 0; i < 2; i++) {
+      var res = await request(app)
+        .patch("/api/admin/applications/" + application._id)
+        .set("Authorization", "Bearer " + admin.token)
+        .send({ decision: "waitlisted" });
+      assert.equal(res.status, 200);
+    }
+
+    await new Promise(function (resolve) {
+      setTimeout(resolve, 150);
+    });
+    assert.equal(mail.calls.length, 1);
+  });
+
+  await t.test("moving a waitlisted application to accepted sends the accepted email", async function (t2) {
+    await resetFixtures();
+    var mail = mailMock.mockTransport(t2);
+    var applicant = await fixtures.createUser({ role: "applicant" });
+    var admin = await fixtures.createUser({ role: "admin" });
+    var application = await createPendingApplication(applicant);
+
+    await request(app)
+      .patch("/api/admin/applications/" + application._id)
+      .set("Authorization", "Bearer " + admin.token)
+      .send({ decision: "waitlisted" });
+    await waitFor(function () {
+      return mail.calls.length >= 1;
+    });
+    await request(app)
+      .patch("/api/admin/applications/" + application._id)
+      .set("Authorization", "Bearer " + admin.token)
+      .send({ decision: "accepted" });
+    await waitFor(function () {
+      return mail.calls.length >= 2;
+    });
+
+    assert.match(mail.calls[1].subject, /accepted/i);
+  });
+
+  await t.test("moving back to pending sends no decision email", async function (t2) {
+    await resetFixtures();
+    var mail = mailMock.mockTransport(t2);
+    var applicant = await fixtures.createUser({ role: "applicant" });
+    var admin = await fixtures.createUser({ role: "admin" });
+    var application = await createPendingApplication(applicant);
+    await Application.updateOne({ _id: application._id }, { $set: { status: "rejected" } });
+
+    var res = await request(app)
+      .patch("/api/admin/applications/" + application._id)
+      .set("Authorization", "Bearer " + admin.token)
+      .send({ decision: "pending" });
+    assert.equal(res.status, 200);
+    assert.equal(res.body.application.status, "pending");
 
     await new Promise(function (resolve) {
       setTimeout(resolve, 150);

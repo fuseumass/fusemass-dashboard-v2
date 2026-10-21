@@ -40,7 +40,15 @@ test("B1: email template CRUD", async function emailTemplateCrud(t) {
     });
     assert.deepEqual(
       keys.sort(),
-      ["account_setup", "application_accepted", "application_received", "application_rejected", "checked_in", "team_invite"].sort()
+      [
+        "account_setup",
+        "application_accepted",
+        "application_received",
+        "application_rejected",
+        "application_waitlisted",
+        "checked_in",
+        "team_invite",
+      ].sort()
     );
   });
 

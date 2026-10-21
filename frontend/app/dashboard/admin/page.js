@@ -2,6 +2,7 @@
 
 import { RefreshCw, X } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { FlagBadge, FlagPanel } from "@/components/ApplicationFlags";
 import { plainText } from "@/components/RichText";
 import SignedLinkButton from "@/components/SignedLinkButton";
 import { apiFetch } from "@/lib/api";
@@ -41,6 +42,7 @@ export default function AdminReviewPage() {
   const [refreshing, setRefreshing] = useState(false);
   const [status, setStatus] = useState("");
   const [round, setRound] = useState("");
+  const [flaggedOnly, setFlaggedOnly] = useState(false);
   const [error, setError] = useState("");
   const [selectedId, setSelectedId] = useState(null);
   const [deciding, setDeciding] = useState(null);
@@ -87,10 +89,36 @@ export default function AdminReviewPage() {
       applications.filter(
         (app) =>
           (!status || app.status === status) &&
-          (!round || app.round?._id === round),
+          (!round || app.round?._id === round) &&
+          (!flaggedOnly || app.flagged),
       ),
-    [applications, status, round],
+    [applications, status, round, flaggedOnly],
   );
+  const flaggedCount = useMemo(
+    () => applications.filter((app) => app.flagged).length,
+    [applications],
+  );
+
+  // A flag was set or cleared in the drawer: keep the table row and the
+  // cached detail in step with the server's answer.
+  function flagChanged(updated) {
+    setApplications((prev) => {
+      const next = prev.map((app) =>
+        app._id === updated._id ? { ...app, flagged: updated.flagged } : app,
+      );
+      cache.list = next;
+      return next;
+    });
+    const detail = cache.details.get(updated._id);
+    if (detail) {
+      cache.details.set(updated._id, {
+        ...detail,
+        flagged: updated.flagged,
+        flagReasons: updated.flagReasons,
+        flaggedBy: updated.flaggedBy,
+      });
+    }
+  }
 
   async function decide(id, decision) {
     setError("");
@@ -168,6 +196,14 @@ export default function AdminReviewPage() {
               ))}
             </select>
           : null}
+        <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
+          <input
+            type="checkbox"
+            checked={flaggedOnly}
+            onChange={(e) => setFlaggedOnly(e.target.checked)}
+          />
+          Flagged only ({flaggedCount})
+        </label>
         <button
           type="button"
           className="btn btn-ghost"
@@ -248,6 +284,7 @@ export default function AdminReviewPage() {
                         >
                           {app.applicant ? app.applicant.name : "Unknown"}
                         </button>
+                        {app.flagged ? <FlagBadge /> : null}
                         <div className="muted" style={{ fontSize: "0.78rem" }}>
                           {app.applicant ? app.applicant.email : ""}
                         </div>
@@ -287,6 +324,7 @@ export default function AdminReviewPage() {
             summary={selected}
             cache={cache}
             onClose={() => setSelectedId(null)}
+            onFlagChanged={flagChanged}
           />
         : null}
     </div>
@@ -345,7 +383,7 @@ function StatusBadge({ status }) {
 // so the full application (answers, its round's form) is fetched on open and
 // cached; reopening it costs nothing. The backdrop is a real <button>
 // (accessible) and Escape also closes it.
-function ApplicationDrawer({ summary, cache, onClose }) {
+function ApplicationDrawer({ summary, cache, onClose, onFlagChanged }) {
   const [app, setApp] = useState(() => cache.details.get(summary._id) || null);
   const [error, setError] = useState("");
 
@@ -445,7 +483,21 @@ function ApplicationDrawer({ summary, cache, onClose }) {
           ? <div className="alert-error">{error}</div>
           : !app
             ? <p className="muted">Loading the application…</p>
-            : <ApplicationDetails app={app} />}
+            : <>
+                <FlagPanel
+                  app={app}
+                  onChanged={(updated) => {
+                    setApp((prev) => ({
+                      ...prev,
+                      flagged: updated.flagged,
+                      flagReasons: updated.flagReasons,
+                      flaggedBy: updated.flaggedBy,
+                    }));
+                    onFlagChanged(updated);
+                  }}
+                />
+                <ApplicationDetails app={app} />
+              </>}
       </div>
     </div>
   );

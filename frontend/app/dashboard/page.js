@@ -3,6 +3,7 @@
 import { ArrowRight, CircleCheck } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useState } from "react";
+import ClosedRoundStatus from "@/components/ClosedRoundStatus";
 import { apiFetch } from "@/lib/api";
 import { config } from "@/lib/config";
 import { useUser } from "@/lib/userContext";
@@ -21,6 +22,7 @@ export default function DashboardHome() {
     loading: true,
     round: null,
     application: null,
+    latest: null,
   });
   const [qr, setQr] = useState(null);
 
@@ -31,10 +33,16 @@ export default function DashboardHome() {
           loading: false,
           round: data.round,
           application: data.application,
+          latest: data.latest,
         }),
       )
       .catch(() =>
-        setState({ loading: false, round: null, application: null }),
+        setState({
+          loading: false,
+          round: null,
+          application: null,
+          latest: null,
+        }),
       );
     // Fetched on its own rather than off the open round's application: on
     // event day applications are closed, and that is exactly when it's needed.
@@ -68,9 +76,7 @@ export default function DashboardHome() {
         {state.loading
           ? <p className="muted">Loading…</p>
           : !state.round
-            ? <p className="muted">
-                Applications aren&apos;t open right now. Check back soon.
-              </p>
+            ? <ClosedRoundStatus latest={state.latest} />
             : !state.application
               ? <>
                   <p className="muted" style={{ marginBottom: "1rem" }}>

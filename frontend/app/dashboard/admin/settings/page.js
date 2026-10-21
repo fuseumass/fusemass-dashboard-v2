@@ -3,6 +3,8 @@
 import { ArrowDown, ArrowUp } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
+import ReviewSettings from "@/components/ReviewSettings";
+import WaitlistLimit from "@/components/WaitlistLimit";
 import { apiFetch } from "@/lib/api";
 import { useUser } from "@/lib/userContext";
 
@@ -30,6 +32,7 @@ export default function SettingsPage() {
       <AuthSettings />
       <CheckInPopupSettings />
       <TeamSettings />
+      <ReviewSettings />
       <EmailTemplateEditor />
       <RoundsManager />
     </div>
@@ -40,6 +43,7 @@ var TEMPLATE_LABELS = {
   application_received: "Application Received",
   application_accepted: "Application Accepted",
   application_rejected: "Application Rejected",
+  application_waitlisted: "Application Waitlisted",
   account_setup: "Account Setup (applied without an account)",
   checked_in: "Checked In",
 };
@@ -84,6 +88,7 @@ function EmailTemplateEditor() {
           "application_received",
           "application_accepted",
           "application_rejected",
+          "application_waitlisted",
           "checked_in",
         ];
         const sorted = [...raw].sort((a, b) => {
@@ -1154,6 +1159,12 @@ function RoundRow({ round, onChanged }) {
           </button>
         </div>
       </div>
+
+      <WaitlistLimit
+        key={round.waitlistAfterAccepted ?? "none"}
+        round={round}
+        onChanged={onChanged}
+      />
 
       {showForm
         ? <div style={{ marginTop: "0.75rem" }}>

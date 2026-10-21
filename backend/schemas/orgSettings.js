@@ -34,6 +34,14 @@ var orgSettingsSchema = new Schema(
       type: Boolean,
       default: false,
     },
+    // Automatic checks on submit (see utils/applicationFlags): flag an
+    // application whose resume is nearly empty or doesn't mention the
+    // applicant, or whose phone number or resume file is on another account.
+    // Off by default; flags only mark applications for reviewers to look at.
+    autoFlagApplications: {
+      type: Boolean,
+      default: false,
+    },
     // Check-in popup (see utils/checkInPopup): shown to staff after each
     // successful check-in, with these fields from the attendee's application.
     checkInPopupEnabled: {

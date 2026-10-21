@@ -25,6 +25,14 @@ router.patch(
   }),
   adminController.decideApplication
 );
+// Flag an application for a closer look (with a reason) / clear the flag.
+router.post(
+  "/applications/:id/flag",
+  isModerator,
+  validateBody({ reason: { required: true, type: "string" } }),
+  adminController.flagApplication
+);
+router.delete("/applications/:id/flag", isModerator, adminController.unflagApplication);
 // Resumes live in a private container; this hands out a short-lived signed link.
 router.get("/applications/:id/resume", isModerator, resumeController.getApplicationResume);
 // Every team with members and Devpost links (staff view, judging matching).
