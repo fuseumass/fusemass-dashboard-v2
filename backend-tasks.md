@@ -552,8 +552,9 @@ Each is one PR, behind the `judging` feature flag (B25) until B24i.
       names → validate each row → return a **preview** (new / updated /
       unchanged / errors, unmatched member emails) → `POST …/import/:id/confirm`
       applies it. Re-importing updates by Devpost URL and never duplicates.
-      Match members to dashboard users by email (case-insensitive); report the
-      rest.
+      Match each project to a dashboard **team by its Devpost URL** first (B15:
+      teams save their link on the Team tab), then members to users by email
+      (case-insensitive); report the rest.
 - [ ] The hardware flag and category come from Devpost columns; admins can
       override per project.
 - **Depends on:** B47 (for the admin screens' guards). **Related:** F21c.
@@ -938,9 +939,13 @@ Document/ship the real `Backend/data/colleges.csv` (organizer-provided) and make
 the loader resilient to large files (streaming if needed).
 - **Depends on:** none. **Related:** existing `metaController`.
 
-### B15. Team/group applications (revisit)
-The original `Team` schema is currently unused by the per-person application
-flow. Decide whether team/group applications return, and if so wire them to the
-new application model. Note B24b adds judging teams; decide whether these are
-the same thing.
-- **Depends on:** product decision. **Status:** deferred.
+### B15. Teams (done)
+Decided: `schemas/team.js` is the **hackathon team** (people building one
+project), not a group application. Members invite each other by email, any
+member saves the team's Devpost project link (`devpostUrl`, normalized to
+`https://devpost.com/software/<slug>`, one team per project), and staff see
+every team at `GET /api/admin/teams` (Teams tab, CSV export). One team per
+person, unique names and unique Devpost links are enforced by indexes; the
+size limit (`OrgSettings.teamMaxSize`, default 4) counts pending invites.
+- **Feeds B24b:** match imported Devpost projects to teams by `devpostUrl`
+  first, then by member email for teams that never saved a link.
