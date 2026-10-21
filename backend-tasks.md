@@ -822,13 +822,38 @@ printed cost sheets. It was never merged.
 ## Registration gaps (found in the parity review)
 
 ### B40. Email verification on sign-up
-The old dashboard confirmed emails (Devise `confirmable`); we don't, so anyone
-can register with someone else's address, and their acceptance QR goes there.
-- [ ] Send a verification link on register (token hashed in the DB, like the
+The old dashboard confirmed emails (Devise `confirmable`); we didn't, so anyone
+could register with someone else's address, and their acceptance QR goes there.
+- [x] Send a verification link on register (token hashed in the DB, like the
       reset token; 24 h expiry); `POST /api/auth/verify-email`; resend
       endpoint (rate-limited).
-- [ ] Applying requires a verified email. Google sign-ins count as verified.
-- [ ] Existing users: treat as verified (or re-verify on next login: decide).
+      Built: `POST /api/auth/register` stores `emailVerified: false` plus the
+      SHA-256 of a random token and emails `{{verifyUrl}}` (new built-in
+      `verify_email` template). `POST /api/auth/verify-email` `{ token }` is
+      public, atomic and single-use. `POST /api/auth/resend-verification`
+      (logged in) is limited per IP (`AUTH_RATE_LIMIT_MAX_RESEND_VERIFICATION`)
+      and to one email a minute per account.
+- [x] Applying requires a verified email. Google sign-ins count as verified.
+      Built: `POST /api/applications` answers 403 `{ code:
+      "EMAIL_NOT_VERIFIED" }` (drafts too) via the `isEmailVerified` guard,
+      which reads the flag from the database so verifying takes effect
+      without logging in again. Google sign-in marks the account verified.
+      Setting a password through any emailed link (reset, or the first-password
+      link sent to people who applied without an account) also verifies it.
+- [x] Existing users: treat as verified (or re-verify on next login: decide).
+      **Decided: treat as verified.** `User.emailVerified` defaults to `true`,
+      so accounts with no stored flag (everyone created before this) and every
+      path other than password sign-up stay verified; no migration, nobody is
+      locked out. Only `register` and the no-account application form create
+      unverified accounts.
+- Follow-ups outside this task: **people who apply without an account** are not
+  verified at application time (there is no inbox proof until they set a
+  password), so their decision emails still go to an address nobody has
+  confirmed; closing that needs a "confirm to submit" step on the public form.
+  Verification is enforced only while outgoing email is configured (otherwise
+  the link could never be delivered and applications would lock for everyone);
+  an explicit on/off setting could be added if an organiser wants it off with
+  email on. Unverified accounts are not purged.
 - **Depends on:** none.
 
 ### B41. Waitlist email and waitlist mode

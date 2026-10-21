@@ -32,9 +32,15 @@ There is no admin until you make one:
 ## Setting up email
 
 The dashboard emails applicants when they submit, when they're accepted or
-rejected (with their check-in QR code), when they check in, and for password
-resets. Until email is set up those emails are skipped, and password-reset
-links are only printed in the server log.
+rejected (with their check-in QR code), when they check in, to verify their
+email address on sign-up, and for password resets. Until email is set up those
+emails are skipped, and password-reset and verification links are only printed
+in the server log.
+
+**Email verification** is enforced only while email is set up (a link nobody
+can receive would lock everyone out of applying): new password sign-ups must
+click the emailed link before they can apply. See [Email
+verification](#email-verification).
 
 The simplest setup is a dedicated Gmail account for your hackathon (for
 example `donotreply.yourhackathon@gmail.com`):
@@ -91,7 +97,8 @@ config/db.js       Mongoose connection
 data/              colleges.csv + programming/hardware skills JSON
 schemas/           User, Application, ApplicationRound, OrgSettings, Team
 utils/             parseToken (global), isAuthenticated/isModerator/isAdmin,
-                   signToken, passport (Google), mailer, azureBlob, googleStatus
+                   isEmailVerified, signToken, passport (Google), mailer,
+                   emailVerification, azureBlob, googleStatus
 controllers/       auth, application, admin, settings, meta logic
 routes/            express.Router() tables (auth, applications, admin, meta)
 ```
@@ -118,15 +125,17 @@ emailed on acceptance (or via "Forgot password").
 | ------ | ------------------------------- | --------- | -------------------------------------- |
 | GET    | `/api/health`                   | public    | Liveness check                         |
 | GET    | `/api/health/db`                | public    | Database check: 200 up / 503 down      |
-| POST   | `/api/auth/register`            | public    | Create applicant, return JWT           |
+| POST   | `/api/auth/register`            | public    | Create applicant (valid email required, 400 otherwise), return JWT, email a verification link |
 | POST   | `/api/auth/login`               | public    | Log in, return JWT                     |
+| POST   | `/api/auth/verify-email`        | public    | Consume the emailed link `{ token }`, mark the email verified |
+| POST   | `/api/auth/resend-verification` | user      | Email a new verification link (rate-limited, 1/min per account) |
 | POST   | `/api/auth/forgot-password`     | public    | Email a reset link                     |
 | POST   | `/api/auth/reset-password`      | public    | Consume token, set new password        |
 | GET    | `/api/auth/google`              | public    | Start Google OAuth (if enabled)        |
 | GET    | `/api/auth/google/callback`     | public    | OAuth callback → redirect with token   |
 | POST   | `/api/auth/setup-admin`         | env-gated | Bootstrap first admin (`SETUP_ADMIN`)  |
 | GET    | `/api/auth/me`                  | user      | Current user                           |
-| POST   | `/api/applications`            | user      | Create/update application (multipart)  |
+| POST   | `/api/applications`            | user, verified email | Create/update application (multipart); 403 `EMAIL_NOT_VERIFIED` until verified |
 | GET    | `/api/applications/me`          | user      | Open round + your application          |
 | GET    | `/api/applications/public/round` | public*  | Open round + form, for applying without an account |
 | POST   | `/api/applications/public`      | public*   | Apply without an account (multipart, `email` + fields) |
@@ -146,5 +155,33 @@ emailed on acceptance (or via "Forgot password").
 | DELETE | `/api/admin/rounds/:id`         | admin     | Delete round                           |
 | GET    | `/api/admin/settings`           | admin     | Org settings (+ Google env status)     |
 | PATCH  | `/api/admin/settings`           | admin     | Update settings (Google toggle)        |
+
+## Email verification
+
+Password sign-ups (`POST /api/auth/register`) start with `emailVerified: false`
+and get a link (`/verify-email?token=...`, built-in `verify_email` template,
+single use, valid 24 hours). Only a SHA-256 hash of the token is stored, like the
+password-reset token. The frontend page POSTs it to `/api/auth/verify-email`.
+Unverified users can log in and see the dashboard, but `POST /api/applications`
+(drafts included) answers 403 `{ code: "EMAIL_NOT_VERIFIED" }`. They can ask
+for another link with `POST /api/auth/resend-verification` (one a minute per
+account, plus the per-IP limit `AUTH_RATE_LIMIT_MAX_RESEND_VERIFICATION`).
+
+Who counts as verified:
+
+- **Everyone created before this feature.** `User.emailVerified` defaults to
+  `true`, so accounts with no stored flag are verified; there is no migration
+  and nobody is locked out.
+- **Google sign-ins** (Google verified the address). If the matching account
+  was an unverified password sign-up, its password is removed, because whoever
+  chose it never proved they own the inbox; the owner can sign in with Google
+  or use "Forgot password".
+- **Anyone who sets a password through an emailed link:** "Forgot password",
+  or the first-password link sent to people who applied without an account.
+  Those no-account applicants are created unverified and cannot log in until
+  then.
+- **Everyone, while email isn't configured** (no `SMTP_HOST` / `SMTP_USER`):
+  nothing could be delivered, so sign-ups start verified and nothing is
+  enforced. Check `utils/emailVerification.isEnforced()`.
 
 See [`../backend-tasks.md`](../backend-tasks.md) for the backlog.

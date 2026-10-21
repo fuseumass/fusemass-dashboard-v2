@@ -5,6 +5,7 @@ var multer = require("multer");
 var applicationController = require("../controllers/applicationController");
 var resumeController = require("../controllers/resumeController");
 var isAuthenticated = require("../utils/isAuthenticated");
+var isEmailVerified = require("../utils/isEmailVerified");
 var authRateLimit = require("../utils/authRateLimit");
 
 var router = express.Router();
@@ -66,7 +67,16 @@ router.post(
 // Every other application route requires the caller to be logged in.
 // `upload.single("resume")` parses multipart/form-data: the file lands on
 // req.file and the other fields on req.body.
-router.post("/", isAuthenticated, upload.single("resume"), handleUploadError, applicationController.apply);
+// Applying also needs a verified email (the acceptance QR code is emailed);
+// the check runs before multer so an unverified user never uploads anything.
+router.post(
+  "/",
+  isAuthenticated,
+  isEmailVerified,
+  upload.single("resume"),
+  handleUploadError,
+  applicationController.apply
+);
 router.get("/me", isAuthenticated, applicationController.getMine);
 router.get("/me/qr", isAuthenticated, applicationController.getMyQr);
 router.get("/me/resume", isAuthenticated, resumeController.getMyResume);

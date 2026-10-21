@@ -58,6 +58,33 @@ var userSchema = new Schema(
     resetPasswordExpires: {
       type: Date,
     },
+    // Email verification (B40). Only password sign-up (POST /auth/register)
+    // creates an unverified account. The default is `true` on purpose: every
+    // user created before this field existed, and every account that arrives
+    // some other way (Google sign-in, imports, fixtures), counts as verified,
+    // so nobody is locked out by the rollout. Read it as
+    // `emailVerified === false` when you need to know if it is pending.
+    emailVerified: {
+      type: Boolean,
+      default: true,
+    },
+    emailVerifiedAt: {
+      type: Date,
+    },
+    // Single-use link token, stored the way the reset token is: a SHA-256 hash
+    // of the value emailed to the user (see utils/emailVerification). Cleared
+    // once it is used. `emailVerificationSentAt` rate-limits resends.
+    emailVerificationToken: {
+      type: String,
+      index: true,
+      sparse: true,
+    },
+    emailVerificationExpires: {
+      type: Date,
+    },
+    emailVerificationSentAt: {
+      type: Date,
+    },
     // Event-day check-in code (SHA-256 of the email, see utils/qrCode),
     // encoded into the QR on the acceptance email. Staff scan it for the first
     // check-in, meals and hardware checkout. Set on acceptance and stored so
@@ -184,6 +211,9 @@ userSchema.set("toJSON", {
     delete ret.passwordHash;
     delete ret.resetPasswordToken;
     delete ret.resetPasswordExpires;
+    delete ret.emailVerificationToken;
+    delete ret.emailVerificationExpires;
+    delete ret.emailVerificationSentAt;
     return ret;
   },
 });

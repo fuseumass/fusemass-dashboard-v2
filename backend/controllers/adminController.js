@@ -496,6 +496,7 @@ function sampleTemplateValues(user) {
     name: user.name,
     status: "accepted",
     setupUrl: primaryClientOrigin() + "/reset-password?token=sample&setup=1",
+    verifyUrl: primaryClientOrigin() + "/verify-email?token=sample",
     runOfShow: calendar.formatRunOfShow([
       {
         title: "Opening ceremony (sample)",

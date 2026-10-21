@@ -387,7 +387,11 @@ function applyPublic(req, res) {
           return undefined;
         }
 
-        var userStep = existing ? Promise.resolve(existing) : User.create({ name: name, email: email, role: "applicant" });
+        // Unverified until they set a password through an emailed link, which
+        // is what proves the address is theirs (see authController.resetPassword).
+        var userStep = existing
+          ? Promise.resolve(existing)
+          : User.create({ name: name, email: email, role: "applicant", emailVerified: false });
 
         return userStep.then(function afterUserReady(user) {
           return Application.exists({ applicant: user._id, round: round._id }).then(function afterExists(already) {
