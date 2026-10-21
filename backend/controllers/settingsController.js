@@ -44,6 +44,14 @@ function updateSettings(req, res) {
   if (req.body && req.body.publicApplications !== undefined) {
     update.publicApplications = Boolean(req.body.publicApplications);
   }
+  if (req.body && req.body.teamMaxSize !== undefined) {
+    var size = Number(req.body.teamMaxSize);
+    if (!Number.isInteger(size) || size < 1 || size > 10) {
+      res.status(400).json({ error: "teamMaxSize must be a whole number from 1 to 10." });
+      return Promise.resolve();
+    }
+    update.teamMaxSize = size;
+  }
   if (req.body && req.body.checkInPopupEnabled !== undefined) {
     update.checkInPopupEnabled = Boolean(req.body.checkInPopupEnabled);
   }

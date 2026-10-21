@@ -52,4 +52,7 @@ module.exports = {
   setupAdmin: makeAuthLimiter({ max: maxFor("SETUP_ADMIN") }),
   // Applying without an account (no login to slow down spam submissions).
   publicApply: makeAuthLimiter({ max: maxFor("PUBLIC_APPLY") }),
+  // Team invites send an email each, so they're capped like the other
+  // email-sending endpoints.
+  teamInvite: makeAuthLimiter({ max: maxFor("TEAM_INVITE") }),
 };

@@ -33,6 +33,14 @@ var DEFAULT_TEMPLATES = [
       "Hi {{name}},\n\nYou've been accepted to {{orgName}}, and we've created an account for you so you can see your status and check-in QR code on the dashboard.\n\nSet your password here (this link works for 7 days):\n{{setupUrl}}\n\nIf it has expired, use \"Forgot password\" on the login page with this email address.",
   },
   {
+    // Sent when someone invites this email to their team. The invitee may
+    // not have a password yet (applied without an account).
+    key: "team_invite",
+    subject: "{{inviterName}} invited you to join {{teamName}}",
+    body:
+      "Hi,\n\n{{inviterName}} invited you to join their team \"{{teamName}}\" for {{orgName}}.\n\nLog in to the dashboard to accept or decline: {{teamsUrl}}\n\nIf you applied without an account and haven't set a password yet, use \"Forgot password\" on the login page with this email address.",
+  },
+  {
     // Sent when staff check an attendee in on arrival. The run of show is
     // also attached as a calendar invite.
     key: "checked_in",

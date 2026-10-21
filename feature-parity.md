@@ -108,7 +108,7 @@ were presumably tracked in spreadsheets, so B33–B37 are a new design.
 
 | Old feature | Status | Task |
 | ----------- | ------ | ---- |
-| Project submission with team members | ✖ projects are imported from Devpost | B24b |
+| Project submission with team members | 🟡 teams + their Devpost link live on the dashboard (B15); projects are imported from Devpost | B24b |
 | Public project gallery | ✖ Devpost hosts it | — |
 | Power-outlet needs per project | 📋 | B24b |
 | Prizes / tracks, participants pick prizes, assign winners | 📋 | B24h |

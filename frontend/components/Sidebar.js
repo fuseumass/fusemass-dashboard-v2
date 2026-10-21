@@ -4,12 +4,14 @@ import {
   CalendarDays,
   ClipboardList,
   FileText,
+  Group,
   House,
   LifeBuoy,
   Sandwich,
   ScanLine,
   Settings,
   Users,
+  UsersRound,
   UtensilsCrossed,
 } from "lucide-react";
 import Link from "next/link";
@@ -29,6 +31,7 @@ export default function Sidebar({ user }) {
   const nav = [
     { href: "/dashboard", label: "Home", icon: House },
     { href: "/dashboard/application", label: "Application", icon: FileText },
+    { href: "/dashboard/team", label: "Team", icon: UsersRound },
   ];
   if (isModerator) {
     // Moderators and admins review applications.
@@ -48,6 +51,8 @@ export default function Sidebar({ user }) {
       label: "Meal check-in",
       icon: Sandwich,
     });
+    // Every team and its Devpost project (for judging).
+    nav.push({ href: "/dashboard/admin/teams", label: "Teams", icon: Group });
     // Resend someone's QR code or account link; force a check-in by email.
     nav.push({
       href: "/dashboard/staff/attendees",

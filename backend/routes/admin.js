@@ -3,6 +3,7 @@
 var express = require("express");
 var adminController = require("../controllers/adminController");
 var resumeController = require("../controllers/resumeController");
+var teamController = require("../controllers/teamController");
 var settingsController = require("../controllers/settingsController");
 var scheduleController = require("../controllers/scheduleController");
 var isAdmin = require("../utils/isAdmin");
@@ -26,6 +27,8 @@ router.patch(
 );
 // Resumes live in a private container; this hands out a short-lived signed link.
 router.get("/applications/:id/resume", isModerator, resumeController.getApplicationResume);
+// Every team with members and Devpost links (staff view, judging matching).
+router.get("/teams", isModerator, teamController.listAllTeams);
 
 // ---- Admin-only routes: organization setup ---------------------------------
 // User management (promote to moderator/admin).

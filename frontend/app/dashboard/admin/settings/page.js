@@ -29,6 +29,7 @@ export default function SettingsPage() {
       </p>
       <AuthSettings />
       <CheckInPopupSettings />
+      <TeamSettings />
       <EmailTemplateEditor />
       <RoundsManager />
     </div>
@@ -531,6 +532,89 @@ function AuthSettings() {
                 </p>}
           </div>}
     </div>
+  );
+}
+
+// Largest team allowed (pending invites count while a team forms).
+function TeamSettings() {
+  const [size, setSize] = useState("");
+  const [saved, setSaved] = useState(false);
+  const [error, setError] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    apiFetch("/api/admin/settings")
+      .then((data) => setSize(String(data.settings.teamMaxSize || 4)))
+      .catch((err) => setError(err.message));
+  }, []);
+
+  async function save(e) {
+    e.preventDefault();
+    setSaving(true);
+    setError("");
+    setSaved(false);
+    try {
+      const data = await apiFetch("/api/admin/settings", {
+        method: "PATCH",
+        body: JSON.stringify({ teamMaxSize: Number(size) }),
+      });
+      setSize(String(data.settings.teamMaxSize));
+      setSaved(true);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <form
+      onSubmit={save}
+      className="card"
+      style={{ padding: "1.5rem", marginBottom: "1.5rem" }}
+    >
+      <h2
+        style={{
+          fontSize: "1.05rem",
+          fontWeight: 600,
+          marginBottom: "0.75rem",
+        }}
+      >
+        Teams
+      </h2>
+      {error
+        ? <div className="alert-error" style={{ marginBottom: "0.75rem" }}>
+            {error}
+          </div>
+        : null}
+      <label className="field-label" htmlFor="team-max-size">
+        Largest team (people, including pending invites)
+      </label>
+      <div style={{ display: "flex", gap: "0.75rem", alignItems: "center" }}>
+        <input
+          id="team-max-size"
+          className="input"
+          type="number"
+          min={1}
+          max={10}
+          value={size}
+          onChange={(e) => {
+            setSize(e.target.value);
+            setSaved(false);
+          }}
+          style={{ maxWidth: 100 }}
+        />
+        <button
+          type="submit"
+          className="btn btn-ghost"
+          style={{ width: "auto" }}
+          disabled={saving || !size}
+        >
+          Save
+        </button>
+        {saved ? <span className="muted">Saved.</span> : null}
+      </div>
+    </form>
   );
 }
 

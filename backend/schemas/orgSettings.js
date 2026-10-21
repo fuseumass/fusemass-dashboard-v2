@@ -40,6 +40,13 @@ var orgSettingsSchema = new Schema(
       type: Boolean,
       default: true,
     },
+    // Largest team allowed (members, plus pending invites while forming).
+    teamMaxSize: {
+      type: Number,
+      default: 4,
+      min: 1,
+      max: 10,
+    },
     checkInPopupFields: {
       type: [String],
       default: function () {
