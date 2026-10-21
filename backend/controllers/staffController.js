@@ -12,6 +12,7 @@ const qrCode = require("../utils/qrCode");
 const calendar = require("../utils/calendar");
 const mailer = require("../utils/mailer");
 const OrgSettings = require("../schemas/orgSettings");
+const ApplicationRound = require("../schemas/applicationRound");
 const checkInPopup = require("../utils/checkInPopup");
 const passwordToken = require("../utils/passwordToken");
 
@@ -356,13 +357,19 @@ async function checkInMark(req, res) {
     );
 
     const settings = await OrgSettings.getSingleton();
+    // Custom questions on the popup are labelled from the round's form.
+    const wantsAnswers = (settings.checkInPopupFields || []).some(checkInPopup.isAnswerField);
+    const round =
+      wantsAnswers && found.application && found.application.round
+        ? await ApplicationRound.findById(found.application.round).select("formConfig").lean()
+        : null;
     res.status(201).json({
       success: true,
       forced: forced,
       attendee: attendee,
       checkIn: checkIn,
       // Facts staff see in large type (null when the popup is switched off).
-      popup: checkInPopup.buildPopup(settings, found.user, found.application),
+      popup: checkInPopup.buildPopup(settings, found.user, found.application, round && round.formConfig),
     });
     sendCheckedInEmail(found.user, attendee.name);
     return undefined;

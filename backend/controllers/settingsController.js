@@ -3,6 +3,7 @@
 var OrgSettings = require("../schemas/orgSettings");
 var googleStatus = require("../utils/googleStatus");
 var checkInPopup = require("../utils/checkInPopup");
+var ApplicationRound = require("../schemas/applicationRound");
 
 /**
  * GET /api/admin/settings — full org settings (admin only).
@@ -13,13 +14,14 @@ var checkInPopup = require("../utils/checkInPopup");
  * @returns {Promise<void>}
  */
 function getSettings(_req, res) {
-  return OrgSettings.getSingleton()
-    .then(function afterLoad(settings) {
+  return Promise.all([OrgSettings.getSingleton(), ApplicationRound.find({}).select("formConfig").sort({ order: 1 }).lean()])
+    .then(function afterLoad(results) {
       res.status(200).json({
-        settings: settings,
+        settings: results[0],
         googleEnvAllowed: googleStatus.envAllowsGoogle(),
-        // Fields an admin can put on the check-in popup: { key: label }.
-        checkInPopupFieldOptions: checkInPopup.FIELD_LABELS,
+        // Fields an admin can put on the check-in popup: { key: label }, the
+        // built-ins plus every round's custom questions ("answers.<key>").
+        checkInPopupFieldOptions: checkInPopup.fieldOptions(results[1]),
       });
     })
     .catch(function onError(err) {
