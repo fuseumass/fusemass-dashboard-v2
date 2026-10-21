@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { plainText } from "@/components/RichText";
 import SignedLinkButton from "@/components/SignedLinkButton";
 import { apiFetch } from "@/lib/api";
 import { useUser } from "@/lib/userContext";
@@ -370,7 +371,7 @@ function CustomAnswers({ app }) {
           if (app.hasResume || !isHttpsUrl(value)) return null;
           return (
             <div key={field.key} style={{ marginBottom: "0.6rem" }}>
-              <DetailLabel>{field.label}</DetailLabel>
+              <DetailLabel>{plainText(field.label)}</DetailLabel>
               <a
                 className="link"
                 href={value}
@@ -385,7 +386,7 @@ function CustomAnswers({ app }) {
         return (
           <Detail
             key={field.key}
-            label={field.label}
+            label={plainText(field.label)}
             value={formatAnswer(field, value)}
           />
         );

@@ -1135,7 +1135,7 @@ function FormFieldEditor({
             className="input"
             value={field.label}
             onChange={(e) => onChange({ label: e.target.value })}
-            placeholder="e.g. Dietary restrictions"
+            placeholder="e.g. Dietary restrictions. Links: [text](https://…)"
           />
         </label>
         <label style={{ display: "block" }}>
@@ -1207,7 +1207,7 @@ function FormFieldEditor({
           rows={2}
           value={field.description}
           onChange={(e) => onChange({ description: e.target.value })}
-          placeholder="Shown under the question"
+          placeholder="Shown under the question. Links: [link text](https://…)"
         />
       </label>
 
