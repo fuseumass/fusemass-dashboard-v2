@@ -8,6 +8,7 @@
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import Autocomplete from "@/components/Autocomplete";
+import RichText, { plainText } from "@/components/RichText";
 import SignedLinkButton from "@/components/SignedLinkButton";
 import TagAutocomplete from "@/components/TagAutocomplete";
 import { apiFetch, apiUpload } from "@/lib/api";
@@ -273,7 +274,7 @@ export default function ApplicationForm({ mode = "account" }) {
       </p>
       {round.description
         ? <p style={{ whiteSpace: "pre-wrap", marginBottom: "0.75rem" }}>
-            {round.description}
+            <RichText text={round.description} />
           </p>
         : null}
       {isPublic
@@ -687,7 +688,7 @@ function DynamicField({ field, value, onChange }) {
             onChange={(e) => onChange(e.target.checked)}
           />
           <span>
-            {field.label}
+            <RichText text={field.label} />
             {field.required
               ? <span style={{ color: "var(--danger)" }}> *</span>
               : null}
@@ -778,7 +779,7 @@ function ChoiceGroup({ field, value, onChange }) {
   return (
     <fieldset style={{ border: "none", padding: 0, margin: 0 }}>
       <legend className="field-label">
-        {field.label}
+        <RichText text={field.label} />
         {field.required
           ? <span style={{ color: "var(--danger)" }}> *</span>
           : null}
@@ -825,7 +826,7 @@ function ChoiceGroup({ field, value, onChange }) {
               </label>
               <input
                 className="input"
-                aria-label={`${field.label}: other`}
+                aria-label={`${plainText(field.label)}: other`}
                 value={otherText}
                 maxLength={300}
                 onChange={(e) => {
@@ -881,7 +882,7 @@ function SelectWithOther({ field, value, onChange }) {
         ? <input
             className="input"
             style={{ marginTop: 6 }}
-            aria-label={`${field.label}: other`}
+            aria-label={`${plainText(field.label)}: other`}
             placeholder="Please specify"
             value={otherText}
             maxLength={300}
@@ -904,10 +905,11 @@ function Description({ text }) {
       style={{
         fontSize: "0.85rem",
         whiteSpace: "pre-wrap",
+        overflowWrap: "anywhere",
         margin: "0.15rem 0 0.4rem",
       }}
     >
-      {text}
+      <RichText text={text} />
     </p>
   );
 }
@@ -920,7 +922,7 @@ function Field({ label, required, description, children }) {
       {/* biome-ignore lint/a11y/noLabelWithoutControl: children is always the form control */}
       <label style={{ display: "block" }}>
         <span className="field-label">
-          {label}
+          <RichText text={label} />
           {required ? <span style={{ color: "var(--danger)" }}> *</span> : null}
         </span>
         <Description text={description} />
