@@ -111,9 +111,10 @@ function apply(req, res) {
       });
 
       // Drafts can be incomplete; a real submission must satisfy the round's
-      // required dynamic fields (and any options constraints).
-      if (status !== "draft" && answersCheck.errors.length) {
-        res.status(400).json({ error: answersCheck.errors.join(" ") });
+      // required questions (built-in and custom) and any options constraints.
+      var problems = formConfigUtil.validateProfile(round.profileFields, profile).concat(answersCheck.errors);
+      if (status !== "draft" && problems.length) {
+        res.status(400).json({ error: problems.join(" ") });
         return null;
       }
 
@@ -339,8 +340,9 @@ function applyPublic(req, res) {
       var answersCheck = formConfigUtil.validateAnswers(round.formConfig, parseMaybeJson(body.answers, {}), {
         hasResume: Boolean(req.file),
       });
-      if (answersCheck.errors.length) {
-        res.status(400).json({ error: answersCheck.errors.join(" ") });
+      var problems = formConfigUtil.validateProfile(round.profileFields, buildProfile(body)).concat(answersCheck.errors);
+      if (problems.length) {
+        res.status(400).json({ error: problems.join(" ") });
         return undefined;
       }
       if (req.file && !azureBlob.isAzureConfigured()) {

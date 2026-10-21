@@ -673,13 +673,57 @@ const FIELD_TYPES = [
   "textarea",
   "number",
   "select",
+  "multiselect",
   "checkbox",
   "date",
   "resume",
 ];
 
 // How each type reads in the builder's dropdown.
-const FIELD_TYPE_LABELS = { resume: "resume (file upload)" };
+const FIELD_TYPE_LABELS = {
+  multiselect: "multiselect (checkboxes)",
+  resume: "resume (file upload)",
+};
+
+const HAS_OPTIONS = ["select", "multiselect"];
+
+// Built-in application questions (not part of formConfig) a round can make
+// required. Keys match the backend's PROFILE_FIELD_LABELS.
+const PROFILE_FIELDS = [
+  ["phone", "Phone"],
+  ["age", "Age"],
+  ["gender", "Gender"],
+  ["pronouns", "Pronouns"],
+  ["education", "Education level"],
+  ["university", "University / School"],
+  ["major", "Major / Field of study"],
+  ["tshirtSize", "T-shirt size"],
+  ["allergies", "Dietary restrictions / allergies"],
+  ["programmingSkills", "Programming skills"],
+  ["hardwareSkills", "Hardware skills"],
+];
+
+function profileFromRound(round) {
+  const p = round.profileFields || {};
+  return {
+    required: Array.isArray(p.required) ? p.required : [],
+    education: (p.options?.education || []).join("\n"),
+    gender: (p.options?.gender || []).join("\n"),
+  };
+}
+
+function profileToPayload(profile) {
+  const lines = (text) =>
+    text
+      .split("\n")
+      .map((s) => s.trim())
+      .filter(Boolean);
+  const options = {};
+  if (lines(profile.education).length)
+    options.education = lines(profile.education);
+  if (lines(profile.gender).length) options.gender = lines(profile.gender);
+  return { required: profile.required, options };
+}
 
 function fieldFromConfig(f) {
   return {
@@ -689,6 +733,8 @@ function fieldFromConfig(f) {
     type: FIELD_TYPES.includes(f?.type) ? f.type : "text",
     required: Boolean(f?.required),
     options: Array.isArray(f?.options) ? f.options : [],
+    allowOther: Boolean(f?.allowOther),
+    description: f?.description || "",
   };
 }
 
@@ -700,6 +746,7 @@ function RoundRow({ round, onChanged }) {
   const [opensAt, setOpensAt] = useState(toLocalInput(round.opensAt));
   const [closesAt, setClosesAt] = useState(toLocalInput(round.closesAt));
   const [showForm, setShowForm] = useState(false);
+  const [profile, setProfile] = useState(() => profileFromRound(round));
   const [fields, setFields] = useState(
     (round.formConfig || []).map(fieldFromConfig),
   );
@@ -751,14 +798,22 @@ function RoundRow({ round, onChanged }) {
   }
 
   async function saveForm() {
-    const payload = fields.map((f) => ({
-      key: f.key,
-      label: f.label,
-      type: f.type,
-      required: f.required,
-      options: f.options,
-    }));
-    await patch({ formConfig: payload });
+    const payload = fields.map((f) => {
+      const out = {
+        key: f.key,
+        label: f.label,
+        type: f.type,
+        required: f.required,
+        options: f.options,
+      };
+      if (HAS_OPTIONS.includes(f.type)) out.allowOther = f.allowOther;
+      if (f.description.trim()) out.description = f.description.trim();
+      return out;
+    });
+    await patch({
+      formConfig: payload,
+      profileFields: profileToPayload(profile),
+    });
   }
 
   async function remove() {
@@ -874,6 +929,7 @@ function RoundRow({ round, onChanged }) {
 
       {showForm
         ? <div style={{ marginTop: "0.75rem" }}>
+            <ProfileFieldsEditor profile={profile} onChange={setProfile} />
             <p
               className="muted"
               style={{ fontSize: "0.82rem", marginBottom: "0.75rem" }}
@@ -935,6 +991,91 @@ function RoundRow({ round, onChanged }) {
             {error}
           </div>
         : null}
+    </div>
+  );
+}
+
+// Settings for the standard questions every application has: which are
+// required, and the choices for the education and gender dropdowns.
+function ProfileFieldsEditor({ profile, onChange }) {
+  function toggle(key, on) {
+    const required = on
+      ? [...profile.required, key]
+      : profile.required.filter((k) => k !== key);
+    onChange({ ...profile, required });
+  }
+
+  return (
+    <div
+      style={{
+        border: "1px solid var(--border)",
+        borderRadius: 8,
+        padding: "0.75rem",
+        marginBottom: "0.75rem",
+      }}
+    >
+      <div style={{ fontWeight: 600, marginBottom: "0.4rem" }}>
+        Built-in questions
+      </div>
+      <p
+        className="muted"
+        style={{ fontSize: "0.82rem", marginBottom: "0.5rem" }}
+      >
+        Name (and email, without an account) are always required. Tick the
+        others this round requires.
+      </p>
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))",
+          gap: "0.3rem",
+          marginBottom: "0.6rem",
+        }}
+      >
+        {PROFILE_FIELDS.map(([key, label]) => (
+          <label
+            key={key}
+            style={{ display: "flex", alignItems: "center", gap: "0.4rem" }}
+          >
+            <input
+              type="checkbox"
+              checked={profile.required.includes(key)}
+              onChange={(e) => toggle(key, e.target.checked)}
+            />
+            {label}
+          </label>
+        ))}
+      </div>
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
+          gap: "0.5rem",
+        }}
+      >
+        <label style={{ display: "block" }}>
+          <span className="field-label">Education level choices</span>
+          <textarea
+            className="textarea"
+            rows={4}
+            value={profile.education}
+            onChange={(e) =>
+              onChange({ ...profile, education: e.target.value })
+            }
+            placeholder="One per line. Leave empty for the standard choices."
+          />
+        </label>
+        <label style={{ display: "block" }}>
+          <span className="field-label">Gender choices</span>
+          <textarea
+            className="textarea"
+            rows={4}
+            value={profile.gender}
+            onChange={(e) => onChange({ ...profile, gender: e.target.value })}
+            placeholder="One per line. Leave empty for the standard choices."
+          />
+        </label>
+      </div>
     </div>
   );
 }
@@ -1028,7 +1169,7 @@ function FormFieldEditor({
         </label>
       </div>
 
-      {field.type === "select"
+      {HAS_OPTIONS.includes(field.type)
         ? <label style={{ display: "block", marginTop: "0.5rem" }}>
             <span className="field-label">Options (one per line)</span>
             <textarea
@@ -1040,6 +1181,35 @@ function FormFieldEditor({
             />
           </label>
         : null}
+
+      {HAS_OPTIONS.includes(field.type)
+        ? <label
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: "0.4rem",
+              marginTop: "0.5rem",
+            }}
+          >
+            <input
+              type="checkbox"
+              checked={field.allowOther}
+              onChange={(e) => onChange({ allowOther: e.target.checked })}
+            />
+            Allow &quot;Other&quot; with a text box
+          </label>
+        : null}
+
+      <label style={{ display: "block", marginTop: "0.5rem" }}>
+        <span className="field-label">Help text (optional)</span>
+        <textarea
+          className="textarea"
+          rows={2}
+          value={field.description}
+          onChange={(e) => onChange({ description: e.target.value })}
+          placeholder="Shown under the question"
+        />
+      </label>
 
       <div style={{ display: "flex", gap: 6, marginTop: "0.5rem" }}>
         <button

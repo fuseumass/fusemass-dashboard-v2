@@ -400,6 +400,7 @@ function isHttpsUrl(value) {
 
 function formatAnswer(field, value) {
   if (field.type === "checkbox") return value ? "Yes" : "No";
+  if (Array.isArray(value)) return value.join(", ");
   if (value === undefined || value === null) return "";
   return String(value);
 }
