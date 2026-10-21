@@ -79,6 +79,8 @@ var MATRIX = [
   row("GET", "/api/health", "public"),
   row("GET", "/api/health/db", "public"),
   row("GET", "/api/meta/config", "public"),
+  row("GET", "/api/meta/branding", "public"),
+  row("GET", "/api/meta/branding/files/:file", "public"),
   row("GET", "/api/meta/colleges", "public"),
   row("GET", "/api/meta/skills/programming", "public"),
   row("GET", "/api/meta/skills/hardware", "public"),
@@ -95,6 +97,7 @@ var MATRIX = [
 
   // ---- Any logged-in user --------------------------------------------------
   row("GET", "/api/auth/me", "authenticated"),
+  row("GET", "/api/meta/links", "authenticated"),
   row("POST", "/api/auth/resend-verification", "authenticated"),
   row("POST", "/api/applications", "authenticated", { body: { name: "Sneaky" } }),
   row("GET", "/api/applications/me", "authenticated"),
@@ -148,6 +151,8 @@ var MATRIX = [
 
   // ---- Admins only: organization setup ------------------------------------
   row("GET", "/api/admin/users", "admin"),
+  row("PUT", "/api/admin/branding/:slot", "admin"),
+  row("DELETE", "/api/admin/branding/:slot", "admin"),
   row("PATCH", "/api/admin/users/:id/role", "admin", { use: { id: "applicant" }, body: { role: "admin" } }),
   row("GET", "/api/admin/rounds", "admin"),
   row("POST", "/api/admin/rounds", "admin", { body: { name: "Sneaky round" } }),
