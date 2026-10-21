@@ -24,6 +24,15 @@ var DEFAULT_TEMPLATES = [
       "Hi {{name}},\n\nThank you for applying to {{orgName}}. After review, your application was not selected.\n\nStatus: {{status}}",
   },
   {
+    // Sent with the acceptance email when the applicant applied without an
+    // account (public applications, imports) and so has no password yet.
+    // {{setupUrl}} sets one; it expires after 7 days.
+    key: "account_setup",
+    subject: "Set up your {{orgName}} account",
+    body:
+      "Hi {{name}},\n\nYou've been accepted to {{orgName}}, and we've created an account for you so you can see your status and check-in QR code on the dashboard.\n\nSet your password here (this link works for 7 days):\n{{setupUrl}}\n\nIf it has expired, use \"Forgot password\" on the login page with this email address.",
+  },
+  {
     // Sent when staff check an attendee in on arrival. The run of show is
     // also attached as a calendar invite.
     key: "checked_in",

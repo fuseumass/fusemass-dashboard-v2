@@ -339,6 +339,7 @@ function ApplicationDrawer({ app, onClose }) {
                 .join(" · ")}
             />
           : null}
+        <CustomAnswers app={app} />
         {app.hasResume
           ? <div style={{ marginTop: "0.75rem" }}>
               <SignedLinkButton
@@ -352,20 +353,77 @@ function ApplicationDrawer({ app, onClose }) {
     </div>
   );
 }
+// Answers to the round's custom questions, labelled from its formConfig.
+function CustomAnswers({ app }) {
+  const fields = app.round?.formConfig || [];
+  const answers = app.answers || {};
+  if (!fields.length) return null;
+
+  return (
+    <div style={{ marginTop: "0.75rem" }}>
+      {fields.map((field) => {
+        const value = answers[field.key];
+        if (field.type === "resume") {
+          // Uploaded resumes open through "View resume" below. Imported
+          // applications may carry an external link instead; only https
+          // links are made clickable.
+          if (app.hasResume || !isHttpsUrl(value)) return null;
+          return (
+            <div key={field.key} style={{ marginBottom: "0.6rem" }}>
+              <DetailLabel>{field.label}</DetailLabel>
+              <a
+                className="link"
+                href={value}
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                Open resume (external link)
+              </a>
+            </div>
+          );
+        }
+        return (
+          <Detail
+            key={field.key}
+            label={field.label}
+            value={formatAnswer(field, value)}
+          />
+        );
+      })}
+    </div>
+  );
+}
+
+function isHttpsUrl(value) {
+  return typeof value === "string" && /^https:\/\/\S+$/i.test(value);
+}
+
+function formatAnswer(field, value) {
+  if (field.type === "checkbox") return value ? "Yes" : "No";
+  if (value === undefined || value === null) return "";
+  return String(value);
+}
+
+function DetailLabel({ children }) {
+  return (
+    <div
+      className="muted"
+      style={{
+        fontSize: "0.75rem",
+        textTransform: "uppercase",
+        letterSpacing: "0.03em",
+      }}
+    >
+      {children}
+    </div>
+  );
+}
+
 function Detail({ label, value }) {
   if (value === undefined || value === null || value === "") return null;
   return (
     <div style={{ marginBottom: "0.6rem" }}>
-      <div
-        className="muted"
-        style={{
-          fontSize: "0.75rem",
-          textTransform: "uppercase",
-          letterSpacing: "0.03em",
-        }}
-      >
-        {label}
-      </div>
+      <DetailLabel>{label}</DetailLabel>
       <div>{String(value)}</div>
     </div>
   );

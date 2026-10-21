@@ -1,8 +1,12 @@
 "use strict";
 
+var validator = require("validator");
+
 var Application = require("../schemas/application");
 var ApplicationRound = require("../schemas/applicationRound");
+var OrgSettings = require("../schemas/orgSettings");
 var User = require("../schemas/user");
+var passwordToken = require("../utils/passwordToken");
 var azureBlob = require("../utils/azureBlob");
 var mailer = require("../utils/mailer");
 var formConfigUtil = require("../utils/formConfig");
@@ -81,16 +85,30 @@ function apply(req, res) {
   }
 
   return findOpenRound()
-    .then(function afterRound(round) {
-      if (!round) {
+    .then(function afterRound(openRound) {
+      if (!openRound) {
         res.status(400).json({ error: "Applications are not open right now." });
         return null;
       }
+      // A required resume question is satisfied by a resume uploaded earlier.
+      return Application.findOne({ applicant: claims.id, round: openRound._id })
+        .select("resumeBlobName")
+        .then(function afterExisting(existing) {
+          return { round: openRound, hadResume: Boolean(existing && existing.resumeBlobName) };
+        });
+    })
+    .then(function afterLookup(found) {
+      if (!found) {
+        return null;
+      }
+      var round = found.round;
 
       var profile = buildProfile(req.body || {});
       var status = req.body && req.body.status === "draft" ? "draft" : "pending";
       var answersInput = parseMaybeJson(req.body && req.body.answers, {});
-      var answersCheck = formConfigUtil.validateAnswers(round.formConfig, answersInput);
+      var answersCheck = formConfigUtil.validateAnswers(round.formConfig, answersInput, {
+        hasResume: Boolean(req.file) || found.hadResume,
+      });
 
       // Drafts can be incomplete; a real submission must satisfy the round's
       // required dynamic fields (and any options constraints).
@@ -239,8 +257,165 @@ function getMyQr(req, res) {
     });
 }
 
+/**
+ * Whether admins have switched on applying without an account.
+ * @returns {Promise<boolean>}
+ */
+function publicApplicationsEnabled() {
+  return OrgSettings.getSingleton().then(function afterLoad(settings) {
+    return Boolean(settings.publicApplications);
+  });
+}
+
+/**
+ * GET /api/applications/public/round
+ * The open round and its form, for the no-account application form on the
+ * home page. 404 unless admins have enabled applying without an account.
+ *
+ * @param {object} _req - Express request.
+ * @param {object} res - Express response.
+ * @returns {Promise<void>}
+ */
+function getPublicRound(_req, res) {
+  return Promise.all([publicApplicationsEnabled(), findOpenRound()])
+    .then(function afterLookups(results) {
+      if (!results[0]) {
+        res.status(404).json({ error: "Applying without an account isn't enabled." });
+        return;
+      }
+      res.status(200).json({ round: results[1] || null });
+    })
+    .catch(function onError(err) {
+      console.error("getPublicRound failed:", err);
+      res.status(500).json({ error: "Could not load the application form." });
+    });
+}
+
+var ALREADY_APPLIED = {
+  error: "We already have an application from this email.",
+  code: "ALREADY_APPLIED",
+};
+
+/**
+ * POST /api/applications/public
+ * Submit an application without an account (multipart, same fields as
+ * POST /api/applications plus `email`; no drafts). The email gets a
+ * passwordless applicant account, which login refuses until a password is set
+ * through an emailed link (sent on acceptance, or via "Forgot password").
+ *
+ * Without a login nobody may change an existing application, so this refuses
+ * (409) an email that already has a usable account (log in and apply instead)
+ * or that already applied to this round.
+ *
+ * @param {object} req - Express request (req.file set by multer).
+ * @param {object} res - Express response.
+ * @returns {Promise<void>}
+ */
+function applyPublic(req, res) {
+  var body = req.body || {};
+  var email = String(body.email || "").trim().toLowerCase();
+  var name = String(body.name || "").trim();
+
+  return Promise.all([publicApplicationsEnabled(), findOpenRound()])
+    .then(function afterLookups(results) {
+      var round = results[1];
+      if (!results[0]) {
+        res.status(404).json({ error: "Applying without an account isn't enabled." });
+        return undefined;
+      }
+      if (!round) {
+        res.status(400).json({ error: "Applications are not open right now." });
+        return undefined;
+      }
+      if (!validator.isEmail(email)) {
+        res.status(400).json({ error: "A valid email address is required." });
+        return undefined;
+      }
+      if (!name) {
+        res.status(400).json({ error: "Full name is required." });
+        return undefined;
+      }
+
+      var answersCheck = formConfigUtil.validateAnswers(round.formConfig, parseMaybeJson(body.answers, {}), {
+        hasResume: Boolean(req.file),
+      });
+      if (answersCheck.errors.length) {
+        res.status(400).json({ error: answersCheck.errors.join(" ") });
+        return undefined;
+      }
+      if (req.file && !azureBlob.isAzureConfigured()) {
+        res.status(501).json({ error: "Resume upload is not configured yet." });
+        return undefined;
+      }
+
+      return User.findOne({ email: email }).then(function afterUser(existing) {
+        if (existing && !passwordToken.needsPasswordSetup(existing)) {
+          res.status(409).json({
+            error: "You already have an account with this email. Log in to apply.",
+            code: "ACCOUNT_EXISTS",
+          });
+          return undefined;
+        }
+
+        var userStep = existing ? Promise.resolve(existing) : User.create({ name: name, email: email, role: "applicant" });
+
+        return userStep.then(function afterUserReady(user) {
+          return Application.exists({ applicant: user._id, round: round._id }).then(function afterExists(already) {
+            if (already) {
+              res.status(409).json(ALREADY_APPLIED);
+              return undefined;
+            }
+
+            var resumeStep = req.file ? azureBlob.uploadResume(req.file, String(user._id)) : Promise.resolve("");
+            return resumeStep.then(function afterResume(resumeBlobName) {
+              var fields = Object.assign({}, buildProfile(body), {
+                name: name,
+                applicant: user._id,
+                round: round._id,
+                status: "pending",
+                answers: answersCheck.answers,
+              });
+              if (resumeBlobName) {
+                fields.resumeBlobName = resumeBlobName;
+              }
+
+              return Application.create(fields).then(function afterCreate(application) {
+                res.status(201).json({ application: application.toJSON() });
+
+                mailer
+                  .sendTemplateEmail(email, "application_received", {
+                    name: application.name,
+                    status: application.status,
+                  })
+                  .catch(function onMailError(err) {
+                    console.error("Failed to send application-received email:", err);
+                  });
+              });
+            });
+          });
+        });
+      });
+    })
+    .catch(function onError(err) {
+      if (res.headersSent) {
+        console.error("applyPublic failed after responding:", err);
+        return;
+      }
+      // Two submits for the same email at once: the loser trips the unique
+      // email / (applicant, round) index, which means the same thing.
+      if (err && err.code === 11000) {
+        res.status(409).json(ALREADY_APPLIED);
+        return;
+      }
+      console.error("applyPublic failed:", err);
+      res.status(500).json({ error: "Could not submit application." });
+    });
+}
+
 module.exports = {
   apply: apply,
   getMine: getMine,
   getMyQr: getMyQr,
+  getPublicRound: getPublicRound,
+  applyPublic: applyPublic,
 };

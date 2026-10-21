@@ -26,6 +26,14 @@ var orgSettingsSchema = new Schema(
       type: Boolean,
       default: true,
     },
+    // Accept applications without an account. When true, the site's home page
+    // is the application form and POST /api/applications/public takes
+    // submissions by email; accepted applicants are emailed a link to set a
+    // password (see adminController.decideApplication).
+    publicApplications: {
+      type: Boolean,
+      default: false,
+    },
   },
   { timestamps: true }
 );

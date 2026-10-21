@@ -45,7 +45,7 @@ were presumably tracked in spreadsheets, so B33–B37 are a new design.
 | Old feature | Status | Task |
 | ----------- | ------ | ---- |
 | Application form + resume upload | ✅ private storage, 5-min signed view links | — |
-| Custom questions from YAML config | ✅ per-round `formConfig` | — |
+| Custom questions from YAML config | ✅ per-round `formConfig`, incl. resume upload questions | — |
 | University / major autocomplete | 🟡 university + skills; majors are free text | F14 |
 | Application mode open / closed | ✅ rounds open/close | — |
 | Waitlist mode (auto-waitlist past capacity) | 📋 | B41 |

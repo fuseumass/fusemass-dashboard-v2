@@ -3,7 +3,11 @@
 // Field types a round's formConfig may declare. Shared between B8 (validating
 // submitted answers against a round's config) and B9 (validating the config
 // itself when an admin edits it).
-var ALLOWED_FIELD_TYPES = ["text", "textarea", "number", "select", "checkbox", "date"];
+//
+// "resume" is a file upload: the file travels as the multipart `resume` part
+// and is stored privately (Application.resumeBlobName), not in `answers`. A
+// form may have at most one.
+var ALLOWED_FIELD_TYPES = ["text", "textarea", "number", "select", "checkbox", "date", "resume"];
 
 /**
  * Validate a submitted answers map against a round's formConfig: required
@@ -13,17 +17,30 @@ var ALLOWED_FIELD_TYPES = ["text", "textarea", "number", "select", "checkbox", "
  *
  * @param {Array<object>} formConfig - [{ key, label, type, required, options }]
  * @param {object} answers - Submitted { [key]: value } map.
+ * @param {object} [context] - Facts about the submission beyond `answers`.
+ * @param {boolean} [context.hasResume] - Whether the application has (or is
+ *   uploading) a resume; satisfies a required "resume" field.
  * @returns {{errors: string[], answers: object}} Validation errors (empty
  *   when valid) and the subset of answers that map to known fields.
  */
-function validateAnswers(formConfig, answers) {
+function validateAnswers(formConfig, answers, context) {
   var fields = Array.isArray(formConfig) ? formConfig : [];
   var safeAnswers = answers && typeof answers === "object" ? answers : {};
+  var hasResume = Boolean(context && context.hasResume);
   var errors = [];
   var cleaned = {};
 
   fields.forEach(function checkField(field) {
     if (!field || !field.key) {
+      return;
+    }
+
+    // The file itself is handled by the upload; a value typed into `answers`
+    // for this key is never stored, so it can't pose as an uploaded resume.
+    if (field.type === "resume") {
+      if (field.required && !hasResume) {
+        errors.push((field.label || field.key) + " is required.");
+      }
       return;
     }
 
@@ -72,6 +89,7 @@ function validateFormConfigShape(formConfig) {
   var errors = [];
   // No prototype, so a field key like "constructor" isn't mistaken for a duplicate.
   var seenKeys = Object.create(null);
+  var resumeFields = 0;
 
   formConfig.forEach(function checkField(field, index) {
     var label = "formConfig[" + index + "]";
@@ -98,6 +116,13 @@ function validateFormConfigShape(formConfig) {
 
     if (ALLOWED_FIELD_TYPES.indexOf(field.type) === -1) {
       errors.push(label + " type must be one of: " + ALLOWED_FIELD_TYPES.join(", ") + ".");
+    }
+
+    if (field.type === "resume") {
+      resumeFields += 1;
+      if (resumeFields === 2) {
+        errors.push("A form can have only one resume upload question.");
+      }
     }
 
     if (field.required !== undefined && typeof field.required !== "boolean") {
