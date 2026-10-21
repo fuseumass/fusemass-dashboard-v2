@@ -164,6 +164,95 @@ export default function CheckInStation({ title, onCode, result }) {
       </form>
 
       {result ? <ResultBanner result={result} /> : null}
+      {result?.kind === "success" && result.popup?.length
+        ? <CheckInPopup key={result.id} rows={result.popup} />
+        : null}
+    </div>
+  );
+}
+
+// After a successful check-in: the attendee's name, pronouns, shirt size (or
+// whatever admins chose in Settings) in large type. It never takes focus, so a
+// USB scanner keeps typing into the code box: the next scan simply replaces
+// it. Escape, a click, or "Done" closes it.
+function CheckInPopup({ rows }) {
+  const [open, setOpen] = useState(true);
+
+  useEffect(() => {
+    function onKey(e) {
+      if (e.key === "Escape") setOpen(false);
+    }
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, []);
+
+  if (!open) return null;
+  return (
+    <div
+      aria-live="polite"
+      onPointerDown={() => setOpen(false)}
+      style={{
+        position: "fixed",
+        inset: 0,
+        zIndex: 50,
+        display: "flex",
+        alignItems: "flex-start",
+        justifyContent: "center",
+        paddingTop: "12vh",
+        background: "rgba(0,0,0,0.35)",
+      }}
+    >
+      <div
+        className="card"
+        style={{
+          padding: "1.75rem 2rem",
+          minWidth: "min(420px, 92vw)",
+          maxWidth: "92vw",
+          borderTop: "6px solid var(--success)",
+        }}
+      >
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: "0.5rem",
+            color: "var(--success)",
+            fontWeight: 700,
+            marginBottom: "1rem",
+          }}
+        >
+          <CircleCheck size={22} aria-hidden="true" />
+          Checked in
+        </div>
+        <dl style={{ display: "grid", gap: "0.9rem", margin: 0 }}>
+          {rows.map((row) => (
+            <div key={row.key}>
+              <dt className="muted" style={{ fontSize: "0.85rem" }}>
+                {row.label}
+              </dt>
+              <dd
+                style={{
+                  margin: 0,
+                  fontSize: "1.9rem",
+                  fontWeight: 700,
+                  lineHeight: 1.15,
+                  overflowWrap: "anywhere",
+                }}
+              >
+                {row.value}
+              </dd>
+            </div>
+          ))}
+        </dl>
+        <button
+          type="button"
+          className="btn btn-primary"
+          style={{ marginTop: "1.25rem" }}
+          onClick={() => setOpen(false)}
+        >
+          Done
+        </button>
+      </div>
     </div>
   );
 }

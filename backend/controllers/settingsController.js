@@ -2,6 +2,7 @@
 
 var OrgSettings = require("../schemas/orgSettings");
 var googleStatus = require("../utils/googleStatus");
+var checkInPopup = require("../utils/checkInPopup");
 
 /**
  * GET /api/admin/settings — full org settings (admin only).
@@ -17,6 +18,8 @@ function getSettings(_req, res) {
       res.status(200).json({
         settings: settings,
         googleEnvAllowed: googleStatus.envAllowsGoogle(),
+        // Fields an admin can put on the check-in popup: { key: label }.
+        checkInPopupFieldOptions: checkInPopup.FIELD_LABELS,
       });
     })
     .catch(function onError(err) {
@@ -27,7 +30,8 @@ function getSettings(_req, res) {
 
 /**
  * PATCH /api/admin/settings — update org settings (admin only).
- * Body: { googleAuthEnabled?: boolean, publicApplications?: boolean }
+ * Body: { googleAuthEnabled?, publicApplications?, checkInPopupEnabled?: boolean,
+ *         checkInPopupFields?: string[] }
  * @param {object} req
  * @param {object} res
  * @returns {Promise<void>}
@@ -39,6 +43,17 @@ function updateSettings(req, res) {
   }
   if (req.body && req.body.publicApplications !== undefined) {
     update.publicApplications = Boolean(req.body.publicApplications);
+  }
+  if (req.body && req.body.checkInPopupEnabled !== undefined) {
+    update.checkInPopupEnabled = Boolean(req.body.checkInPopupEnabled);
+  }
+  if (req.body && req.body.checkInPopupFields !== undefined) {
+    var popupCheck = checkInPopup.validateFields(req.body.checkInPopupFields);
+    if (popupCheck.errors.length) {
+      res.status(400).json({ error: popupCheck.errors.join(" ") });
+      return Promise.resolve();
+    }
+    update.checkInPopupFields = popupCheck.fields;
   }
 
   return OrgSettings.findOneAndUpdate(

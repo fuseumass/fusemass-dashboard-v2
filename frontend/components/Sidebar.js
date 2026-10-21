@@ -5,6 +5,7 @@ import {
   ClipboardList,
   FileText,
   House,
+  LifeBuoy,
   Sandwich,
   ScanLine,
   Settings,
@@ -46,6 +47,12 @@ export default function Sidebar({ user }) {
       href: "/dashboard/staff/meals",
       label: "Meal check-in",
       icon: Sandwich,
+    });
+    // Resend someone's QR code or account link; force a check-in by email.
+    nav.push({
+      href: "/dashboard/staff/attendees",
+      label: "Attendee help",
+      icon: LifeBuoy,
     });
   }
   if (isAdmin) {

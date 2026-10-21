@@ -11,6 +11,9 @@ const ScheduleEvent = require("../schemas/scheduleEvent");
 const qrCode = require("../utils/qrCode");
 const calendar = require("../utils/calendar");
 const mailer = require("../utils/mailer");
+const OrgSettings = require("../schemas/orgSettings");
+const checkInPopup = require("../utils/checkInPopup");
+const passwordToken = require("../utils/passwordToken");
 
 // Event-day staff endpoints (moderators + admins): the first check-in, meal
 // check-ins, and the attendee search used when someone can't show their QR.
@@ -352,11 +355,14 @@ async function checkInMark(req, res) {
       { $set: { checkedIn: true, checkedInAt: checkIn.checkedInAt } }
     );
 
+    const settings = await OrgSettings.getSingleton();
     res.status(201).json({
       success: true,
       forced: forced,
       attendee: attendee,
       checkIn: checkIn,
+      // Facts staff see in large type (null when the popup is switched off).
+      popup: checkInPopup.buildPopup(settings, found.user, found.application),
     });
     sendCheckedInEmail(found.user, attendee.name);
     return undefined;
@@ -494,7 +500,139 @@ async function mealCheckInMark(req, res) {
   }
 }
 
+// ---- Attendee help (moderators + admins) ---------------------------------------
+// Look someone up by email, resend their QR code email or an account link.
+// Forcing a check-in for them uses POST /api/staff/checkin with force: true.
+
+/**
+ * What the Attendee help tab shows about one person.
+ * @param {object} user - User document.
+ * @param {object} [application] - Their accepted (or else latest) application.
+ * @returns {object}
+ */
+function attendeeDetails(user, application) {
+  return Object.assign(attendeeSummary(user, application), {
+    applicationStatus: application ? application.status : "none",
+    checkedIn: Boolean(user.checkedIn),
+    checkedInAt: user.checkedInAt || null,
+    // False for people who applied without an account and haven't set a password.
+    accountReady: !passwordToken.needsPasswordSetup(user),
+  });
+}
+
+/**
+ * Find a user and their accepted (or latest) application by email.
+ * @param {*} rawEmail - Email from the request.
+ * @returns {Promise<{user: object, application: object|null}|null>}
+ */
+async function findByEmail(rawEmail) {
+  const email = String(rawEmail || "").trim().toLowerCase();
+  if (!email) return null;
+  const user = await User.findOne({ email: email });
+  if (!user) return null;
+  const accepted = await Application.findOne({ applicant: user._id, status: "accepted" });
+  const application = accepted || (await Application.findOne({ applicant: user._id }).sort({ updatedAt: -1 }));
+  return { user: user, application: application };
+}
+
+const NOT_FOUND = { error: "No one with that email has applied or signed up." };
+
+//   GET /api/staff/attendee?email=
+/**
+ * Look one person up by email for the Attendee help tab.
+ * @param {object} req - Express request.
+ * @param {object} res - Express response.
+ * @returns {Promise<void>}
+ */
+async function lookupAttendee(req, res) {
+  try {
+    if (!req.query || !String(req.query.email || "").trim()) {
+      return res.status(400).json({ error: "Enter an email address." });
+    }
+    const found = await findByEmail(req.query.email);
+    if (!found) return res.status(404).json(NOT_FOUND);
+    return res.status(200).json({ attendee: attendeeDetails(found.user, found.application) });
+  } catch (err) {
+    console.error("lookupAttendee failed:", err);
+    return res.status(500).json({ error: "Server error" });
+  }
+}
+
+//   POST /api/staff/attendee/resend-qr   Body: { email }
+/**
+ * Send an accepted attendee their acceptance email again, with their
+ * check-in QR code. Waits for the send, so staff see a real failure.
+ * @param {object} req - Express request.
+ * @param {object} res - Express response.
+ * @returns {Promise<void>}
+ */
+async function resendQrEmail(req, res) {
+  try {
+    const found = await findByEmail(req.body && req.body.email);
+    if (!found) return res.status(404).json(NOT_FOUND);
+    if (!found.application || found.application.status !== "accepted") {
+      return res.status(400).json({
+        error: "Only accepted applicants have a check-in QR code.",
+        attendee: attendeeDetails(found.user, found.application),
+      });
+    }
+    if (!mailer.isMailConfigured()) {
+      return res.status(503).json({ error: "Email isn't configured on the server." });
+    }
+    await mailer.sendTemplateEmail(found.user.email, "application_accepted", {
+      name: found.application.name || found.user.name,
+      status: "accepted",
+    });
+    console.log("[attendee help] " + req.user.email + " resent the QR code email to " + found.user.email);
+    return res.status(200).json({ sent: true, attendee: attendeeDetails(found.user, found.application) });
+  } catch (err) {
+    console.error("resendQrEmail failed:", err);
+    return res.status(500).json({ error: "Could not send the email." });
+  }
+}
+
+//   POST /api/staff/attendee/send-account-link   Body: { email }
+/**
+ * Email someone a way into their account: the 7-day "set up your account"
+ * link if they have no password yet (applied without an account), otherwise
+ * a 1-hour password reset link. Either one replaces any earlier link.
+ * @param {object} req - Express request.
+ * @param {object} res - Express response.
+ * @returns {Promise<void>}
+ */
+async function sendAccountLink(req, res) {
+  try {
+    const found = await findByEmail(req.body && req.body.email);
+    if (!found) return res.status(404).json(NOT_FOUND);
+    if (!mailer.isMailConfigured()) {
+      return res.status(503).json({ error: "Email isn't configured on the server." });
+    }
+    const user = found.user;
+    let kind;
+    if (passwordToken.needsPasswordSetup(user)) {
+      const rawToken = await passwordToken.issuePasswordToken(user, passwordToken.SETUP_TTL_MS);
+      await mailer.sendTemplateEmail(user.email, "account_setup", {
+        name: (found.application && found.application.name) || user.name,
+        setupUrl: passwordToken.passwordLink(rawToken, { setup: true }),
+      });
+      kind = "setup";
+    } else {
+      const rawToken = await passwordToken.issuePasswordToken(user, passwordToken.RESET_TTL_MS);
+      await mailer.sendPasswordReset(user.email, passwordToken.passwordLink(rawToken));
+      kind = "reset";
+    }
+    console.log("[attendee help] " + req.user.email + " sent a " + kind + " link to " + user.email);
+    return res.status(200).json({ sent: true, kind: kind, attendee: attendeeDetails(user, found.application) });
+  } catch (err) {
+    console.error("sendAccountLink failed:", err);
+    return res.status(500).json({ error: "Could not send the email." });
+  }
+}
+
 module.exports = {
+  lookupAttendee: lookupAttendee,
+  resendQrEmail: resendQrEmail,
+  sendAccountLink: sendAccountLink,
   checkInStats: checkInStats,
   searchAttendees: searchAttendees,
   checkInMark: checkInMark,
