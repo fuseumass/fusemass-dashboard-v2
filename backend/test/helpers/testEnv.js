@@ -21,6 +21,11 @@ process.env.CLIENT_ORIGIN = process.env.CLIENT_ORIGIN || "http://localhost:3000"
 process.env.ORG_NAME = process.env.ORG_NAME || "Test Org";
 process.env.SETUP_ADMIN = process.env.SETUP_ADMIN || "false";
 process.env.GOOGLE_AUTH_ENABLED = process.env.GOOGLE_AUTH_ENABLED || "false";
+// The in-process settings cache (utils/orgSettingsCache) would otherwise hand
+// a test the settings from before it edited them directly in the database.
+if (process.env.SETTINGS_CACHE_TTL_MS === undefined) {
+  process.env.SETTINGS_CACHE_TTL_MS = "0";
+}
 
 // Fake SMTP config so mailer.isMailConfigured() is true and template emails
 // actually attempt to render/send (tests mock nodemailer's transport itself,

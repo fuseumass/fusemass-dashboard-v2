@@ -7,9 +7,14 @@ const staffController = require("../controllers/staffController");
 
 const isAuthenticated = require("../utils/isAuthenticated");
 const isModerator = require("../utils/isModerator");
+const requireFeature = require("../utils/requireFeature");
 
 // Event-day staff routes. Only authenticated admins or moderators may look up
 // attendees, check them in, or read the check-in records.
+
+// Meal check-in is feature-flagged: every /meals... route answers 404 for
+// everyone while "meals" is switched off (B25).
+router.use("/meals", requireFeature("meals"));
 
 router.get(
     "/attendees",

@@ -3,6 +3,7 @@
 import { ArrowDown, ArrowUp } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
+import BrandingFeaturesSettings from "@/components/BrandingFeaturesSettings";
 import { apiFetch } from "@/lib/api";
 import { useUser } from "@/lib/userContext";
 
@@ -28,6 +29,7 @@ export default function SettingsPage() {
         Organization setup — visible to admins only.
       </p>
       <AuthSettings />
+      <BrandingFeaturesSettings />
       <CheckInPopupSettings />
       <TeamSettings />
       <EmailTemplateEditor />

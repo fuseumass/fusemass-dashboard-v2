@@ -196,13 +196,22 @@ staff screens.
 ### B25. Feature flags per module
 Let each hackathon switch modules on or off at runtime: meals, hardware,
 workshops, judging, raffles. The old dashboard had this; we should too.
-- [ ] `OrgSettings.features: { meals, hardware, workshops, judging, raffle }`
+- [x] `OrgSettings.features: { meals, hardware, workshops, judging, raffle }`
       (booleans, default on), editable via `PATCH /api/admin/settings`.
-- [ ] `utils/requireFeature("hardware")` middleware: answers **404** for
+      Partial updates; values must be real booleans (`"false"` is a 400, not
+      coerced to true); unknown keys are a 400.
+- [x] `utils/requireFeature("hardware")` middleware: answers **404** for
       everyone when the feature is off (admins too, so a disabled module
-      can't be half-used). Mount it on each module's router.
-- [ ] Expose the flags to the frontend (public part of
+      can't be half-used). Mount it on each module's router. **Mounted today
+      on `meals`** (`/api/admin/meals`, `/api/staff/meals`); the other four
+      flags default on and gate nothing until their modules exist.
+      **Rule for B17-B24: every router of a flag-gated module must mount
+      `requireFeature("<key>")` before its auth guards, with a test that it
+      404s for admin, moderator and anonymous callers while off** (see
+      `backend/README.md`, "Feature flags").
+- [x] Expose the flags to the frontend (public part of
       `GET /api/meta/branding`, see B28) so the nav hides disabled modules.
+      (Sidebar hides the meals items; the full nav config is F13.)
 - **Don't repeat:** the old `check_feature_flag?` called `.value` before its
   nil check (crashed when a flag was missing). Its bypass,
   `(not admin or not organizer)`, was true for everyone who wasn't both, so
@@ -888,13 +897,26 @@ The brand colour is a build-time `NEXT_PUBLIC_*` variable, so changing it on
 a deployment does nothing, and there's no secondary colour at all (details in
 F12). Move branding to the backend so admins can change it without a
 rebuild.
-- [ ] `OrgSettings.branding`: `orgName`, `primaryColor`, `secondaryColor`,
+- [x] `OrgSettings.branding`: `orgName`, `primaryColor`, `secondaryColor`,
       `accentColor?`, `logoUrl`, `logoDarkUrl`, `faviconUrl`. Validate colours
       as hex (`#RRGGBB`) and reject anything else; never pass raw CSS through.
-- [ ] Defaults from **server** env (`BRAND_PRIMARY`, `BRAND_SECONDARY`, …) read
+- [x] Defaults from **server** env (`BRAND_PRIMARY`, `BRAND_SECONDARY`, …) read
       at request time, so one image can serve every hackathon.
-- [ ] Public `GET /api/meta/branding` (no auth, cacheable for ~60 s) returning
+- [x] Public `GET /api/meta/branding` (no auth, cacheable for ~60 s) returning
       branding + the public feature flags (B25). Logo upload via Azure.
+- **Decisions:** (1) **Logos are served by the API** from a second, *private*
+  container (`AZURE_STORAGE_BRANDING_CONTAINER`) at
+  `GET /api/meta/branding/files/<name>`, not from a public container, so the
+  storage account never needs anonymous blob access; only API-generated names
+  are served, bytes are re-checked, SVG is refused at upload, and responses
+  carry `nosniff` + a locked-down CSP. (2) Images can also be an admin-pasted
+  `https://` URL (works without Azure). (3) Precedence per field: admin
+  setting, then server env, then built-in default; env is read per request.
+  (4) The org name from branding drives the UI only; emails still use the
+  `ORG_NAME` env var. (5) Uploaded-logo links are root-relative unless
+  `API_PUBLIC_URL` is set. (6) A 10 s in-process settings cache
+  (`SETTINGS_CACHE_TTL_MS`) plus `max-age=60` keeps the endpoint off Cosmos DB.
+  Details: `backend/README.md`, "Branding".
 - **Depends on:** none. **Related:** F12.
 
 ### B29. CSV exports
@@ -925,9 +947,11 @@ moderate `ip-address`, moderate `csv-parse` (fix is a major bump to v7).
 The old dashboard had mentor tickets (attendee posts a request with a
 screenshot, mentors claim and resolve). **Decided: mentorship tickets are
 created on Discord**, so there's nothing to build here beyond linking to it:
-- [ ] Optional `ORG_DISCORD_MENTORSHIP_URL` (the mentorship channel or
+- [x] Optional `ORG_DISCORD_MENTORSHIP_URL` (the mentorship channel or
       ticket-bot link), shown on the attendee home page next to the Discord
-      invite.
+      invite. Served by `GET /api/meta/links` (login required; read from the
+      env per request; only plain http(s) URLs); shown in a "Community" card
+      on the home page.
 
 ### B32. RSVP / confirm attendance after acceptance
 The old dashboard had an RSVP step (plus custom RSVP questions, e.g. travel,

@@ -123,6 +123,22 @@ site. **Causes found:**
       in `.env.local.example`.
 - [ ] Use `--secondary` somewhere meaningful (secondary buttons, sidebar
       active state, chart series), not just define it.
+- **Backend ready (B28, B25):** `GET /api/meta/branding` (public, cacheable
+  60 s) returns `{ branding: { orgName, primaryColor, secondaryColor,
+  accentColor|null, logoUrl|null, logoDarkUrl|null, faviconUrl|null },
+  features: { meals, hardware, workshops, judging, raffle } }`. Colours are
+  always valid `#rrggbb`. Image URLs are absolute, or root-relative
+  (`/api/meta/branding/files/…`) for uploads when the server has no
+  `API_PUBLIC_URL`: prefix those with the API URL (see `imageSrc` in
+  `components/BrandingFeaturesSettings.js`). When the API is unreachable fall
+  back to `NEXT_PUBLIC_*`.
+- **Landed with B28 (basic):** `components/BrandingFeaturesSettings.js`, a
+  plain admin card for name, three colours (picker + hex, validated), logo /
+  dark logo / favicon upload or pasted https URL, and the module switches,
+  mounted on the settings page. **Still F12:** the root layout applying the
+  branding (the site does not read the API yet), `-foreground` contrast, the
+  live preview, the contrast warning, using `--secondary`, the favicon in
+  `metadata`, and moving this card into the Branding / Features tabs.
 - **Depends on:** F11, B28. **Related:** T14.
 
 ### F13. App shell and navigation
@@ -133,7 +149,9 @@ site. **Causes found:**
 - [ ] One nav config file (`lib/nav.js`): items with `href`, `label`, `icon`,
       `roles`, `feature` (B25 flag), and group (Event day / Organize /
       Admin). The sidebar and any command palette both read it. Role and flag
-      filtering happen there.
+      filtering happen there. (Interim, with B25: `Sidebar.js` hides the
+      Meals / Meal check-in items via `lib/features.js` `useFeatures()`;
+      carry that into `lib/nav.js`.)
 - [ ] Top bar: breadcrumbs, page title, user menu (`DropdownMenu`: profile,
       theme toggle, log out). The org logo comes from the branding API.
 - [ ] Highlight the active item for nested routes too (today

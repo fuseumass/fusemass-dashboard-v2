@@ -23,8 +23,13 @@ export default function DashboardHome() {
     application: null,
   });
   const [qr, setQr] = useState(null);
+  const [links, setLinks] = useState(null);
 
   useEffect(() => {
+    // Discord invite and the optional mentorship link (tickets live on Discord).
+    apiFetch("/api/meta/links")
+      .then((data) => setLinks(data.links))
+      .catch(() => setLinks(null));
     apiFetch("/api/applications/me")
       .then((data) =>
         setState({
@@ -157,6 +162,56 @@ export default function DashboardHome() {
               height={240}
               style={{ display: "block", background: "#fff", borderRadius: 8 }}
             />
+          </div>
+        : null}
+
+      {links && (links.discordUrl || links.mentorshipUrl)
+        ? <div
+            className="card"
+            style={{ padding: "1.5rem", maxWidth: 560, marginTop: "1rem" }}
+          >
+            <h2
+              style={{
+                fontSize: "1.05rem",
+                fontWeight: 600,
+                marginBottom: "0.75rem",
+              }}
+            >
+              Community
+            </h2>
+            <div style={{ display: "grid", gap: "0.75rem" }}>
+              {links.discordUrl
+                ? <div>
+                    <a
+                      className="link"
+                      href={links.discordUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                    >
+                      Join the Discord
+                    </a>
+                    <p className="muted" style={{ fontSize: "0.88rem" }}>
+                      Announcements, and a place to meet other hackers.
+                    </p>
+                  </div>
+                : null}
+              {links.mentorshipUrl
+                ? <div>
+                    <a
+                      className="link"
+                      href={links.mentorshipUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                    >
+                      Ask a mentor on Discord
+                    </a>
+                    <p className="muted" style={{ fontSize: "0.88rem" }}>
+                      Stuck? Open a mentorship ticket and a mentor will pick it
+                      up.
+                    </p>
+                  </div>
+                : null}
+            </div>
           </div>
         : null}
     </div>

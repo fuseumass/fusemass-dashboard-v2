@@ -2,7 +2,28 @@
 
 var mongoose = require("mongoose");
 
+var featureUtil = require("../utils/features");
+var brandingUtil = require("../utils/branding");
+
 var Schema = mongoose.Schema;
+
+// One on/off flag per module, ON unless an admin turns it off (utils/features).
+var featureFields = {};
+featureUtil.FEATURE_KEYS.forEach(function addFlag(key) {
+  featureFields[key] = { type: Boolean, default: true };
+});
+
+// A colour field: empty (use the server default) or exactly #RRGGBB.
+var colorField = {
+  type: String,
+  default: "",
+  validate: {
+    validator: function isEmptyOrHex(value) {
+      return !value || brandingUtil.isHexColor(value);
+    },
+    message: "Colours must be written as #RRGGBB.",
+  },
+};
 
 /**
  * Organization-wide settings. Stored as a single document (a singleton). Admins
@@ -52,6 +73,28 @@ var orgSettingsSchema = new Schema(
       default: function () {
         return ["name", "pronouns", "tshirtSize"];
       },
+    },
+    // Per-module on/off switches (B25), all on by default. Flipping one off
+    // makes that module's routes answer 404 (utils/requireFeature). The keys
+    // come from utils/features so a new module is added in one place.
+    features: featureFields,
+    // Runtime branding overrides (B28). An empty string means "not set here":
+    // the effective value then falls back to the server env, then a built-in
+    // default. Don't read these directly for display; use utils/branding.resolve,
+    // which also re-validates whatever was stored.
+    branding: {
+      orgName: { type: String, default: "", maxlength: brandingUtil.MAX_ORG_NAME },
+      primaryColor: colorField,
+      secondaryColor: colorField,
+      accentColor: colorField,
+      // External https image URLs the admin pasted in...
+      logoUrl: { type: String, default: "" },
+      logoDarkUrl: { type: String, default: "" },
+      faviconUrl: { type: String, default: "" },
+      // ...or names of images uploaded to the branding container (these win).
+      logoFile: { type: String, default: "" },
+      logoDarkFile: { type: String, default: "" },
+      faviconFile: { type: String, default: "" },
     },
   },
   { timestamps: true }

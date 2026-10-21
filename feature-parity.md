@@ -101,7 +101,7 @@ were presumably tracked in spreadsheets, so B33–B37 are a new design.
 
 | Old feature | Status | Task |
 | ----------- | ------ | ---- |
-| Help tickets with screenshot, resolve / deny, search | ✖ created on Discord instead | B31 |
+| Help tickets with screenshot, resolve / deny, search | ✖ created on Discord instead (✅ home page links to the mentorship channel via `ORG_DISCORD_MENTORSHIP_URL`) | B31 |
 | Mentor notifications by tech tag; Slack DM link | ✖ Discord | B31 |
 
 ## Projects, prizes & judging
@@ -138,8 +138,8 @@ were presumably tracked in spreadsheets, so B33–B37 are a new design.
 
 | Old feature | Status | Task |
 | ----------- | ------ | ---- |
-| Feature flags per module | 📋 (old flag check was broken) | B25 |
-| Per-hackathon config repo (names, texts, branding) | 🟡 env + org settings; branding broken | B28, F12 |
+| Feature flags per module | 🟡 backend ✅ (`OrgSettings.features`, `requireFeature`, gates meals; each new module must mount it); nav hides meals items; full nav config is F13 | B25, F13 |
+| Per-hackathon config repo (names, texts, branding) | 🟡 backend ✅ runtime branding API (`GET /api/meta/branding`, admin settings, logo upload) + admin card; the site still needs to apply it (colour flags fix) | B28, F12 |
 | CSV exports (applications, events, judging, projects) | 📋 | B29 |
 | Resume bulk download (`download_resumes.py`) | 📋 | B29 |
 | Error reporting (Sentry/Raven) | 📋 | B46 |

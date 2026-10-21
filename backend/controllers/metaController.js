@@ -5,6 +5,8 @@ var path = require("path");
 var csvParse = require("csv-parse/sync");
 var googleStatus = require("../utils/googleStatus");
 var OrgSettings = require("../schemas/orgSettings");
+var branding = require("../utils/branding");
+var orgLinks = require("../utils/orgLinks");
 
 var DATA_DIR = path.join(__dirname, "..", "data");
 
@@ -134,7 +136,8 @@ function config(_req, res) {
   return Promise.all([googleStatus.isGoogleEnabled(), OrgSettings.getSingleton()])
     .then(function afterCheck(results) {
       res.status(200).json({
-        orgName: process.env.ORG_NAME || "Hackathon",
+        // Same name as GET /api/meta/branding (admin setting, else ORG_NAME).
+        orgName: branding.resolve(results[1]).orgName,
         googleAuthEnabled: results[0],
         publicApplications: Boolean(results[1].publicApplications),
       });
@@ -142,11 +145,26 @@ function config(_req, res) {
     .catch(function onError() {
       // Never block the login page on this; default both to off.
       res.status(200).json({
-        orgName: process.env.ORG_NAME || "Hackathon",
+        orgName: branding.resolve(null).orgName,
         googleAuthEnabled: false,
         publicApplications: false,
       });
     });
+}
+
+/**
+ * GET /api/meta/links — the hackathon's community links for the attendee home
+ * page: website, Discord invite and (optional) Discord mentorship channel /
+ * ticket-bot link. Mentorship tickets live on Discord, so the dashboard only
+ * links to them. Requires login: the links are for participants, and an
+ * unset or malformed link comes back as null so the page just omits it.
+ * Read from the server env on each request (no rebuild to change them).
+ * @param {object} _req
+ * @param {object} res
+ * @returns {void}
+ */
+function links(_req, res) {
+  res.status(200).json({ links: orgLinks.getLinks() });
 }
 
 module.exports = {
@@ -154,4 +172,5 @@ module.exports = {
   programmingSkills: programmingSkills,
   hardwareSkills: hardwareSkills,
   config: config,
+  links: links,
 };
