@@ -1,28 +1,21 @@
 "use strict";
 
+var requireRole = require("./currentRole").requireRole;
+
 /**
  * Route guard: allow the request through only when the caller is a logged-in
  * admin. Mount it after (or in place of) `isAuthenticated` on admin-only routes.
  *
- *   router.get("/applications", isAdmin, listApplications);
+ *   router.get("/users", isAdmin, searchUsers);
+ *
+ * The role is checked against the database, not the JWT, so a demotion
+ * takes effect immediately (see utils/currentRole).
  *
  * @param {object} req - Express request (expects req.user from parseToken).
  * @param {object} res - Express response.
  * @param {function} next - Express next callback.
- * @returns {void}
+ * @returns {Promise<void>|void}
  */
-function isAdmin(req, res, next) {
-  if (!req.user) {
-    res.status(401).json({ error: "Authentication required." });
-    return;
-  }
-
-  if (req.user.role !== "admin") {
-    res.status(403).json({ error: "Admin access required." });
-    return;
-  }
-
-  return next();
-}
+var isAdmin = requireRole(["admin"], "Admin access required.");
 
 module.exports = isAdmin;

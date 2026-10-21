@@ -14,6 +14,9 @@ var applicationStatus = require("../utils/applicationStatus");
 var validator = require("validator");
 var mongoose = require("mongoose");
 
+// The review table's columns (see listApplications).
+var LIST_FIELDS = "name university status round applicant resumeBlobName createdAt updatedAt";
+
 var DECISION_TEMPLATE_KEYS = {
   accepted: "application_accepted",
   rejected: "application_rejected",
@@ -39,10 +42,14 @@ function listApplications(req, res) {
     filter.round = req.query.round;
   }
 
+  // Only the review table's columns: answers and the round's form come from
+  // GET /api/admin/applications/:id when a reviewer opens one, so the list
+  // stays small however long the form is (with the whole form copied into
+  // every row it was ~10 KB per application).
   return Application.find(filter)
+    .select(LIST_FIELDS)
     .populate("applicant", "name email role")
-    // formConfig labels the custom answers in the review drawer.
-    .populate("round", "name formConfig")
+    .populate("round", "name")
     .sort({ createdAt: -1 })
     .then(function afterFind(applications) {
       res.status(200).json({ applications: applications });
@@ -50,6 +57,37 @@ function listApplications(req, res) {
     .catch(function onError(err) {
       console.error("listApplications failed:", err);
       res.status(500).json({ error: "Could not load applications." });
+    });
+}
+
+/**
+ * GET /api/admin/applications/:id
+ * One application in full, with its round's form (which labels the custom
+ * answers), for the review drawer.
+ *
+ * @param {object} req - Express request (req.params.id is the application id).
+ * @param {object} res - Express response.
+ * @returns {Promise<void>}
+ */
+function getApplication(req, res) {
+  if (!mongoose.isValidObjectId(req.params.id)) {
+    res.status(404).json({ error: "Application not found." });
+    return Promise.resolve();
+  }
+
+  return Application.findById(req.params.id)
+    .populate("applicant", "name email role")
+    .populate("round", "name formConfig")
+    .then(function afterFind(application) {
+      if (!application) {
+        res.status(404).json({ error: "Application not found." });
+        return;
+      }
+      res.status(200).json({ application: application.toJSON() });
+    })
+    .catch(function onError(err) {
+      console.error("getApplication failed:", err);
+      res.status(500).json({ error: "Could not load the application." });
     });
 }
 
@@ -839,6 +877,7 @@ function deleteMeal(req, res) {
 
 module.exports = {
   listApplications: listApplications,
+  getApplication: getApplication,
   decideApplication: decideApplication,
   searchUsers: searchUsers,
   setRole: setRole,

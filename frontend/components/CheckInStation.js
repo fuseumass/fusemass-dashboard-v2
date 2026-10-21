@@ -1,5 +1,6 @@
 "use client";
 
+import { CircleAlert, CircleCheck, CircleX } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import QRScanner from "@/components/QRScanner";
 
@@ -23,9 +24,9 @@ function hasFinePointer() {
 }
 
 const RESULT_STYLES = {
-  success: { color: "var(--success)", icon: "✓" },
-  duplicate: { color: "#d97706", icon: "!" },
-  error: { color: "var(--danger)", icon: "✕" },
+  success: { color: "var(--success)", icon: CircleCheck },
+  duplicate: { color: "#d97706", icon: CircleAlert },
+  error: { color: "var(--danger)", icon: CircleX },
 };
 
 export function formatTime(value) {
@@ -182,7 +183,12 @@ function ResultBanner({ result }) {
       }}
     >
       <div style={{ fontSize: "1.2rem", fontWeight: 700, color: style.color }}>
-        {style.icon} {result.message}
+        <style.icon
+          size={22}
+          aria-hidden="true"
+          style={{ verticalAlign: "-4px" }}
+        />{" "}
+        {result.message}
       </div>
       {result.attendee
         ? <div style={{ marginTop: 4 }}>
@@ -245,7 +251,10 @@ export function RecentScans({ recent }) {
               width: 14,
             }}
           >
-            {RESULT_STYLES[entry.kind].icon}
+            {(() => {
+              const Icon = RESULT_STYLES[entry.kind].icon;
+              return <Icon size={14} aria-hidden="true" />;
+            })()}
           </span>
           <span className="muted" style={{ width: 70 }}>
             {formatTime(entry.at)}

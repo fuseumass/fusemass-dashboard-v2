@@ -1,5 +1,6 @@
 "use client";
 
+import { X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { apiFetch } from "@/lib/api";
 
@@ -71,7 +72,7 @@ export default function TagAutocomplete({
                   onClick={() => remove(tag)}
                   aria-label={`Remove ${tag}`}
                 >
-                  ×
+                  <X size={12} aria-hidden="true" />
                 </button>
               </span>
             ))}

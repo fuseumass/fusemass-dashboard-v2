@@ -1,5 +1,6 @@
 "use client";
 
+import { ArrowDown, ArrowUp } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { apiFetch } from "@/lib/api";
@@ -1219,7 +1220,7 @@ function FormFieldEditor({
           disabled={isFirst}
           onClick={onMoveUp}
         >
-          ↑ Move up
+          <ArrowUp size={14} aria-hidden="true" /> Move up
         </button>
         <button
           type="button"
@@ -1228,7 +1229,7 @@ function FormFieldEditor({
           disabled={isLast}
           onClick={onMoveDown}
         >
-          ↓ Move down
+          <ArrowDown size={14} aria-hidden="true" /> Move down
         </button>
         <button
           type="button"

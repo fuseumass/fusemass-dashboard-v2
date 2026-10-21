@@ -1,5 +1,6 @@
 "use client";
 
+import { ArrowRight, CircleCheck } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { apiFetch } from "@/lib/api";
@@ -9,7 +10,7 @@ import { useUser } from "@/lib/userContext";
 const STATUS_LABELS = {
   draft: "Draft — not submitted",
   pending: "Submitted — under review",
-  accepted: "Accepted 🎉",
+  accepted: "Accepted",
   rejected: "Not accepted",
   waitlisted: "Waitlisted",
 };
@@ -96,7 +97,12 @@ export default function DashboardHome() {
                     </strong>
                   </p>
                   <Link href="/dashboard/application" className="link">
-                    View or edit your application →
+                    View or edit your application{" "}
+                    <ArrowRight
+                      size={14}
+                      aria-hidden="true"
+                      style={{ verticalAlign: "-2px" }}
+                    />
                   </Link>
                 </>}
       </div>
@@ -123,7 +129,12 @@ export default function DashboardHome() {
                     fontWeight: 600,
                   }}
                 >
-                  ✓ You&apos;re checked in
+                  <CircleCheck
+                    size={16}
+                    aria-hidden="true"
+                    style={{ verticalAlign: "-3px" }}
+                  />{" "}
+                  You&apos;re checked in
                   {user.checkedInAt
                     ? ` (${new Date(user.checkedInAt).toLocaleString([], {
                         weekday: "short",
