@@ -507,7 +507,7 @@ function previewEmailTemplate(req, res) {
  */
 function sendTestEmailTemplate(req, res) {
   if (!mailer.isMailConfigured()) {
-    res.status(503).json({ error: "Email isn't configured on the server (SMTP_HOST / SMTP_USER)." });
+    res.status(503).json({ error: "Email isn't configured on the server (SMTP_HOST / MAIL_FROM)." });
     return Promise.resolve();
   }
   var user;

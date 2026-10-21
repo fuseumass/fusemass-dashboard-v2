@@ -33,28 +33,43 @@ function linkify(html) {
 }
 
 /**
- * Whether SMTP is configured for outgoing email.
+ * Whether SMTP is configured for outgoing email. Needs a host and a sender
+ * address; login credentials are optional (see buildTransport).
  * @returns {boolean}
  */
 function isMailConfigured() {
-  return Boolean(process.env.SMTP_HOST && process.env.SMTP_USER);
+  return Boolean(process.env.SMTP_HOST && (process.env.MAIL_FROM || process.env.SMTP_USER));
 }
 
 /**
  * Build a nodemailer transport from environment config. Created lazily so the
  * app can boot without SMTP configured (password reset simply won't send).
+ *
+ * Logs in only when SMTP_USER is set. Relays that authorize by the server's
+ * IP address instead (e.g. Google Workspace's SMTP relay, since Workspace no
+ * longer accepts password sign-in from apps) reject a login they didn't ask
+ * for, so leave SMTP_USER/SMTP_PASS empty for those.
+ *
  * @returns {object} A nodemailer transport.
  */
 function buildTransport() {
-  return nodemailer.createTransport({
+  var options = {
     host: process.env.SMTP_HOST,
     port: Number(process.env.SMTP_PORT || 587),
     secure: String(process.env.SMTP_SECURE) === "true",
-    auth: {
+  };
+  if (process.env.SMTP_USER) {
+    options.auth = {
       user: process.env.SMTP_USER,
       pass: process.env.SMTP_PASS,
-    },
-  });
+    };
+  }
+  // The name we greet the server with (EHLO). Without it, a host whose name
+  // has no dot introduces itself as "[127.0.0.1]", which relays distrust.
+  if (process.env.SMTP_EHLO_NAME) {
+    options.name = process.env.SMTP_EHLO_NAME;
+  }
+  return nodemailer.createTransport(options);
 }
 
 /**
