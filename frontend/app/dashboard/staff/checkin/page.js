@@ -68,6 +68,7 @@ export default function StaffCheckInPage() {
         attendee: data.attendee,
         message: data.forced ? "Checked in (forced)" : "Checked in",
         warning: "Welcome email with Discord, website and schedule sent.",
+        popup: data.popup,
       });
       loadStats();
       return true;

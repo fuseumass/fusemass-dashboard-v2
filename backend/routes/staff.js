@@ -56,4 +56,27 @@ router.post(
     staffController.mealCheckInMark
 );
 
+// Attendee help: look someone up by email, resend their QR code email or an
+// account setup / password reset link. (Forced check-in: POST /checkin.)
+router.get(
+    "/attendee",
+    isAuthenticated,
+    isModerator,
+    staffController.lookupAttendee
+);
+
+router.post(
+    "/attendee/resend-qr",
+    isAuthenticated,
+    isModerator,
+    staffController.resendQrEmail
+);
+
+router.post(
+    "/attendee/send-account-link",
+    isAuthenticated,
+    isModerator,
+    staffController.sendAccountLink
+);
+
 module.exports = router;

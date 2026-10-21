@@ -34,6 +34,18 @@ var orgSettingsSchema = new Schema(
       type: Boolean,
       default: false,
     },
+    // Check-in popup (see utils/checkInPopup): shown to staff after each
+    // successful check-in, with these fields from the attendee's application.
+    checkInPopupEnabled: {
+      type: Boolean,
+      default: true,
+    },
+    checkInPopupFields: {
+      type: [String],
+      default: function () {
+        return ["name", "pronouns", "tshirtSize"];
+      },
+    },
   },
   { timestamps: true }
 );

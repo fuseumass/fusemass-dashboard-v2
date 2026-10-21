@@ -28,6 +28,7 @@ export default function SettingsPage() {
         Organization setup — visible to admins only.
       </p>
       <AuthSettings />
+      <CheckInPopupSettings />
       <EmailTemplateEditor />
       <RoundsManager />
     </div>
@@ -529,6 +530,131 @@ function AuthSettings() {
                   toggle for it yet.
                 </p>}
           </div>}
+    </div>
+  );
+}
+
+// What staff see in large type after each successful check-in.
+function CheckInPopupSettings() {
+  const [settings, setSettings] = useState(null);
+  const [options, setOptions] = useState({});
+  const [fields, setFields] = useState([]);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+  const [saved, setSaved] = useState(false);
+
+  useEffect(() => {
+    apiFetch("/api/admin/settings")
+      .then((data) => {
+        setSettings(data.settings);
+        setOptions(data.checkInPopupFieldOptions || {});
+        setFields(data.settings.checkInPopupFields || []);
+      })
+      .catch((err) => setError(err.message));
+  }, []);
+
+  async function save(patchBody) {
+    setSaving(true);
+    setError("");
+    setSaved(false);
+    try {
+      const data = await apiFetch("/api/admin/settings", {
+        method: "PATCH",
+        body: JSON.stringify(patchBody),
+      });
+      setSettings(data.settings);
+      setFields(data.settings.checkInPopupFields || []);
+      setSaved(true);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  function toggleField(key, on) {
+    // Keep the order the fields are listed in.
+    const next = Object.keys(options).filter((k) =>
+      k === key ? on : fields.includes(k),
+    );
+    setFields(next);
+    setSaved(false);
+  }
+
+  return (
+    <div className="card" style={{ padding: "1.5rem", marginBottom: "1.5rem" }}>
+      <h2
+        style={{
+          fontSize: "1.05rem",
+          fontWeight: 600,
+          marginBottom: "0.75rem",
+        }}
+      >
+        Check-in popup
+      </h2>
+      {error
+        ? <div className="alert-error" style={{ marginBottom: "0.75rem" }}>
+            {error}
+          </div>
+        : null}
+      {!settings
+        ? <p className="muted">Loading…</p>
+        : <>
+            <SettingToggle
+              title="Show a popup after each check-in"
+              description={
+                settings.checkInPopupEnabled
+                  ? "On — staff see these details in large type after a successful scan."
+                  : "Off — the check-in screen only shows the result banner."
+              }
+              on={settings.checkInPopupEnabled}
+              disabled={saving}
+              onToggle={() =>
+                save({ checkInPopupEnabled: !settings.checkInPopupEnabled })
+              }
+            />
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
+                gap: "0.35rem",
+                margin: "1rem 0 0.75rem",
+                opacity: settings.checkInPopupEnabled ? 1 : 0.5,
+              }}
+            >
+              {Object.entries(options).map(([key, label]) => (
+                <label
+                  key={key}
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "0.4rem",
+                  }}
+                >
+                  <input
+                    type="checkbox"
+                    checked={fields.includes(key)}
+                    onChange={(e) => toggleField(key, e.target.checked)}
+                  />
+                  {label}
+                </label>
+              ))}
+            </div>
+            <div
+              style={{ display: "flex", alignItems: "center", gap: "0.75rem" }}
+            >
+              <button
+                type="button"
+                className="btn btn-ghost"
+                style={{ width: "auto" }}
+                disabled={saving}
+                onClick={() => save({ checkInPopupFields: fields })}
+              >
+                Save popup fields
+              </button>
+              {saved ? <span className="muted">Saved.</span> : null}
+            </div>
+          </>}
     </div>
   );
 }
