@@ -50,6 +50,8 @@ module.exports = {
   register: makeAuthLimiter({ max: maxFor("REGISTER") }),
   forgotPassword: makeAuthLimiter({ max: maxFor("FORGOT_PASSWORD") }),
   setupAdmin: makeAuthLimiter({ max: maxFor("SETUP_ADMIN") }),
+  // Each request sends an email to the address on the account.
+  resendVerification: makeAuthLimiter({ max: maxFor("RESEND_VERIFICATION") }),
   // Applying without an account (no login to slow down spam submissions).
   publicApply: makeAuthLimiter({ max: maxFor("PUBLIC_APPLY") }),
   // Team invites send an email each, so they're capped like the other

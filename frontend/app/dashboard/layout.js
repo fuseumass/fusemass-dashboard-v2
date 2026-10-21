@@ -3,6 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import Sidebar from "@/components/Sidebar";
+import VerifyEmailNotice from "@/components/VerifyEmailNotice";
 import { apiFetch, getToken } from "@/lib/api";
 import { UserContext } from "@/lib/userContext";
 
@@ -77,6 +78,7 @@ export default function DashboardLayout({ children }) {
         <main
           style={{ flex: 1, padding: "2rem", maxWidth: 900, width: "100%" }}
         >
+          <VerifyEmailNotice user={user} />
           {children}
         </main>
       </div>

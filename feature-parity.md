@@ -29,7 +29,7 @@ were presumably tracked in spreadsheets, so B33–B37 are a new design.
 | Old feature | Status | Task |
 | ----------- | ------ | ---- |
 | Email/password sign-up, login, forgot password | ✅ | — |
-| Email confirmation on sign-up (Devise `confirmable`) | 📋 | B40 |
+| Email confirmation on sign-up (Devise `confirmable`) | ✅ link on register, resend, required to apply (existing users count as verified) | B40 |
 | Google sign-in | ➕ ✅ | — |
 | Roles: admin / organizer / attendee | ✅ as admin / moderator / applicant | — |
 | Mentor role | ✖ mentorship runs on Discord | B31 |

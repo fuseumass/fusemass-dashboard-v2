@@ -51,6 +51,21 @@ router.post(
   authController.resetPassword
 );
 
+// Public: confirm an email address from the emailed link. The token is 256
+// random bits, so no limiter is needed against guessing.
+router.post(
+  "/verify-email",
+  validateBody({ token: { required: true, type: "string" } }),
+  authController.verifyEmail
+);
+// Logged in: email a new verification link (limited per IP and per account).
+router.post(
+  "/resend-verification",
+  authRateLimit.resendVerification,
+  isAuthenticated,
+  authController.resendVerification
+);
+
 // One-time first-admin bootstrap, gated by the SETUP_ADMIN env var.
 router.post(
   "/setup-admin",

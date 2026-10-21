@@ -41,6 +41,7 @@ var TEMPLATE_LABELS = {
   application_accepted: "Application Accepted",
   application_rejected: "Application Rejected",
   account_setup: "Account Setup (applied without an account)",
+  verify_email: "Verify Email (sign-up)",
   checked_in: "Checked In",
 };
 
@@ -53,6 +54,7 @@ var PLACEHOLDER_GUIDE = [
   "{{qrcode}}",
   "{{runOfShow}}",
   "{{setupUrl}}",
+  "{{verifyUrl}}",
 ];
 
 var QRCODE_TOKEN = /\{\{\s*qrcode\s*\}\}/;
