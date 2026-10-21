@@ -98,6 +98,48 @@ test("check-in popup and attendee help", async function (t) {
     assert.equal(mod.status, 403);
   });
 
+  await t.test("custom questions can go on the popup, linked by question key", async function (t2) {
+    var s = await seed({ checkInPopupFields: ["name", "answers.meal", "answers.goals", "answers.gone"] });
+    mailMock.mockTransport(t2);
+    var round = await ApplicationRound.findOne({});
+    await ApplicationRound.updateOne(
+      { _id: round._id },
+      {
+        $set: {
+          formConfig: [
+            { key: "meal", label: "Would you require [meal](https://example.com/meals) accommodations?", type: "select", options: ["Yes", "No"] },
+            { key: "goals", label: "Goals", type: "multiselect", options: ["Learn", "Win"] },
+            { key: "cv", label: "Resume", type: "resume" },
+          ],
+        },
+      }
+    );
+    await Application.updateOne({ applicant: s.accepted.user._id }, { $set: { answers: { meal: "Yes", goals: ["Learn", "Win"] } } });
+
+    var res = await request(app).post("/api/staff/checkin").set(as(s.moderator)).send({ userId: String(s.accepted.user._id) });
+    assert.equal(res.status, 201);
+    assert.deepEqual(res.body.popup, [
+      { key: "name", label: "Name", value: "Ada Lovelace" },
+      { key: "answers.meal", label: "Would you require meal accommodations?", value: "Yes" },
+      { key: "answers.goals", label: "Goals", value: "Learn, Win" },
+      { key: "answers.gone", label: "gone", value: "—" },
+    ]);
+
+    var settings = await request(app).get("/api/admin/settings").set(as(s.admin));
+    var options = settings.body.checkInPopupFieldOptions;
+    assert.equal(options["answers.meal"], "Would you require meal accommodations?");
+    assert.equal(options["answers.goals"], "Goals");
+    assert.equal(options["answers.cv"], undefined, "resume uploads can't go on the popup");
+    assert.equal(options.tshirtSize, "T-shirt size");
+
+    var ok = await request(app).patch("/api/admin/settings").set(as(s.admin)).send({ checkInPopupFields: ["answers.meal"] });
+    assert.equal(ok.status, 200);
+    for (var bad of ["answers.", "answers.$where", "answers.a.b"]) {
+      var res2 = await request(app).patch("/api/admin/settings").set(as(s.admin)).send({ checkInPopupFields: [bad] });
+      assert.equal(res2.status, 400, bad);
+    }
+  });
+
   // ---- Attendee help ----------------------------------------------------------------
 
   await t.test("look someone up by email (any case): status, check-in, account", async function () {

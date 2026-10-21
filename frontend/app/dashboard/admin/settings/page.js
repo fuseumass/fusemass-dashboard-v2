@@ -697,32 +697,49 @@ function CheckInPopupSettings() {
                 save({ checkInPopupEnabled: !settings.checkInPopupEnabled })
               }
             />
-            <div
-              style={{
-                display: "grid",
-                gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
-                gap: "0.35rem",
-                margin: "1rem 0 0.75rem",
-                opacity: settings.checkInPopupEnabled ? 1 : 0.5,
-              }}
-            >
-              {Object.entries(options).map(([key, label]) => (
-                <label
-                  key={key}
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: "0.4rem",
-                  }}
-                >
-                  <input
-                    type="checkbox"
-                    checked={fields.includes(key)}
-                    onChange={(e) => toggleField(key, e.target.checked)}
-                  />
-                  {label}
-                </label>
-              ))}
+            <div style={{ opacity: settings.checkInPopupEnabled ? 1 : 0.5 }}>
+              {[
+                ["Standard fields", (key) => !key.startsWith("answers.")],
+                ["Form questions", (key) => key.startsWith("answers.")],
+              ].map(([heading, belongs]) => {
+                const entries = Object.entries(options).filter(([key]) =>
+                  belongs(key),
+                );
+                if (!entries.length) return null;
+                return (
+                  <div key={heading} style={{ marginTop: "1rem" }}>
+                    <div className="field-label">{heading}</div>
+                    <div
+                      style={{
+                        display: "grid",
+                        gridTemplateColumns:
+                          "repeat(auto-fit, minmax(220px, 1fr))",
+                        gap: "0.35rem",
+                      }}
+                    >
+                      {entries.map(([key, label]) => (
+                        <label
+                          key={key}
+                          style={{
+                            display: "flex",
+                            alignItems: "flex-start",
+                            gap: "0.4rem",
+                          }}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={fields.includes(key)}
+                            onChange={(e) => toggleField(key, e.target.checked)}
+                            style={{ marginTop: 3 }}
+                          />
+                          {label}
+                        </label>
+                      ))}
+                    </div>
+                  </div>
+                );
+              })}
+              <div style={{ marginBottom: "0.75rem" }} />
             </div>
             <div
               style={{ display: "flex", alignItems: "center", gap: "0.75rem" }}
