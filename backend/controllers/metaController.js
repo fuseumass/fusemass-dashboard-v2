@@ -4,6 +4,7 @@ var fs = require("fs");
 var path = require("path");
 var csvParse = require("csv-parse/sync");
 var googleStatus = require("../utils/googleStatus");
+var OrgSettings = require("../schemas/orgSettings");
 
 var DATA_DIR = path.join(__dirname, "..", "data");
 
@@ -121,26 +122,29 @@ function hardwareSkills(req, res) {
 
 /**
  * GET /api/meta/config — public info the frontend needs before login: the
- * hackathon name and whether Google sign-in is currently available (so the
- * login/signup pages can show or hide the Google button).
+ * hackathon name, whether Google sign-in is currently available (so the
+ * login/signup pages can show or hide the Google button), and whether
+ * applications are accepted without an account (the home page then shows the
+ * application form instead of sending visitors to login).
  * @param {object} _req
  * @param {object} res
  * @returns {Promise<void>}
  */
 function config(_req, res) {
-  return googleStatus
-    .isGoogleEnabled()
-    .then(function afterCheck(googleEnabled) {
+  return Promise.all([googleStatus.isGoogleEnabled(), OrgSettings.getSingleton()])
+    .then(function afterCheck(results) {
       res.status(200).json({
         orgName: process.env.ORG_NAME || "Hackathon",
-        googleAuthEnabled: googleEnabled,
+        googleAuthEnabled: results[0],
+        publicApplications: Boolean(results[1].publicApplications),
       });
     })
     .catch(function onError() {
-      // Never block the login page on this; default Google to off.
+      // Never block the login page on this; default both to off.
       res.status(200).json({
         orgName: process.env.ORG_NAME || "Hackathon",
         googleAuthEnabled: false,
+        publicApplications: false,
       });
     });
 }

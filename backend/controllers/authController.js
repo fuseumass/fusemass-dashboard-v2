@@ -4,6 +4,7 @@ var crypto = require("crypto");
 var User = require("../schemas/user");
 var signToken = require("../utils/signToken");
 var mailer = require("../utils/mailer");
+var passwordToken = require("../utils/passwordToken");
 
 /**
  * POST /api/auth/register
@@ -24,6 +25,16 @@ function register(req, res) {
 
   return User.findOne({ email: String(email).toLowerCase() })
     .then(function afterLookup(existing) {
+      // Never let registering "claim" an existing account, including one made
+      // by applying without an account: that would hand it to whoever typed
+      // the email first. Its owner sets a password via an emailed link.
+      if (existing && passwordToken.needsPasswordSetup(existing)) {
+        res.status(409).json({
+          error:
+            "We already have an application from this email. Use \"Forgot password\" to set a password for it.",
+        });
+        return null;
+      }
       if (existing) {
         res.status(409).json({ error: "An account with that email already exists." });
         return null;
@@ -179,7 +190,6 @@ function googleCallback(req, res) {
  */
 function forgotPassword(req, res) {
   var email = req.body.email;
-  var clientOrigin = process.env.CLIENT_ORIGIN || "http://localhost:3000";
 
   return User.findOne({ email: String(email).toLowerCase() })
     .then(function afterLookup(user) {
@@ -187,16 +197,10 @@ function forgotPassword(req, res) {
         return null; // don't reveal non-existence
       }
 
-      var rawToken = crypto.randomBytes(32).toString("hex");
-      user.resetPasswordToken = crypto
-        .createHash("sha256")
-        .update(rawToken)
-        .digest("hex");
-      user.resetPasswordExpires = new Date(Date.now() + 60 * 60 * 1000);
-
-      return user.save().then(function afterSave() {
-        var resetUrl = clientOrigin + "/reset-password?token=" + rawToken;
-        return mailer.sendPasswordReset(user.email, resetUrl);
+      // Also how someone who applied without an account sets their first
+      // password: the link only reaches the inbox that owns the address.
+      return passwordToken.issuePasswordToken(user, passwordToken.RESET_TTL_MS).then(function afterIssue(rawToken) {
+        return mailer.sendPasswordReset(user.email, passwordToken.passwordLink(rawToken));
       });
     })
     .then(function afterSend() {

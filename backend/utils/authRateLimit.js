@@ -50,4 +50,6 @@ module.exports = {
   register: makeAuthLimiter({ max: maxFor("REGISTER") }),
   forgotPassword: makeAuthLimiter({ max: maxFor("FORGOT_PASSWORD") }),
   setupAdmin: makeAuthLimiter({ max: maxFor("SETUP_ADMIN") }),
+  // Applying without an account (no login to slow down spam submissions).
+  publicApply: makeAuthLimiter({ max: maxFor("PUBLIC_APPLY") }),
 };

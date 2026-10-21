@@ -73,7 +73,7 @@ var applicationSchema = new Schema(
     allergies: { type: String, trim: true, default: "" },
     tshirtSize: {
       type: String,
-      enum: ["XS", "S", "M", "L", "XL", "XXL", ""],
+      enum: ["XS", "S", "M", "L", "XL", "XXL", "XXXL", ""],
       default: "",
     },
     // Name of the resume blob in the private Azure container. Never sent to

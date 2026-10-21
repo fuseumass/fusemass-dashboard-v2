@@ -109,6 +109,10 @@ Guards: `isAuthenticated`, `isModerator` (moderator **or** admin), `isAdmin`.
 
 Base prefix: `/api`. All responses are JSON. Errors: `{ error }`.
 Send `Authorization: Bearer <token>`; `parseToken` decodes it onto `req.user`.
+\* Only while an admin has turned on "Accept applications without an account"
+(org setting `publicApplications`); 404 otherwise. Such applicants get a
+passwordless account that can't log in until they set a password from the link
+emailed on acceptance (or via "Forgot password").
 
 | Method | Path                            | Auth      | Purpose                                |
 | ------ | ------------------------------- | --------- | -------------------------------------- |
@@ -124,6 +128,8 @@ Send `Authorization: Bearer <token>`; `parseToken` decodes it onto `req.user`.
 | GET    | `/api/auth/me`                  | user      | Current user                           |
 | POST   | `/api/applications`            | user      | Create/update application (multipart)  |
 | GET    | `/api/applications/me`          | user      | Open round + your application          |
+| GET    | `/api/applications/public/round` | public*  | Open round + form, for applying without an account |
+| POST   | `/api/applications/public`      | public*   | Apply without an account (multipart, `email` + fields) |
 | GET    | `/api/applications/me/resume`   | user      | 5-min signed link to your resume       |
 | GET    | `/api/meta/config`              | public    | Org name + Google-enabled flag         |
 | GET    | `/api/meta/colleges?q=`         | public    | University autocomplete                |

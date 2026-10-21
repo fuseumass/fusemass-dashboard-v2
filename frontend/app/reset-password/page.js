@@ -18,6 +18,9 @@ function ResetInner() {
   const router = useRouter();
   const params = useSearchParams();
   const token = params.get("token") || "";
+  // Set when the link is the first-password email sent on acceptance to
+  // someone who applied without an account.
+  const isSetup = params.get("setup") === "1";
 
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");
@@ -76,7 +79,7 @@ function ResetInner() {
   }
 
   return (
-    <AuthShell title="Set a new password">
+    <AuthShell title={isSetup ? "Set up your account" : "Set a new password"}>
       <form
         onSubmit={handleSubmit}
         style={{ display: "flex", flexDirection: "column", gap: "0.9rem" }}
@@ -117,7 +120,7 @@ function ResetInner() {
           : null}
 
         <button type="submit" className="btn btn-primary" disabled={submitting}>
-          {submitting ? "Saving…" : "Reset password"}
+          {submitting ? "Saving…" : isSetup ? "Set password" : "Reset password"}
         </button>
       </form>
     </AuthShell>

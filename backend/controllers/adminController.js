@@ -7,6 +7,7 @@ var MealService = require("../schemas/mealService");
 var MealCheckIn = require("../schemas/mealCheckin");
 var User = require("../schemas/user");
 var mailer = require("../utils/mailer");
+var passwordToken = require("../utils/passwordToken");
 var formConfigUtil = require("../utils/formConfig");
 var applicationStatus = require("../utils/applicationStatus");
 var validator = require("validator");
@@ -39,7 +40,8 @@ function listApplications(req, res) {
 
   return Application.find(filter)
     .populate("applicant", "name email role")
-    .populate("round", "name")
+    // formConfig labels the custom answers in the review drawer.
+    .populate("round", "name formConfig")
     .sort({ createdAt: -1 })
     .then(function afterFind(applications) {
       res.status(200).json({ applications: applications });
@@ -104,6 +106,11 @@ function decideApplication(req, res) {
               console.error("Failed to send decision email:", err);
             });
         }
+        if (decision === "accepted" && application.applicant) {
+          sendAccountSetupIfNeeded(application).catch(function onSetupError(err) {
+            console.error("Failed to send account setup email:", err);
+          });
+        }
         return undefined;
       }
 
@@ -123,6 +130,28 @@ function decideApplication(req, res) {
       console.error("decideApplication failed:", err);
       res.status(500).json({ error: "Could not update application." });
     });
+}
+
+/**
+ * When an accepted applicant applied without an account (so has no password
+ * and no Google link), email them a 7-day link to set a password, so they can
+ * sign in to see their status and check-in QR code.
+ *
+ * @param {object} application - The accepted Application, applicant populated.
+ * @returns {Promise<void>}
+ */
+function sendAccountSetupIfNeeded(application) {
+  return User.findById(application.applicant._id).then(function afterFind(user) {
+    if (!passwordToken.needsPasswordSetup(user)) {
+      return undefined;
+    }
+    return passwordToken.issuePasswordToken(user, passwordToken.SETUP_TTL_MS).then(function afterIssue(rawToken) {
+      return mailer.sendTemplateEmail(user.email, "account_setup", {
+        name: application.name || user.name,
+        setupUrl: passwordToken.passwordLink(rawToken, { setup: true }),
+      });
+    });
+  });
 }
 
 /**
@@ -422,6 +451,7 @@ function sampleTemplateValues(user) {
   return {
     name: user.name,
     status: "accepted",
+    setupUrl: (process.env.CLIENT_ORIGIN || "http://localhost:3000") + "/reset-password?token=sample&setup=1",
     runOfShow: calendar.formatRunOfShow([
       {
         title: "Opening ceremony (sample)",

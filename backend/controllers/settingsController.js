@@ -27,7 +27,7 @@ function getSettings(_req, res) {
 
 /**
  * PATCH /api/admin/settings — update org settings (admin only).
- * Body: { googleAuthEnabled?: boolean }
+ * Body: { googleAuthEnabled?: boolean, publicApplications?: boolean }
  * @param {object} req
  * @param {object} res
  * @returns {Promise<void>}
@@ -36,6 +36,9 @@ function updateSettings(req, res) {
   var update = {};
   if (req.body && req.body.googleAuthEnabled !== undefined) {
     update.googleAuthEnabled = Boolean(req.body.googleAuthEnabled);
+  }
+  if (req.body && req.body.publicApplications !== undefined) {
+    update.publicApplications = Boolean(req.body.publicApplications);
   }
 
   return OrgSettings.findOneAndUpdate(

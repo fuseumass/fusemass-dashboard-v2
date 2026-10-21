@@ -5,6 +5,7 @@ var multer = require("multer");
 var applicationController = require("../controllers/applicationController");
 var resumeController = require("../controllers/resumeController");
 var isAuthenticated = require("../utils/isAuthenticated");
+var authRateLimit = require("../utils/authRateLimit");
 
 var router = express.Router();
 
@@ -51,7 +52,18 @@ function handleUploadError(err, _req, res, next) {
   res.status(400).json({ error: err.message || "Could not process the uploaded file." });
 }
 
-// Every application route requires the caller to be logged in.
+// Applying without an account, when admins enable it (404 otherwise). The
+// rate limit runs before multer so a flood never gets as far as uploading.
+router.get("/public/round", applicationController.getPublicRound);
+router.post(
+  "/public",
+  authRateLimit.publicApply,
+  upload.single("resume"),
+  handleUploadError,
+  applicationController.applyPublic
+);
+
+// Every other application route requires the caller to be logged in.
 // `upload.single("resume")` parses multipart/form-data: the file lands on
 // req.file and the other fields on req.body.
 router.post("/", isAuthenticated, upload.single("resume"), handleUploadError, applicationController.apply);

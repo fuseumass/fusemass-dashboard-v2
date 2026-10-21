@@ -37,6 +37,7 @@ var TEMPLATE_LABELS = {
   application_received: "Application Received",
   application_accepted: "Application Accepted",
   application_rejected: "Application Rejected",
+  account_setup: "Account Setup (applied without an account)",
   checked_in: "Checked In",
 };
 
@@ -48,6 +49,7 @@ var PLACEHOLDER_GUIDE = [
   "{{discordUrl}}",
   "{{qrcode}}",
   "{{runOfShow}}",
+  "{{setupUrl}}",
 ];
 
 var QRCODE_TOKEN = /\{\{\s*qrcode\s*\}\}/;
@@ -462,15 +464,13 @@ function AuthSettings() {
       .catch((err) => setError(err.message));
   }, []);
 
-  async function toggleGoogle() {
+  async function toggle(key) {
     setSaving(true);
     setError("");
     try {
       const data = await apiFetch("/api/admin/settings", {
         method: "PATCH",
-        body: JSON.stringify({
-          googleAuthEnabled: !settings.googleAuthEnabled,
-        }),
+        body: JSON.stringify({ [key]: !settings[key] }),
       });
       setSettings(data.settings);
     } catch (err) {
@@ -498,37 +498,65 @@ function AuthSettings() {
         : null}
       {!settings
         ? <p className="muted">Loading…</p>
-        : !envAllowed
-          ? <p className="muted">
-              Google sign-in isn&apos;t configured on the server (missing
-              credentials or disabled by env), so there&apos;s nothing to toggle
-              here yet.
-            </p>
-          : <div
-              style={{
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "space-between",
-              }}
-            >
-              <div>
-                <div style={{ fontWeight: 500 }}>Sign in with Google</div>
-                <div className="muted" style={{ fontSize: "0.85rem" }}>
-                  {settings.googleAuthEnabled
-                    ? "Enabled — applicants can use Google."
-                    : "Disabled — hidden from login."}
-                </div>
-              </div>
-              <button
-                type="button"
-                className="btn btn-ghost"
-                style={{ width: "auto" }}
-                disabled={saving}
-                onClick={toggleGoogle}
-              >
-                {settings.googleAuthEnabled ? "Turn off" : "Turn on"}
-              </button>
-            </div>}
+        : <div style={{ display: "grid", gap: "1rem" }}>
+            <SettingToggle
+              title="Accept applications without an account"
+              description={
+                settings.publicApplications
+                  ? "On — the home page is the application form; accepted applicants get an email to set a password."
+                  : "Off — applicants sign up and log in before applying."
+              }
+              on={settings.publicApplications}
+              disabled={saving}
+              onToggle={() => toggle("publicApplications")}
+            />
+            {envAllowed
+              ? <SettingToggle
+                  title="Sign in with Google"
+                  description={
+                    settings.googleAuthEnabled
+                      ? "Enabled — applicants can use Google."
+                      : "Disabled — hidden from login."
+                  }
+                  on={settings.googleAuthEnabled}
+                  disabled={saving}
+                  onToggle={() => toggle("googleAuthEnabled")}
+                />
+              : <p className="muted">
+                  Google sign-in isn&apos;t configured on the server (missing
+                  credentials or disabled by env), so there&apos;s nothing to
+                  toggle for it yet.
+                </p>}
+          </div>}
+    </div>
+  );
+}
+
+function SettingToggle({ title, description, on, disabled, onToggle }) {
+  return (
+    <div
+      style={{
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "space-between",
+        gap: "1rem",
+      }}
+    >
+      <div>
+        <div style={{ fontWeight: 500 }}>{title}</div>
+        <div className="muted" style={{ fontSize: "0.85rem" }}>
+          {description}
+        </div>
+      </div>
+      <button
+        type="button"
+        className="btn btn-ghost"
+        style={{ width: "auto", flexShrink: 0 }}
+        disabled={disabled}
+        onClick={onToggle}
+      >
+        {on ? "Turn off" : "Turn on"}
+      </button>
     </div>
   );
 }
@@ -647,7 +675,11 @@ const FIELD_TYPES = [
   "select",
   "checkbox",
   "date",
+  "resume",
 ];
+
+// How each type reads in the builder's dropdown.
+const FIELD_TYPE_LABELS = { resume: "resume (file upload)" };
 
 function fieldFromConfig(f) {
   return {
@@ -916,11 +948,17 @@ function FormFieldEditor({
   onMoveDown,
   onRemove,
 }) {
-  const optionsText = (field.options || []).join(", ");
+  // One option per line: options often contain commas themselves
+  // ("No, I don't need meal accommodations."). The raw text is kept while
+  // typing, so a new empty line isn't stripped before an option is typed on it.
+  const [optionsText, setOptionsText] = useState(() =>
+    (field.options || []).join("\n"),
+  );
 
   function setOptionsFromText(text) {
+    setOptionsText(text);
     const options = text
-      .split(",")
+      .split("\n")
       .map((s) => s.trim())
       .filter(Boolean);
     onChange({ options });
@@ -968,7 +1006,7 @@ function FormFieldEditor({
           >
             {FIELD_TYPES.map((t) => (
               <option key={t} value={t}>
-                {t}
+                {FIELD_TYPE_LABELS[t] || t}
               </option>
             ))}
           </select>
@@ -992,12 +1030,13 @@ function FormFieldEditor({
 
       {field.type === "select"
         ? <label style={{ display: "block", marginTop: "0.5rem" }}>
-            <span className="field-label">Options (comma-separated)</span>
-            <input
-              className="input"
+            <span className="field-label">Options (one per line)</span>
+            <textarea
+              className="textarea"
+              rows={Math.max(3, (field.options || []).length + 1)}
               value={optionsText}
               onChange={(e) => setOptionsFromText(e.target.value)}
-              placeholder="e.g. none, vegetarian, vegan"
+              placeholder={"e.g.\nnone\nvegetarian\nvegan"}
             />
           </label>
         : null}
