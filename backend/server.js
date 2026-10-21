@@ -10,6 +10,7 @@ var connectDatabase = require("./config/db");
 var parseToken = require("./utils/parseToken");
 var passportUtil = require("./utils/passport");
 var EmailTemplate = require("./schemas/emailTemplate");
+var healthController = require("./controllers/healthController");
 
 var authRoutes = require("./routes/auth");
 var applicationRoutes = require("./routes/applications");
@@ -60,6 +61,8 @@ app.use(parseToken);
 app.get("/api/health", function health(_req, res) {
   res.status(200).json({ ok: true });
 });
+// Readiness: also pings the database (503 when it's unreachable).
+app.get("/api/health/db", healthController.databaseHealth);
 
 app.use("/api/auth", authRoutes);
 app.use("/api/applications", applicationRoutes);

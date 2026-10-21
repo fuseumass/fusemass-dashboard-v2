@@ -113,6 +113,7 @@ Send `Authorization: Bearer <token>`; `parseToken` decodes it onto `req.user`.
 | Method | Path                            | Auth      | Purpose                                |
 | ------ | ------------------------------- | --------- | -------------------------------------- |
 | GET    | `/api/health`                   | public    | Liveness check                         |
+| GET    | `/api/health/db`                | public    | Database check: 200 up / 503 down      |
 | POST   | `/api/auth/register`            | public    | Create applicant, return JWT           |
 | POST   | `/api/auth/login`               | public    | Log in, return JWT                     |
 | POST   | `/api/auth/forgot-password`     | public    | Email a reset link                     |
