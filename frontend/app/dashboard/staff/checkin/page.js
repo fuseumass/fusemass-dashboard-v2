@@ -232,7 +232,7 @@ function ForceCheckInPanel({ initial, onSubmit, onClose }) {
       style={{
         padding: "1.5rem",
         marginBottom: "1rem",
-        borderColor: "#d97706",
+        borderColor: "var(--warning)",
       }}
     >
       <h2

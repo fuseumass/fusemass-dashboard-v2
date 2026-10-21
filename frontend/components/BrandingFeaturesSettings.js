@@ -354,7 +354,7 @@ function BrandingCard() {
                     ? <div
                         role="alert"
                         style={{
-                          color: "var(--danger)",
+                          color: "var(--destructive)",
                           fontSize: "0.82rem",
                           marginTop: 4,
                         }}

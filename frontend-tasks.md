@@ -43,49 +43,61 @@ of tokens, no inline styles in pages. **F10 → F11 → F12 → F13** are the
 foundation; after that, F14 pages can be split across people.
 
 ### F10. Set up shadcn/ui (plain JS, Tailwind v4)
-- [ ] `npx shadcn@latest init` in `frontend/` with **`"tsx": false`** in
+- [x] `npx shadcn@latest init` in `frontend/` with **`"tsx": false`** in
       `components.json`. The repo bans TypeScript (`AGENTS.md` golden rule
       1), so components must be generated as `.jsx`/`.js`. Check no
       `tsconfig.json`, `.ts` or `.tsx` lands in the PR.
-- [ ] Tailwind v4 is already installed (`@import "tailwindcss"` in
+      *Done:* `components.json` has `tsx: false` (style `radix-nova`); components are `.jsx`. No `tsconfig.json`, `.ts` or `.tsx` in the repo.
+- [x] Tailwind v4 is already installed (`@import "tailwindcss"` in
       `globals.css`). Use shadcn's Tailwind v4 setup (`@theme inline`,
       `tw-animate-css`), not the v3 `tailwind.config.js` instructions.
-- [ ] Aliases: `@/components/ui`, `@/lib/utils` (`cn()` = `clsx` +
+      *Done:* `@theme inline` and `tw-animate-css` in `app/globals.css`; no `tailwind.config.js`.
+- [x] Aliases: `@/components/ui`, `@/lib/utils` (`cn()` = `clsx` +
       `tailwind-merge`). `@/` already points at `frontend/`.
-- [ ] Add the base set: `button`, `input`, `label`, `textarea`, `select`,
+      *Done:* `cn()` in `lib/utils.js`. The generator's default `cn` package was replaced with `clsx` + `tailwind-merge`.
+- [x] Add the base set: `button`, `input`, `label`, `textarea`, `select`,
       `checkbox`, `switch`, `card`, `badge`, `alert`, `dialog`,
       `alert-dialog`, `sheet`, `dropdown-menu`, `tabs`, `table`, `tooltip`,
       `separator`, `skeleton`, `sonner`, `form`, `command`, `popover`,
       `calendar`, `avatar`, `sidebar`, `breadcrumb`, `scroll-area`.
-- [ ] Icons: `lucide-react` (shadcn default). Remove the emoji icons from
+      *Done:* all present in `components/ui/`. The registry no longer ships `form`, so `form.jsx` is hand-written on `react-hook-form`; `input-group` came in as a `command` dependency.
+- [x] Icons: `lucide-react` (shadcn default). Remove the emoji icons from
       `Sidebar.js`.
-- [ ] Make Biome happy with the generated code (`npm run lint` must pass). Fix
+      *Done:* `Sidebar.js` was rebuilt on shadcn `Sidebar` with lucide icons; no emoji icons remain in the app.
+- [x] Make Biome happy with the generated code (`npm run lint` must pass). Fix
       the code, or scope `biome.json` overrides narrowly to
       `components/ui/**`, never repo-wide.
-- [ ] Treat generated components as ours: edit them in place to match our
+      *Done:* `npm run lint` passes with **no** `biome.json` overrides: generated code was fixed in place.
+- [x] Treat generated components as ours: edit them in place to match our
       tokens; don't wrap them in another layer.
+      *Done:* edited in place (36 px controls, status variants on `Badge`/`Alert`, `loading` on `Button`, no blurred overlays).
 - **Depends on:** none. **Related:** F11.
 
 ### F11. Design tokens and theme
-- [ ] Replace the ad-hoc variables in `globals.css` with shadcn's token set:
+- [x] Replace the ad-hoc variables in `globals.css` with shadcn's token set:
       `--background --foreground --card --popover --primary
       --primary-foreground --secondary --secondary-foreground --muted
       --muted-foreground --accent --accent-foreground --destructive --border
       --input --ring --radius`, plus our own `--success`, `--warning`,
       `--info` (each with a `-foreground`), mapped in `@theme inline` so
       `bg-primary`, `text-muted-foreground`, etc. work.
-- [ ] Light and dark values for every token. Dark mode is currently only the
+      *Done:* plus `--link` and `--overlay`; `--primary`/`--ring` follow `--brand` (F12 makes that runtime).
+- [x] Light and dark values for every token. Dark mode is currently only the
       OS media query: add a `.dark` class strategy (`next-themes`) with a
       toggle in the user menu, defaulting to system.
-- [ ] Type scale and spacing written down in one place (F16), e.g. page title
+      *Done:* `next-themes` (class strategy, default system); toggle in the user menu.
+- [x] Type scale and spacing written down in one place (F16), e.g. page title
       `text-2xl font-semibold tracking-tight`, section title
       `text-base font-semibold`, body `text-sm`; 4 px spacing grid.
+      *Done:* `frontend/DESIGN.md` sections 2 and 3.
 - [ ] Delete the legacy `.btn`, `.btn-primary`, `.btn-ghost`, `.card`,
       `.input`, `.select`, `.textarea`, `.alert-*`, `.muted`, `.chip`,
       `.ac-*` classes **after** F14 migrates their last user (keep a list in
       the PR description).
-- [ ] No raw hex colours in components (today: `#d97706` in
+      *Partly done:* the classes now read the new tokens, so un-migrated pages look right and follow dark mode; deleting them waits for F14. Removal list is in the PR description.
+- [x] No raw hex colours in components (today: `#d97706` in
       `CheckInStation.js` and `admin/page.js`, the status colours); use tokens.
+      *Done:* `#d97706` and the `rgba` scrims now use `--warning` / `--overlay`. Exceptions kept on purpose: the Google logo colours and the sandboxed email preview in Settings.
 - **Depends on:** F10.
 
 ### F12. Fix the primary/secondary colour flags (bug)
@@ -142,23 +154,27 @@ site. **Causes found:**
 - **Depends on:** F11, B28. **Related:** T14.
 
 ### F13. App shell and navigation
-- [ ] Rebuild `app/dashboard/layout.js` + `Sidebar.js` on shadcn `Sidebar`:
+- [x] Rebuild `app/dashboard/layout.js` + `Sidebar.js` on shadcn `Sidebar`:
       collapsible on desktop, a `Sheet` drawer on mobile (today the 240 px
       sidebar never collapses, so phones get a squeezed page), and keyboard
       navigable.
-- [ ] One nav config file (`lib/nav.js`): items with `href`, `label`, `icon`,
+      *Done:* collapses to an icon rail on desktop (Ctrl/Cmd+B), `Sheet` drawer under 768 px, real links so it is keyboard navigable, skip-to-content link.
+- [x] One nav config file (`lib/nav.js`): items with `href`, `label`, `icon`,
       `roles`, `feature` (B25 flag), and group (Event day / Organize /
       Admin). The sidebar and any command palette both read it. Role and flag
-      filtering happen there. (Interim, with B25: `Sidebar.js` hides the
-      Meals / Meal check-in items via `lib/features.js` `useFeatures()`;
-      carry that into `lib/nav.js`.)
+      filtering happen there.
+      *Done:* also drives breadcrumbs and a Ctrl K palette. Module flags (B25)
+      come from `lib/features.js` `useFeatures()` in the dashboard layout.
 - [ ] Top bar: breadcrumbs, page title, user menu (`DropdownMenu`: profile,
       theme toggle, log out). The org logo comes from the branding API.
-- [ ] Highlight the active item for nested routes too (today
+      *Partly done:* breadcrumbs, `PageHeader` for titles, user menu with theme toggle and log out. Not done: a profile page (none exists, so the menu shows name, email and role) and the logo from the branding API (B28; still the env logo).
+- [x] Highlight the active item for nested routes too (today
       `/dashboard/admin` is "active" only on exact match).
-- [ ] Staff/kiosk mode: a full-width layout without the sidebar for the
+      *Done:* longest matching `href` wins, so Review is not active on Users.
+- [x] Staff/kiosk mode: a full-width layout without the sidebar for the
       scanning screens (check-in, meals, hardware, raffle display) so they
       work on a phone at a table.
+      *Done:* `kiosk: true` in `lib/nav.js` (check-in and meals now; hardware and raffle screens set it when they exist). The top bar keeps a menu button that opens the nav in a drawer.
 - **Depends on:** F10, F11. **Related:** F0b.
 
 ### F14. Migrate every page to the design system
@@ -181,45 +197,53 @@ only, loading = `Skeleton`, empty = a designed empty state (F15), errors =
 
 ### F15. Shared UX patterns
 Build these once in `components/` and use them everywhere:
-- [ ] **Forms:** `react-hook-form` + `zod` (plain JS schemas) via shadcn `Form`;
+- [x] **Forms:** `react-hook-form` + `zod` (plain JS schemas) via shadcn `Form`;
       server errors mapped back onto fields; submit buttons show pending state
       and can't double-submit.
-- [ ] **Data tables:** one `DataTable` wrapper (TanStack Table) with
+      *Done:* `components/ui/form.jsx`, `lib/forms.js` (`zodResolver`, `applyServerError`), `Button loading`; used by login, signup, forgot and reset password. `zodResolver` is our own because `@hookform/resolvers`' optional peers clash with zod 4.
+- [x] **Data tables:** one `DataTable` wrapper (TanStack Table) with
       server-side pagination/sort/filter props, used by every admin list.
-- [ ] **Empty states:** icon + one sentence + the primary action ("No meals
+      *Done:* `components/DataTable.js` (TanStack Table v8): client mode by default, server mode via `pageCount`/`rowCount`, `pagination`, `sorting`. Used by Users.
+- [x] **Empty states:** icon + one sentence + the primary action ("No meals
       yet. Create the first one.").
-- [ ] **Loading:** `Skeleton` shaped like the content, not a "Loading…" line.
-- [ ] **Errors:** `app/error.js` + `app/dashboard/error.js` boundaries and a
+      *Done:* `components/EmptyState.js`.
+- [x] **Loading:** `Skeleton` shaped like the content, not a "Loading…" line.
+      *Done:* `components/skeletons.js`.
+- [x] **Errors:** `app/error.js` + `app/dashboard/error.js` boundaries and a
       `not-found.js`; `apiFetch` errors shown via toast with a retry action.
-- [ ] **Dates:** one `lib/datetime.js` that formats in the **event time zone**
+      *Done:* boundaries and `not-found.js` done (Next 16 `unstable_retry`). `notifyError(err, { retry })` in `lib/notify.js` is the toast helper; pages adopt it as they are migrated (F14).
+- [x] **Dates:** one `lib/datetime.js` that formats in the **event time zone**
       (`EVENT_TIMEZONE`, via the branding/meta API), so organizers in other
       zones see event times.
-- [ ] **Copy:** sentence case, no exclamation marks in UI chrome, verbs on
+      *Done:* `formatDateTime/Date/Time/Range` use the event zone, labelling it when the viewer is elsewhere. The zone comes from `NEXT_PUBLIC_EVENT_TIMEZONE` for now; call `setEventTimeZone()` with the branding API value once B28 serves it.
+- [x] **Copy:** sentence case, no exclamation marks in UI chrome, verbs on
       buttons ("Create meal", not "Submit").
+      *Done:* written up in `DESIGN.md` section 5 and applied to the pages touched here.
 - **Depends on:** F10.
 
 ### F16. Design guidelines ("sleek, not AI slop") + PR checklist
-Write `frontend/DESIGN.md` and link it from the PR template. Concrete rules:
-- [ ] **Restraint:** one primary action per screen; the brand colour only for
+Write `frontend/DESIGN.md` and link it from the PR template (both done:
+`frontend/DESIGN.md`, `.github/pull_request_template.md`). Concrete rules:
+- [x] **Restraint:** one primary action per screen; the brand colour only for
       primary actions, focus and selection, not backgrounds or headings.
       Neutral surfaces, 1 px borders, minimal shadows.
-- [ ] **No generic AI look:** no purple-to-blue gradients, glowing blobs,
+- [x] **No generic AI look:** no purple-to-blue gradients, glowing blobs,
       glassmorphism, emoji as icons, cards inside cards, centred hero text on
       internal pages, or decorative illustrations on data screens. No
       "✨ Welcome back!" copy.
-- [ ] **Density:** staff/admin screens are tools; aim for Linear / Vercel
+- [x] **Density:** staff/admin screens are tools; aim for Linear / Vercel
       dashboard density (`text-sm` tables, 36–40 px rows), not marketing
       spacing.
-- [ ] **Type:** one font family (Geist, already loaded), at most 4 sizes per
+- [x] **Type:** one font family (Geist, already loaded), at most 4 sizes per
       page, weights 400/500/600 only; tabular numbers for counts and times.
-- [ ] **Motion:** 150–200 ms ease-out for overlays only; respect
+- [x] **Motion:** 150–200 ms ease-out for overlays only; respect
       `prefers-reduced-motion`.
-- [ ] **States are designed:** every list has empty, loading, error and
+- [x] **States are designed:** every list has empty, loading, error and
       "many items" states; every button has disabled + pending states.
-- [ ] **Accessibility baseline (folds in F0b):** visible focus rings, labels on
+- [x] **Accessibility baseline (folds in F0b):** visible focus rings, labels on
       every input, 4.5:1 text contrast, full keyboard use, `aria-live` for scan
       results.
-- [ ] **PR checklist:** screenshots light + dark + 375 px mobile; no inline
+- [x] **PR checklist:** screenshots light + dark + 375 px mobile; no inline
       styles; no raw hex; lint passes.
 - **Depends on:** none (write it alongside F10).
 

@@ -25,8 +25,8 @@ function hasFinePointer() {
 
 const RESULT_STYLES = {
   success: { color: "var(--success)", icon: CircleCheck },
-  duplicate: { color: "#d97706", icon: CircleAlert },
-  error: { color: "var(--danger)", icon: CircleX },
+  duplicate: { color: "var(--warning)", icon: CircleAlert },
+  error: { color: "var(--destructive)", icon: CircleX },
 };
 
 export function formatTime(value) {
@@ -199,7 +199,7 @@ function CheckInPopup({ rows }) {
         alignItems: "flex-start",
         justifyContent: "center",
         paddingTop: "12vh",
-        background: "rgba(0,0,0,0.35)",
+        background: "var(--overlay)",
       }}
     >
       <div

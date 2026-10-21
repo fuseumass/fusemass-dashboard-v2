@@ -2,6 +2,7 @@
 
 import { RefreshCw, X } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
+import ApplicationStatusBadge from "@/components/ApplicationStatusBadge";
 import { plainText } from "@/components/RichText";
 import SignedLinkButton from "@/components/SignedLinkButton";
 import { apiFetch } from "@/lib/api";
@@ -255,7 +256,7 @@ export default function AdminReviewPage() {
                       <Td>{app.university || "—"}</Td>
                       <Td>{app.round ? app.round.name : "—"}</Td>
                       <Td>
-                        <StatusBadge status={app.status} />
+                        <ApplicationStatusBadge status={app.status} />
                       </Td>
                       <Td>
                         <div style={{ display: "flex", gap: 6 }}>
@@ -316,7 +317,7 @@ function SmallBtn({ children, onClick, disabled }) {
         fontSize: "0.8rem",
         borderRadius: 8,
         border: "1px solid var(--border)",
-        background: "var(--surface)",
+        background: "var(--card)",
         cursor: disabled ? "default" : "pointer",
         opacity: disabled ? 0.5 : 1,
         color: "var(--foreground)",
@@ -324,20 +325,6 @@ function SmallBtn({ children, onClick, disabled }) {
     >
       {children}
     </button>
-  );
-}
-function StatusBadge({ status }) {
-  const colors = {
-    accepted: "var(--success)",
-    rejected: "var(--danger)",
-    waitlisted: "#d97706",
-    pending: "var(--muted)",
-    draft: "var(--muted)",
-  };
-  return (
-    <span style={{ color: colors[status] || "var(--muted)", fontWeight: 600 }}>
-      {status}
-    </span>
   );
 }
 
@@ -395,7 +382,7 @@ function ApplicationDrawer({ summary, cache, onClose }) {
         style={{
           position: "absolute",
           inset: 0,
-          background: "rgba(0,0,0,0.4)",
+          background: "var(--overlay)",
           border: "none",
           cursor: "pointer",
         }}
@@ -431,7 +418,7 @@ function ApplicationDrawer({ summary, cache, onClose }) {
               border: "none",
               background: "none",
               cursor: "pointer",
-              color: "var(--muted)",
+              color: "var(--muted-foreground)",
               display: "inline-flex",
               padding: 4,
             }}

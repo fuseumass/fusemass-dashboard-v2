@@ -1110,7 +1110,7 @@ function RoundRow({ round, onChanged }) {
             style={{
               width: "auto",
               padding: "0.35rem 0.7rem",
-              color: "var(--danger)",
+              color: "var(--destructive)",
             }}
             disabled={saving}
             onClick={remove}
@@ -1468,7 +1468,7 @@ function FormFieldEditor({
           style={{
             width: "auto",
             padding: "0.25rem 0.6rem",
-            color: "var(--danger)",
+            color: "var(--destructive)",
           }}
           onClick={onRemove}
         >

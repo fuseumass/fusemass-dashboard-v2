@@ -1,188 +1,124 @@
 "use client";
 
-import {
-  CalendarDays,
-  ChartColumn,
-  ClipboardList,
-  FileText,
-  Group,
-  House,
-  LifeBuoy,
-  Sandwich,
-  ScanLine,
-  Settings,
-  Users,
-  UsersRound,
-  UtensilsCrossed,
-} from "lucide-react";
 import Link from "next/link";
-import { usePathname, useRouter } from "next/navigation";
+import { usePathname } from "next/navigation";
 import Logo from "@/components/Logo";
-import { clearToken } from "@/lib/api";
-import { useFeatures } from "@/lib/features";
+import {
+  Sidebar,
+  SidebarContent,
+  SidebarGroup,
+  SidebarGroupContent,
+  SidebarGroupLabel,
+  SidebarHeader,
+  SidebarMenu,
+  SidebarMenuButton,
+  SidebarMenuItem,
+  SidebarRail,
+  useSidebar,
+} from "@/components/ui/sidebar";
+import { config } from "@/lib/config";
+import { isActive } from "@/lib/nav";
 
-// TreeHacks-style fixed left navigation for the logged-in dashboard.
-export default function Sidebar({ user }) {
-  const pathname = usePathname();
-  const router = useRouter();
-  const features = useFeatures();
-
-  const role = user ? user.role : "applicant";
-  const isModerator = role === "moderator" || role === "admin";
-  const isAdmin = role === "admin";
-
-  const nav = [
-    { href: "/dashboard", label: "Home", icon: House },
-    { href: "/dashboard/application", label: "Application", icon: FileText },
-    { href: "/dashboard/team", label: "Team", icon: UsersRound },
-  ];
-  if (isModerator) {
-    // Moderators and admins review applications.
-    nav.push({
-      href: "/dashboard/admin",
-      label: "Review",
-      icon: ClipboardList,
-    });
-    // Event-day scanning: first arrival, and the meal line.
-    nav.push({
-      href: "/dashboard/staff/checkin",
-      label: "Check-in",
-      icon: ScanLine,
-    });
-    nav.push({
-      href: "/dashboard/staff/meals",
-      label: "Meal check-in",
-      icon: Sandwich,
-      feature: "meals",
-    });
-    // Every team and its Devpost project (for judging).
-    nav.push({ href: "/dashboard/admin/teams", label: "Teams", icon: Group });
-    // Resend someone's QR code or account link; force a check-in by email.
-    nav.push({
-      href: "/dashboard/staff/attendees",
-      label: "Attendee help",
-      icon: LifeBuoy,
-    });
+// The org mark at the top: the logo when expanded, a one-letter tile when the
+// sidebar is collapsed to icons (a wide logo would not fit the rail).
+export function SidebarBrand({ onNavigate }) {
+  const { setOpenMobile } = useSidebar();
+  function handleNavigate() {
+    setOpenMobile(false);
+    if (onNavigate) {
+      onNavigate();
+    }
   }
-  if (isAdmin) {
-    // Org setup is admin-only.
-    nav.push({ href: "/dashboard/admin/users", label: "Users", icon: Users });
-    nav.push({
-      href: "/dashboard/admin/stats",
-      label: "Statistics",
-      icon: ChartColumn,
-    });
-    nav.push({
-      href: "/dashboard/admin/meals",
-      label: "Meals",
-      icon: UtensilsCrossed,
-      feature: "meals",
-    });
-    nav.push({
-      href: "/dashboard/admin/schedule",
-      label: "Run of show",
-      icon: CalendarDays,
-    });
-    nav.push({
-      href: "/dashboard/admin/settings",
-      label: "Settings",
-      icon: Settings,
-    });
-  }
-
-  // Items of a module an admin switched off (B25) disappear from the nav; the
-  // backend answers 404 for that module's routes anyway.
-  const visibleNav = nav.filter(
-    (item) => !item.feature || features[item.feature] !== false,
+  return (
+    <SidebarMenu>
+      <SidebarMenuItem>
+        <SidebarMenuButton
+          asChild
+          size="lg"
+          tooltip={config.orgName}
+          className="data-[size=lg]:h-12"
+        >
+          <Link href="/dashboard" onClick={handleNavigate}>
+            <span className="hidden size-8 shrink-0 items-center justify-center rounded-md bg-sidebar-accent text-sm font-semibold text-sidebar-accent-foreground group-data-[collapsible=icon]:flex">
+              {config.orgName.charAt(0).toUpperCase()}
+            </span>
+            <span className="min-w-0 group-data-[collapsible=icon]:hidden">
+              <Logo variant="v2" height={32} />
+            </span>
+          </Link>
+        </SidebarMenuButton>
+      </SidebarMenuItem>
+    </SidebarMenu>
   );
+}
 
-  function handleLogout() {
-    clearToken();
-    router.replace("/login");
+// The grouped links, shared by the desktop sidebar, the mobile drawer and the
+// kiosk menu. `groups` comes from getNavGroups() in lib/nav.js.
+export function NavGroups({ groups, onNavigate }) {
+  const pathname = usePathname();
+  const { setOpenMobile } = useSidebar();
+  const allItems = groups.flatMap((group) => group.items);
+
+  // Close the mobile drawer (or the kiosk drawer) once a link is followed.
+  function handleNavigate() {
+    setOpenMobile(false);
+    if (onNavigate) {
+      onNavigate();
+    }
   }
 
   return (
-    <aside
-      style={{
-        width: 240,
-        flexShrink: 0,
-        borderRight: "1px solid var(--border)",
-        background: "var(--surface)",
-        display: "flex",
-        flexDirection: "column",
-        position: "sticky",
-        top: 0,
-        height: "100vh",
-      }}
-    >
-      <div style={{ padding: "1.25rem 1.25rem 1rem" }}>
-        <Logo variant="v2" height={36} />
-      </div>
+    <>
+      {groups.map((group) => (
+        <SidebarGroup key={group.id}>
+          {group.label
+            ? <SidebarGroupLabel>{group.label}</SidebarGroupLabel>
+            : null}
+          <SidebarGroupContent>
+            <SidebarMenu>
+              {group.items.map((item) => {
+                const active = isActive(item, pathname, allItems);
+                return (
+                  <SidebarMenuItem key={item.href}>
+                    <SidebarMenuButton
+                      asChild
+                      isActive={active}
+                      tooltip={item.label}
+                    >
+                      <Link
+                        href={item.href}
+                        aria-current={active ? "page" : undefined}
+                        onClick={handleNavigate}
+                      >
+                        <item.icon aria-hidden="true" />
+                        <span>{item.label}</span>
+                      </Link>
+                    </SidebarMenuButton>
+                  </SidebarMenuItem>
+                );
+              })}
+            </SidebarMenu>
+          </SidebarGroupContent>
+        </SidebarGroup>
+      ))}
+    </>
+  );
+}
 
-      <nav style={{ flex: 1, padding: "0.5rem" }}>
-        {visibleNav.map((item) => {
-          const active = pathname === item.href;
-          return (
-            <Link
-              key={item.href}
-              href={item.href}
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: "0.65rem",
-                padding: "0.6rem 0.75rem",
-                margin: "2px 0",
-                borderRadius: 10,
-                fontSize: "0.92rem",
-                fontWeight: 500,
-                textDecoration: "none",
-                color: active ? "var(--brand)" : "var(--foreground)",
-                background: active
-                  ? "color-mix(in srgb, var(--brand) 12%, transparent)"
-                  : "transparent",
-              }}
-            >
-              <item.icon size={18} strokeWidth={1.75} aria-hidden="true" />
-              {item.label}
-            </Link>
-          );
-        })}
-      </nav>
-
-      <div style={{ padding: "0.75rem", borderTop: "1px solid var(--border)" }}>
-        <div style={{ padding: "0.5rem 0.75rem" }}>
-          <div
-            style={{
-              fontSize: "0.88rem",
-              fontWeight: 600,
-              overflow: "hidden",
-              textOverflow: "ellipsis",
-              whiteSpace: "nowrap",
-            }}
-          >
-            {user ? user.name : ""}
-          </div>
-          <div
-            className="muted"
-            style={{
-              fontSize: "0.78rem",
-              overflow: "hidden",
-              textOverflow: "ellipsis",
-              whiteSpace: "nowrap",
-            }}
-          >
-            {user ? user.email : ""}
-          </div>
-        </div>
-        <button
-          type="button"
-          className="btn btn-ghost"
-          onClick={handleLogout}
-          style={{ marginTop: 6 }}
-        >
-          Log out
-        </button>
-      </div>
-    </aside>
+// Dashboard navigation. On desktop it is a sidebar that collapses to an icon
+// rail (Ctrl/Cmd+B, or the rail edge); below 768px the same content opens as a
+// drawer from the top bar's menu button. Links are real <a> elements, so
+// keyboard and screen-reader navigation work without extra code.
+export default function AppSidebar({ groups }) {
+  return (
+    <Sidebar collapsible="icon" aria-label="Main">
+      <SidebarHeader>
+        <SidebarBrand />
+      </SidebarHeader>
+      <SidebarContent>
+        <NavGroups groups={groups} />
+      </SidebarContent>
+      <SidebarRail />
+    </Sidebar>
   );
 }

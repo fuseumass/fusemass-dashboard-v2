@@ -7,8 +7,6 @@
 const LINK_PATTERN =
   /\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)|(https?:\/\/[^\s<]+[^\s<.,;:!?)'"])/g;
 
-const linkStyle = { overflowWrap: "anywhere" };
-
 export default function RichText({ text }) {
   if (!text) return null;
   const parts = [];
@@ -19,11 +17,10 @@ export default function RichText({ text }) {
     parts.push(
       <a
         key={match.index}
-        className="link"
+        className="font-medium text-link wrap-anywhere hover:underline"
         href={href}
         target="_blank"
         rel="noopener noreferrer"
-        style={linkStyle}
       >
         {match[1] || href}
       </a>,

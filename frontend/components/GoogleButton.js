@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Divider from "@/components/Divider";
+import { Button } from "@/components/ui/button";
 import { apiFetch, googleAuthUrl } from "@/lib/api";
 
 // Classic "Sign in with Google" button. Navigates the browser to the backend's
@@ -30,15 +31,22 @@ export default function GoogleButton({
 
   return (
     <>
-      <button type="button" className="btn btn-ghost" onClick={handleClick}>
+      <Button
+        type="button"
+        variant="outline"
+        className="w-full"
+        onClick={handleClick}
+      >
         <GoogleIcon />
         {label}
-      </button>
+      </Button>
       {withDivider ? <Divider /> : null}
     </>
   );
 }
 
+// Google's mark keeps its four brand colours: that is Google's branding rule,
+// not ours, so these hex values are the one allowed exception to "no raw hex".
 function GoogleIcon() {
   return (
     <svg width="18" height="18" viewBox="0 0 18 18" aria-hidden="true">

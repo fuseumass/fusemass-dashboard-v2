@@ -1,5 +1,6 @@
 "use client";
 
+import { Loader2 } from "lucide-react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useEffect } from "react";
 import AuthShell from "@/components/AuthShell";
@@ -30,10 +31,11 @@ function CallbackInner() {
   }, [params, router]);
 
   return (
-    <AuthShell title="Signing you in…">
-      <p className="muted" style={{ textAlign: "center" }}>
+    <AuthShell title="Signing you in">
+      <output className="flex items-center gap-2 text-sm text-muted-foreground">
+        <Loader2 className="size-4 animate-spin" aria-hidden="true" />
         One moment.
-      </p>
+      </output>
     </AuthShell>
   );
 }
