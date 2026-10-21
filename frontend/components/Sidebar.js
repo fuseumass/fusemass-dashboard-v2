@@ -18,11 +18,13 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import Logo from "@/components/Logo";
 import { clearToken } from "@/lib/api";
+import { useFeatures } from "@/lib/features";
 
 // TreeHacks-style fixed left navigation for the logged-in dashboard.
 export default function Sidebar({ user }) {
   const pathname = usePathname();
   const router = useRouter();
+  const features = useFeatures();
 
   const role = user ? user.role : "applicant";
   const isModerator = role === "moderator" || role === "admin";
@@ -50,6 +52,7 @@ export default function Sidebar({ user }) {
       href: "/dashboard/staff/meals",
       label: "Meal check-in",
       icon: Sandwich,
+      feature: "meals",
     });
     // Every team and its Devpost project (for judging).
     nav.push({ href: "/dashboard/admin/teams", label: "Teams", icon: Group });
@@ -67,6 +70,7 @@ export default function Sidebar({ user }) {
       href: "/dashboard/admin/meals",
       label: "Meals",
       icon: UtensilsCrossed,
+      feature: "meals",
     });
     nav.push({
       href: "/dashboard/admin/schedule",
@@ -79,6 +83,12 @@ export default function Sidebar({ user }) {
       icon: Settings,
     });
   }
+
+  // Items of a module an admin switched off (B25) disappear from the nav; the
+  // backend answers 404 for that module's routes anyway.
+  const visibleNav = nav.filter(
+    (item) => !item.feature || features[item.feature] !== false,
+  );
 
   function handleLogout() {
     clearToken();
@@ -104,7 +114,7 @@ export default function Sidebar({ user }) {
       </div>
 
       <nav style={{ flex: 1, padding: "0.5rem" }}>
-        {nav.map((item) => {
+        {visibleNav.map((item) => {
           const active = pathname === item.href;
           return (
             <Link
