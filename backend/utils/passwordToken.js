@@ -1,6 +1,7 @@
 "use strict";
 
 var crypto = require("crypto");
+var primaryClientOrigin = require("./clientOrigin").primaryClientOrigin;
 
 // How long an emailed password link works.
 var RESET_TTL_MS = 60 * 60 * 1000; // "Forgot password": 1 hour
@@ -35,7 +36,7 @@ function issuePasswordToken(user, ttlMs) {
  * @returns {string} The full URL.
  */
 function passwordLink(rawToken, options) {
-  var clientOrigin = process.env.CLIENT_ORIGIN || "http://localhost:3000";
+  var clientOrigin = primaryClientOrigin();
   var setup = options && options.setup ? "&setup=1" : "";
   return clientOrigin + "/reset-password?token=" + rawToken + setup;
 }
