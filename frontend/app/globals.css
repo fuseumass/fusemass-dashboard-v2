@@ -210,3 +210,9 @@ body {
 .ac-option[data-active="true"] {
   background: color-mix(in srgb, var(--brand) 10%, transparent);
 }
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}

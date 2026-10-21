@@ -1,5 +1,16 @@
 "use client";
 
+import {
+  CalendarDays,
+  ClipboardList,
+  FileText,
+  House,
+  Sandwich,
+  ScanLine,
+  Settings,
+  Users,
+  UtensilsCrossed,
+} from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import Logo from "@/components/Logo";
@@ -15,37 +26,45 @@ export default function Sidebar({ user }) {
   const isAdmin = role === "admin";
 
   const nav = [
-    { href: "/dashboard", label: "Home", icon: "🏠" },
-    { href: "/dashboard/application", label: "Application", icon: "📝" },
+    { href: "/dashboard", label: "Home", icon: House },
+    { href: "/dashboard/application", label: "Application", icon: FileText },
   ];
   if (isModerator) {
     // Moderators and admins review applications.
-    nav.push({ href: "/dashboard/admin", label: "Review", icon: "🗂️" });
+    nav.push({
+      href: "/dashboard/admin",
+      label: "Review",
+      icon: ClipboardList,
+    });
     // Event-day scanning: first arrival, and the meal line.
     nav.push({
       href: "/dashboard/staff/checkin",
       label: "Check-in",
-      icon: "📷",
+      icon: ScanLine,
     });
     nav.push({
       href: "/dashboard/staff/meals",
       label: "Meal check-in",
-      icon: "🥪",
+      icon: Sandwich,
     });
   }
   if (isAdmin) {
     // Org setup is admin-only.
-    nav.push({ href: "/dashboard/admin/users", label: "Users", icon: "👥" });
-    nav.push({ href: "/dashboard/admin/meals", label: "Meals", icon: "🍽️" });
+    nav.push({ href: "/dashboard/admin/users", label: "Users", icon: Users });
+    nav.push({
+      href: "/dashboard/admin/meals",
+      label: "Meals",
+      icon: UtensilsCrossed,
+    });
     nav.push({
       href: "/dashboard/admin/schedule",
       label: "Run of show",
-      icon: "🗓️",
+      icon: CalendarDays,
     });
     nav.push({
       href: "/dashboard/admin/settings",
       label: "Settings",
-      icon: "⚙️",
+      icon: Settings,
     });
   }
 
@@ -95,7 +114,7 @@ export default function Sidebar({ user }) {
                   : "transparent",
               }}
             >
-              <span aria-hidden="true">{item.icon}</span>
+              <item.icon size={18} strokeWidth={1.75} aria-hidden="true" />
               {item.label}
             </Link>
           );

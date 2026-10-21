@@ -15,6 +15,7 @@ var router = express.Router();
 // ---- Reviewer routes: moderators OR admins ---------------------------------
 // Moderators can review applications (approve/reject) and list them.
 router.get("/applications", isModerator, adminController.listApplications);
+router.get("/applications/:id", isModerator, adminController.getApplication);
 router.patch(
   "/applications/:id",
   isModerator,

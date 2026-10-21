@@ -1,5 +1,6 @@
 "use client";
 
+import { Check } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 import CheckInStation, {
@@ -468,7 +469,12 @@ function AttendeeSearch({ onCheckIn }) {
                       className="muted"
                       style={{ fontSize: "0.82rem", textAlign: "right" }}
                     >
-                      ✓ Checked in {formatTime(a.checkedInAt)}
+                      <Check
+                        size={14}
+                        aria-hidden="true"
+                        style={{ verticalAlign: "-2px" }}
+                      />{" "}
+                      Checked in {formatTime(a.checkedInAt)}
                       {a.checkedInBy ? ` by ${a.checkedInBy}` : ""}
                     </div>
                   : <button
