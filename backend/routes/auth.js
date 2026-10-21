@@ -7,6 +7,7 @@ var passportUtil = require("../utils/passport");
 var googleStatus = require("../utils/googleStatus");
 var validateBody = require("../utils/validateBody");
 var authRateLimit = require("../utils/authRateLimit");
+var primaryClientOrigin = require("../utils/clientOrigin").primaryClientOrigin;
 
 var passport = passportUtil.passport;
 var router = express.Router();
@@ -80,7 +81,7 @@ router.get("/google", function startGoogle(req, res, next) {
 router.get(
   "/google/callback",
   function handleGoogle(req, res, next) {
-    var clientOrigin = process.env.CLIENT_ORIGIN || "http://localhost:3000";
+    var clientOrigin = primaryClientOrigin();
     googleStatus
       .isGoogleEnabled()
       .then(function afterCheck(enabled) {

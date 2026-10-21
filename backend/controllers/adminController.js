@@ -8,6 +8,7 @@ var MealCheckIn = require("../schemas/mealCheckin");
 var User = require("../schemas/user");
 var mailer = require("../utils/mailer");
 var passwordToken = require("../utils/passwordToken");
+var primaryClientOrigin = require("../utils/clientOrigin").primaryClientOrigin;
 var formConfigUtil = require("../utils/formConfig");
 var applicationStatus = require("../utils/applicationStatus");
 var validator = require("validator");
@@ -456,7 +457,7 @@ function sampleTemplateValues(user) {
   return {
     name: user.name,
     status: "accepted",
-    setupUrl: (process.env.CLIENT_ORIGIN || "http://localhost:3000") + "/reset-password?token=sample&setup=1",
+    setupUrl: primaryClientOrigin() + "/reset-password?token=sample&setup=1",
     runOfShow: calendar.formatRunOfShow([
       {
         title: "Opening ceremony (sample)",

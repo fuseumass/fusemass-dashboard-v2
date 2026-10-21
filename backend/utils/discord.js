@@ -1,6 +1,7 @@
 "use strict";
 
 var util = require("util");
+var primaryClientOrigin = require("./clientOrigin").primaryClientOrigin;
 
 /**
  * Discord webhook notifications, both optional (unset env var = off):
@@ -157,7 +158,7 @@ function notifyApplication(application, info) {
     return Promise.resolve();
   }
   var opts = info || {};
-  var clientOrigin = process.env.CLIENT_ORIGIN || "http://localhost:3000";
+  var clientOrigin = primaryClientOrigin();
   var lines = [
     "📝 **New application:** " + (application.name || "(no name)") + (application.university ? " — " + application.university : ""),
     [

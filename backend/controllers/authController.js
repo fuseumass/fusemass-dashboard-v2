@@ -5,6 +5,7 @@ var User = require("../schemas/user");
 var signToken = require("../utils/signToken");
 var mailer = require("../utils/mailer");
 var passwordToken = require("../utils/passwordToken");
+var primaryClientOrigin = require("../utils/clientOrigin").primaryClientOrigin;
 
 /**
  * POST /api/auth/register
@@ -166,7 +167,7 @@ function issueToken(user) {
  * @returns {void}
  */
 function googleCallback(req, res) {
-  var clientOrigin = process.env.CLIENT_ORIGIN || "http://localhost:3000";
+  var clientOrigin = primaryClientOrigin();
 
   if (!req.user) {
     res.redirect(clientOrigin + "/login?error=google");

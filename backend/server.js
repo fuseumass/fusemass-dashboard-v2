@@ -11,6 +11,7 @@ var parseToken = require("./utils/parseToken");
 var passportUtil = require("./utils/passport");
 var EmailTemplate = require("./schemas/emailTemplate");
 var discord = require("./utils/discord");
+var clientOrigin = require("./utils/clientOrigin");
 var healthController = require("./controllers/healthController");
 
 var authRoutes = require("./routes/auth");
@@ -40,7 +41,8 @@ if (process.env.TRUST_PROXY) {
 // --- Core middleware --------------------------------------------------------
 app.use(
   cors({
-    origin: process.env.CLIENT_ORIGIN || "http://localhost:3000",
+    // CLIENT_ORIGIN may list several frontend addresses, comma-separated.
+    origin: clientOrigin.corsOrigin,
     credentials: true,
   })
 );
