@@ -10,6 +10,7 @@ var connectDatabase = require("./config/db");
 var parseToken = require("./utils/parseToken");
 var passportUtil = require("./utils/passport");
 var EmailTemplate = require("./schemas/emailTemplate");
+var discord = require("./utils/discord");
 var healthController = require("./controllers/healthController");
 
 var authRoutes = require("./routes/auth");
@@ -71,8 +72,9 @@ app.use("/api/meta", metaRoutes);
 app.use("/api/staff", staffRoutes);
 
 // --- Fallback error handler (Express 4 signature: err, req, res, next) ------
-app.use(function errorHandler(err, _req, res, _next) {
-  console.error("Unhandled error:", err);
+app.use(function errorHandler(err, req, res, _next) {
+  // req.path leaves out the query string, which can carry tokens.
+  console.error("Unhandled error in " + req.method + " " + req.path + ":", err);
   res.status(500).json({ error: "Internal server error." });
 });
 
@@ -81,6 +83,10 @@ app.use(function errorHandler(err, _req, res, _next) {
 // disposable database connection and never want a real port bound) doesn't
 // also connect to MongoDB and start listening. Only runs for `node server.js`.
 if (require.main === module) {
+  // Every console.error, unhandled rejection and crash also goes to the
+  // DISCORD_ERROR_WEBHOOK_URL channel when that env var is set.
+  discord.installErrorReporting();
+
   var PORT = process.env.PORT || 4000;
   var MONGODB_URI = process.env.MONGODB_URI || "";
 
@@ -98,7 +104,10 @@ if (require.main === module) {
     })
     .catch(function onError(err) {
       console.error("Failed to start server:", err);
-      process.exit(1);
+      // Give the error webhook a moment to send before exiting.
+      setTimeout(function exit() {
+        process.exit(1);
+      }, 3000);
     });
 }
 
