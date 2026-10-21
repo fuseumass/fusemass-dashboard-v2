@@ -49,6 +49,16 @@ var applicationRoundSchema = new Schema(
         return [];
       },
     },
+    // Settings for the built-in profile questions (name, phone, school, ...),
+    // which aren't in formConfig: which ones are required, and replacement
+    // choices for the education and gender selects. See utils/formConfig.
+    // Example: { required: ["phone", "age"], options: { gender: ["Male", ...] } }
+    profileFields: {
+      type: Schema.Types.Mixed,
+      default: function () {
+        return {};
+      },
+    },
   },
   { timestamps: true }
 );

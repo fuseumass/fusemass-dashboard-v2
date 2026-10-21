@@ -12,6 +12,7 @@ export default function Autocomplete({
   endpoint,
   placeholder = "",
   id,
+  required = false,
 }) {
   const [query, setQuery] = useState(value || "");
   const [options, setOptions] = useState([]);
@@ -57,6 +58,7 @@ export default function Autocomplete({
         className="input"
         value={query}
         placeholder={placeholder}
+        required={required}
         autoComplete="off"
         onChange={(e) => {
           setQuery(e.target.value);

@@ -253,6 +253,12 @@ export default function ApplicationForm({ mode = "account" }) {
 
   // A resume question in the round's custom form replaces the built-in one.
   const resumeField = (round.formConfig || []).find((f) => f.type === "resume");
+  // The round's settings for built-in questions: which are required, and
+  // replacement choices for the education and gender selects.
+  const profileFields = round.profileFields || {};
+  const isRequired = (key) => (profileFields.required || []).includes(key);
+  const genderOptions = profileFields.options?.gender || GENDERS;
+  const educationOptions = profileFields.options?.education || EDUCATION_LEVELS;
 
   return (
     <div>
@@ -265,6 +271,11 @@ export default function ApplicationForm({ mode = "account" }) {
         {round.name}
         {submittedStatus ? ` · status: ${submittedStatus}` : ""}
       </p>
+      {round.description
+        ? <p style={{ whiteSpace: "pre-wrap", marginBottom: "0.75rem" }}>
+            {round.description}
+          </p>
+        : null}
       {isPublic
         ? <p className="muted" style={{ marginBottom: "0.5rem" }}>
             Already have an account?{" "}
@@ -300,16 +311,18 @@ export default function ApplicationForm({ mode = "account" }) {
                 required
               />
             </Field>
-            <Field label="Phone">
+            <Field label="Phone" required={isRequired("phone")}>
               <input
+                required={isRequired("phone")}
                 className="input"
                 type="tel"
                 value={form.phone}
                 onChange={(e) => setField("phone", e.target.value)}
               />
             </Field>
-            <Field label="Age">
+            <Field label="Age" required={isRequired("age")}>
               <input
+                required={isRequired("age")}
                 className="input"
                 type="number"
                 min="0"
@@ -317,22 +330,24 @@ export default function ApplicationForm({ mode = "account" }) {
                 onChange={(e) => setField("age", e.target.value)}
               />
             </Field>
-            <Field label="Gender">
+            <Field label="Gender" required={isRequired("gender")}>
               <select
+                required={isRequired("gender")}
                 className="select"
                 value={form.gender}
                 onChange={(e) => setField("gender", e.target.value)}
               >
                 <option value="">Select…</option>
-                {GENDERS.map((g) => (
+                {genderOptions.map((g) => (
                   <option key={g} value={g}>
                     {g}
                   </option>
                 ))}
               </select>
             </Field>
-            <Field label="Pronouns">
+            <Field label="Pronouns" required={isRequired("pronouns")}>
               <input
+                required={isRequired("pronouns")}
                 className="input"
                 value={form.pronouns}
                 onChange={(e) => setField("pronouns", e.target.value)}
@@ -344,30 +359,39 @@ export default function ApplicationForm({ mode = "account" }) {
 
         <Section title="Education">
           <Grid>
-            <Field label="Education level">
+            <Field label="Education level" required={isRequired("education")}>
               <select
+                required={isRequired("education")}
                 className="select"
                 value={form.education}
                 onChange={(e) => setField("education", e.target.value)}
               >
                 <option value="">Select…</option>
-                {EDUCATION_LEVELS.map((l) => (
+                {educationOptions.map((l) => (
                   <option key={l} value={l}>
                     {l}
                   </option>
                 ))}
               </select>
             </Field>
-            <Field label="University / School">
+            <Field
+              label="University / School"
+              required={isRequired("university")}
+            >
               <Autocomplete
+                required={isRequired("university")}
                 value={form.university}
                 onChange={(v) => setField("university", v)}
                 endpoint="/api/meta/colleges"
                 placeholder="Start typing…"
               />
             </Field>
-            <Field label="Major / Field of study">
+            <Field
+              label="Major / Field of study"
+              required={isRequired("major")}
+            >
               <input
+                required={isRequired("major")}
                 className="input"
                 value={form.major}
                 onChange={(e) => setField("major", e.target.value)}
@@ -378,8 +402,9 @@ export default function ApplicationForm({ mode = "account" }) {
 
         <Section title="Logistics">
           <Grid>
-            <Field label="T-shirt size">
+            <Field label="T-shirt size" required={isRequired("tshirtSize")}>
               <select
+                required={isRequired("tshirtSize")}
                 className="select"
                 value={form.tshirtSize}
                 onChange={(e) => setField("tshirtSize", e.target.value)}
@@ -392,8 +417,12 @@ export default function ApplicationForm({ mode = "account" }) {
                 ))}
               </select>
             </Field>
-            <Field label="Dietary restrictions / allergies">
+            <Field
+              label="Dietary restrictions / allergies"
+              required={isRequired("allergies")}
+            >
               <input
+                required={isRequired("allergies")}
                 className="input"
                 value={form.allergies}
                 onChange={(e) => setField("allergies", e.target.value)}
@@ -494,32 +523,40 @@ export default function ApplicationForm({ mode = "account" }) {
         {round.formConfig && round.formConfig.length > 0
           ? <Section title="Additional questions">
               <Grid>
-                {round.formConfig.map((field) =>
-                  field.type === "resume"
-                    ? <Field
-                        key={field.key}
-                        label={field.label}
-                        required={field.required}
-                      >
-                        <ResumeInput
-                          inputRef={resumeRef}
-                          hasResume={!isPublic && form.hasResume}
-                          required={field.required && !form.hasResume}
-                        />
-                      </Field>
-                    : <DynamicField
-                        key={field.key}
-                        field={field}
-                        value={form.answers[field.key]}
-                        onChange={(v) => setAnswer(field.key, v)}
-                      />,
-                )}
+                {round.formConfig.map((field) => (
+                  // Long questions and checkbox lists take the full width.
+                  <div
+                    key={field.key}
+                    style={isWide(field) ? { gridColumn: "1 / -1" } : undefined}
+                  >
+                    {field.type === "resume"
+                      ? <Field
+                          label={field.label}
+                          required={field.required}
+                          description={field.description}
+                        >
+                          <ResumeInput
+                            inputRef={resumeRef}
+                            hasResume={!isPublic && form.hasResume}
+                            required={field.required && !form.hasResume}
+                          />
+                        </Field>
+                      : <DynamicField
+                          field={field}
+                          value={form.answers[field.key]}
+                          onChange={(v) => setAnswer(field.key, v)}
+                        />}
+                  </div>
+                ))}
               </Grid>
             </Section>
           : null}
 
         <Section title="Skills">
-          <Field label="Programming skills">
+          <Field
+            label="Programming skills"
+            required={isRequired("programmingSkills")}
+          >
             <TagAutocomplete
               values={form.programmingSkills}
               onChange={(v) => setField("programmingSkills", v)}
@@ -527,7 +564,10 @@ export default function ApplicationForm({ mode = "account" }) {
               placeholder="Search skills, or type your own and press Enter"
             />
           </Field>
-          <Field label="Hardware skills">
+          <Field
+            label="Hardware skills"
+            required={isRequired("hardwareSkills")}
+          >
             <TagAutocomplete
               values={form.hardwareSkills}
               onChange={(v) => setField("hardwareSkills", v)}
@@ -627,25 +667,57 @@ function Grid({ children }) {
   );
 }
 
+function isWide(field) {
+  return (
+    ["multiselect", "textarea", "checkbox"].includes(field.type) ||
+    Boolean(field.description) ||
+    (field.label || "").length > 70
+  );
+}
+
 function DynamicField({ field, value, onChange }) {
   if (field.type === "checkbox") {
     return (
-      <label style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
-        <input
-          type="checkbox"
-          checked={Boolean(value)}
-          onChange={(e) => onChange(e.target.checked)}
-        />
-        {field.label}
-        {field.required
-          ? <span style={{ color: "var(--danger)" }}> *</span>
-          : null}
-      </label>
+      <div>
+        <label style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+          <input
+            type="checkbox"
+            checked={Boolean(value)}
+            required={field.required}
+            onChange={(e) => onChange(e.target.checked)}
+          />
+          <span>
+            {field.label}
+            {field.required
+              ? <span style={{ color: "var(--danger)" }}> *</span>
+              : null}
+          </span>
+        </label>
+        <Description text={field.description} />
+      </div>
     );
   }
 
+  if (field.type === "multiselect") {
+    return (
+      <ChoiceGroup
+        field={field}
+        value={Array.isArray(value) ? value : []}
+        onChange={onChange}
+      />
+    );
+  }
+
+  if (field.type === "select" && field.allowOther) {
+    return <SelectWithOther field={field} value={value} onChange={onChange} />;
+  }
+
   return (
-    <Field label={field.label} required={field.required}>
+    <Field
+      label={field.label}
+      required={field.required}
+      description={field.description}
+    >
       {field.type === "select"
         ? <select
             className="select"
@@ -684,7 +756,163 @@ function DynamicField({ field, value, onChange }) {
   );
 }
 
-function Field({ label, required, children }) {
+// "Select all that apply": a checkbox per option, plus an "Other:" box with
+// free text when the question allows it. The answer is the list of choices,
+// with the Other text (if ticked and filled in) as the one extra entry.
+function ChoiceGroup({ field, value, onChange }) {
+  const options = field.options || [];
+  const chosen = value.filter((v) => options.includes(v));
+  const [otherOn, setOtherOn] = useState(() =>
+    value.some((v) => !options.includes(v)),
+  );
+  const [otherText, setOtherText] = useState(
+    () => value.find((v) => !options.includes(v)) || "",
+  );
+
+  // Choices are kept in the question's option order, whatever the click order.
+  function emit(nextChosen, on, text) {
+    const ordered = options.filter((opt) => nextChosen.includes(opt));
+    onChange(on && text.trim() ? [...ordered, text.trim()] : ordered);
+  }
+
+  return (
+    <fieldset style={{ border: "none", padding: 0, margin: 0 }}>
+      <legend className="field-label">
+        {field.label}
+        {field.required
+          ? <span style={{ color: "var(--danger)" }}> *</span>
+          : null}
+      </legend>
+      <Description text={field.description} />
+      <div style={{ display: "grid", gap: "0.3rem" }}>
+        {options.map((opt) => (
+          <label
+            key={opt}
+            style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}
+          >
+            <input
+              type="checkbox"
+              checked={chosen.includes(opt)}
+              onChange={(e) =>
+                emit(
+                  e.target.checked
+                    ? [...chosen, opt]
+                    : chosen.filter((v) => v !== opt),
+                  otherOn,
+                  otherText,
+                )
+              }
+            />
+            {opt}
+          </label>
+        ))}
+        {field.allowOther
+          ? <div
+              style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}
+            >
+              <label
+                style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}
+              >
+                <input
+                  type="checkbox"
+                  checked={otherOn}
+                  onChange={(e) => {
+                    setOtherOn(e.target.checked);
+                    emit(chosen, e.target.checked, otherText);
+                  }}
+                />
+                Other:
+              </label>
+              <input
+                className="input"
+                aria-label={`${field.label}: other`}
+                value={otherText}
+                maxLength={300}
+                onChange={(e) => {
+                  setOtherText(e.target.value);
+                  setOtherOn(true);
+                  emit(chosen, true, e.target.value);
+                }}
+              />
+            </div>
+          : null}
+      </div>
+    </fieldset>
+  );
+}
+
+// A single-choice question with an "Other…" choice that reveals a text box.
+// The answer is the chosen option, or the typed text.
+function SelectWithOther({ field, value, onChange }) {
+  const options = field.options || [];
+  const OTHER = "__other__";
+  const [otherOn, setOtherOn] = useState(
+    () => Boolean(value) && !options.includes(value),
+  );
+  const [otherText, setOtherText] = useState(() =>
+    value && !options.includes(value) ? value : "",
+  );
+
+  return (
+    <Field
+      label={field.label}
+      required={field.required}
+      description={field.description}
+    >
+      <select
+        className="select"
+        value={otherOn ? OTHER : value || ""}
+        required={field.required}
+        onChange={(e) => {
+          const picked = e.target.value === OTHER;
+          setOtherOn(picked);
+          onChange(picked ? otherText : e.target.value);
+        }}
+      >
+        <option value="">Select…</option>
+        {options.map((opt) => (
+          <option key={opt} value={opt}>
+            {opt}
+          </option>
+        ))}
+        <option value={OTHER}>Other…</option>
+      </select>
+      {otherOn
+        ? <input
+            className="input"
+            style={{ marginTop: 6 }}
+            aria-label={`${field.label}: other`}
+            placeholder="Please specify"
+            value={otherText}
+            maxLength={300}
+            required={field.required}
+            onChange={(e) => {
+              setOtherText(e.target.value);
+              onChange(e.target.value);
+            }}
+          />
+        : null}
+    </Field>
+  );
+}
+
+function Description({ text }) {
+  if (!text) return null;
+  return (
+    <p
+      className="muted"
+      style={{
+        fontSize: "0.85rem",
+        whiteSpace: "pre-wrap",
+        margin: "0.15rem 0 0.4rem",
+      }}
+    >
+      {text}
+    </p>
+  );
+}
+
+function Field({ label, required, description, children }) {
   // `children` is always a form control here, wrapped by the label for
   // association — but biome can't see that statically through the prop.
   return (
@@ -695,6 +923,7 @@ function Field({ label, required, children }) {
           {label}
           {required ? <span style={{ color: "var(--danger)" }}> *</span> : null}
         </span>
+        <Description text={description} />
         {children}
       </label>
     </>

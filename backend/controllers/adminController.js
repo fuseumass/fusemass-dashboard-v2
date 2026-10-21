@@ -240,9 +240,11 @@ function listRounds(_req, res) {
 function createRound(req, res) {
   var name = req.body.name;
 
-  var formConfigCheck = formConfigUtil.validateFormConfigShape(req.body.formConfig);
-  if (formConfigCheck.errors.length) {
-    res.status(400).json({ error: formConfigCheck.errors.join(" ") });
+  var shapeErrors = formConfigUtil
+    .validateFormConfigShape(req.body.formConfig)
+    .errors.concat(formConfigUtil.validateProfileFieldsShape(req.body.profileFields).errors);
+  if (shapeErrors.length) {
+    res.status(400).json({ error: shapeErrors.join(" ") });
     return Promise.resolve();
   }
 
@@ -254,6 +256,7 @@ function createRound(req, res) {
     closesAt: req.body.closesAt || undefined,
     order: req.body.order ? Number(req.body.order) : 0,
     formConfig: req.body.formConfig || [],
+    profileFields: req.body.profileFields || {},
   })
     .then(function afterCreate(round) {
       res.status(201).json({ round: round });
@@ -272,7 +275,7 @@ function createRound(req, res) {
  * @returns {Promise<void>}
  */
 function updateRound(req, res) {
-  var allowed = ["name", "description", "isOpen", "opensAt", "closesAt", "order", "formConfig"];
+  var allowed = ["name", "description", "isOpen", "opensAt", "closesAt", "order", "formConfig", "profileFields"];
   var update = {};
   allowed.forEach(function pick(key) {
     if (req.body && req.body[key] !== undefined) {
@@ -280,9 +283,11 @@ function updateRound(req, res) {
     }
   });
 
-  var formConfigCheck = formConfigUtil.validateFormConfigShape(update.formConfig);
-  if (formConfigCheck.errors.length) {
-    res.status(400).json({ error: formConfigCheck.errors.join(" ") });
+  var shapeErrors = formConfigUtil
+    .validateFormConfigShape(update.formConfig)
+    .errors.concat(formConfigUtil.validateProfileFieldsShape(update.profileFields).errors);
+  if (shapeErrors.length) {
+    res.status(400).json({ error: shapeErrors.join(" ") });
     return Promise.resolve();
   }
 
