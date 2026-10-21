@@ -7,7 +7,8 @@
   "scripts": {
     "start": "node server.js",
     "dev": "node --watch server.js",
-    "test": "node --test"
+    "test": "node --test",
+    "setup-email": "bash scripts/setup-email.sh"
   },
   "dependencies": {
     "@azure/storage-blob": "^12.26.0",

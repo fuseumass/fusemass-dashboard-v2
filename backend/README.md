@@ -17,7 +17,8 @@ npm run dev               # node --watch server.js
 
 You need a MongoDB instance (local `mongod` or a MongoDB Atlas URI in
 `MONGODB_URI`). Google OAuth, email (nodemailer), and resume uploads (Azure Blob)
-are optional — each degrades gracefully until its env vars are filled in.
+are optional — each degrades gracefully until its env vars are filled in. For
+email, see [Setting up email](#setting-up-email).
 
 ## Creating the first admin
 
@@ -28,12 +29,59 @@ There is no admin until you make one:
 3. `curl -X POST localhost:4000/api/auth/setup-admin -H 'Content-Type: application/json' -d '{"email":"you@example.com"}'`
 4. Set `SETUP_ADMIN=false` and restart. (It refuses once any admin exists.)
 
+## Setting up email
+
+The dashboard emails applicants when they submit, when they're accepted or
+rejected (with their check-in QR code), when they check in, and for password
+resets. Until email is set up those emails are skipped, and password-reset
+links are only printed in the server log.
+
+The simplest setup is a dedicated Gmail account for your hackathon (for
+example `donotreply.yourhackathon@gmail.com`):
+
+1. **Create the Gmail account** and sign in to it.
+2. **Turn on 2-Step Verification** at
+   [myaccount.google.com/security](https://myaccount.google.com/security).
+   Google requires it before it allows app passwords.
+3. **Create an app password** at
+   [myaccount.google.com/apppasswords](https://myaccount.google.com/apppasswords)
+   (name it e.g. "Dashboard"). Copy the 16 characters. The account's normal
+   password won't work here.
+4. **Run the setup script** on the server, from `backend/`:
+
+   ```bash
+   npm run setup-email
+   ```
+
+   It asks for the Gmail address, the sender name recipients see (defaults to
+   `ORG_NAME`), the app password (hidden as you type) and, optionally, an
+   address to send a test email to. It checks the login and sends the test
+   email *before* saving anything to `.env`, so a typo can't break email that
+   already works. Re-run it any time to change the account or password.
+5. **Restart the backend.** Or let the script do it with
+   `RESTART_CMD="<your restart command>" npm run setup-email`, e.g.
+   `RESTART_CMD="sudo systemctl restart <service>"`.
+
+Good to know:
+
+- **Limits:** a personal Gmail account can send about **500 emails a day**.
+  Going over pauses sending for up to 24 hours. If you'll decide on more
+  applicants than that, spread acceptance and rejection emails over several
+  days.
+- **Replies** go to the sending account, so check it or say "do not reply" in
+  your email templates (admin dashboard → email templates).
+- **Google Workspace accounts can't use app passwords for this** (Google
+  removed password sign-in for apps in 2025). Use a personal Gmail account,
+  or another provider's SMTP server: set `SMTP_HOST` / `SMTP_PORT` when you
+  run the script.
+
 ## Scripts
 
-| Command       | What it does           |
-| ------------- | ---------------------- |
-| `npm run dev` | Start with auto-reload |
-| `npm start`   | Start once             |
+| Command               | What it does                                  |
+| --------------------- | --------------------------------------------- |
+| `npm run dev`         | Start with auto-reload                        |
+| `npm start`           | Start once                                    |
+| `npm run setup-email` | Set up outgoing email (see "Setting up email") |
 
 ## Layout
 
