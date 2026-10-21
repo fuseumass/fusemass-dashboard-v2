@@ -152,6 +152,7 @@ function formatRunOfShow(events) {
 }
 
 module.exports = {
+  eventTimeZone: eventTimeZone,
   buildRunOfShowIcs: buildRunOfShowIcs,
   formatRunOfShow: formatRunOfShow,
 };

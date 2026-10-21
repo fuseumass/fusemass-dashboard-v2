@@ -2,6 +2,7 @@
 
 import {
   CalendarDays,
+  ChartColumn,
   ClipboardList,
   FileText,
   Group,
@@ -66,6 +67,11 @@ export default function Sidebar({ user }) {
   if (isAdmin) {
     // Org setup is admin-only.
     nav.push({ href: "/dashboard/admin/users", label: "Users", icon: Users });
+    nav.push({
+      href: "/dashboard/admin/stats",
+      label: "Statistics",
+      icon: ChartColumn,
+    });
     nav.push({
       href: "/dashboard/admin/meals",
       label: "Meals",

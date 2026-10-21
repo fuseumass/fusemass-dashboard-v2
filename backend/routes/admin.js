@@ -8,6 +8,8 @@ var teamController = require("../controllers/teamController");
 var settingsController = require("../controllers/settingsController");
 var scheduleController = require("../controllers/scheduleController");
 var brandingController = require("../controllers/brandingController");
+var statsController = require("../controllers/statsController");
+var exportRoutes = require("./exports");
 var isAdmin = require("../utils/isAdmin");
 var isModerator = require("../utils/isModerator");
 var requireFeature = require("../utils/requireFeature");
@@ -122,5 +124,11 @@ router.get("/schedule", isAdmin, scheduleController.listScheduleEvents);
 router.post("/schedule", isAdmin, scheduleController.createScheduleEvent);
 router.patch("/schedule/:id", isAdmin, scheduleController.updateScheduleEvent);
 router.delete("/schedule/:id", isAdmin, scheduleController.deleteScheduleEvent);
+
+// Statistics for the admin Statistics page (counts only, computed in MongoDB).
+router.get("/stats", isAdmin, statsController.getStats);
+
+// CSV / ZIP exports of applications, check-ins, meals and sponsor resumes.
+router.use("/exports", exportRoutes);
 
 module.exports = router;

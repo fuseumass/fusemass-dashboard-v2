@@ -505,12 +505,21 @@ every other role (also enforced by the API, B33–B36).
 ## Admin insights
 
 ### F26. Statistics page
-- [ ] `/dashboard/admin/stats`: KPI row (applications, accepted, checked in,
-      meals served, workshop attendance, hardware out), applications by
-      status over time, and breakdowns by school, education level,
-      graduation year, first-time hackers, and gender. Use the charts from
-      shadcn (Recharts) and the theme tokens (F11) for series colours.
-- [ ] Event-day mode: auto-refresh every 30 s for a lobby screen.
+- [x] `/dashboard/admin/stats` (admins only, in the sidebar): KPI row
+      (applications, accepted, checked in, meals served, workshop attendance,
+      hardware out; the last two show a dash until B21/B22 feed them),
+      applications by status over time (stacked columns, table view,
+      hover tooltip), by-round table, and breakdowns by school, education
+      level, graduation year, first-time hackers, gender, major, T-shirt size
+      and every custom choice question, filterable by round and status.
+      Plain CSS/SVG charts in one self-contained file with local `--st-*`
+      colour tokens (light + dark, checked with the dataviz validator),
+      because shadcn/Recharts (F10) and the theme tokens (F11) haven't landed.
+      **Swap to the shadcn charts and F11 tokens when they do.**
+- [x] Event-day mode: auto-refresh every 30 s for a lobby screen (remembered
+      in `localStorage`, paused while the tab is hidden).
+- [x] An Exports card on the page downloads the B29 files (applications,
+      check-ins, meals CSV; resume ZIP for sponsors with a consent question).
 - **Depends on:** B43.
 
 ---

@@ -101,8 +101,10 @@ utils/             parseToken (global), isAuthenticated/isModerator/isAdmin,
                    emailVerification, azureBlob, googleStatus,
                    requireFeature + features (module flags), branding,
                    orgSettingsCache, imageType, orgLinks
-controllers/       auth, application, admin, settings, meta, branding logic
-routes/            express.Router() tables (auth, applications, admin, meta)
+controllers/       auth, application, admin, settings, meta, branding, stats, export,
+                   public logic
+routes/            express.Router() tables (auth, applications, admin, exports, meta,
+                   public)
 ```
 
 ## Roles
@@ -162,6 +164,20 @@ emailed on acceptance (or via "Forgot password").
 | PATCH  | `/api/admin/settings`           | admin     | Update settings (Google toggle, `features`, `branding`) |
 | PUT    | `/api/admin/branding/:slot`     | admin     | Upload `logo` / `logo-dark` / `favicon` (multipart `file`) |
 | DELETE | `/api/admin/branding/:slot`     | admin     | Remove that image (back to the server default) |
+| GET    | `/api/admin/stats`              | admin     | Application + event-day statistics (`?round=&status=`) |
+| GET    | `/api/admin/exports/applications.csv` | admin | Applications CSV, answers flattened (`?round=&status=`) |
+| GET    | `/api/admin/exports/checkins.csv` | admin   | Check-ins CSV (who, when, by whom, forced)  |
+| GET    | `/api/admin/exports/meals.csv`  | admin     | Meals CSV with served counts           |
+| GET    | `/api/admin/exports/resumes.zip?consentKey=` | admin | ZIP of resumes of accepted applicants who ticked that checkbox question (`&round=`) |
+| GET    | `/api/admin/schedule` (+ POST/PATCH/DELETE) | admin | Run of show; `published` puts an item on the public feed |
+| GET    | `/api/public/schedule`          | public    | Published run of show as JSON (cached, CORS `*`) |
+| GET    | `/api/public/schedule.ics`      | public    | The same as an iCalendar file          |
+
+Exports are admin-only, never cached, streamed in batches, and defanged against
+spreadsheet formula injection (`utils/csv.js`); they never contain password
+hashes, tokens, QR codes or resume blob names. `/api/public/*` is the only part
+of the API that answers any website's browser (open CORS, no credentials); it
+only exposes what an admin published.
 
 ## Feature flags (modules on/off)
 
