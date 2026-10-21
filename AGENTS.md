@@ -30,6 +30,10 @@ platform — no hackathon-specific names in code; branding comes from env vars.
 ## Before you commit
 
 - Backend: every file must pass `node --check` (valid syntax). No type-check step.
+- Backend: `cd backend && npm test` must pass. A **new route needs a row in the
+  `MATRIX` in `backend/test/permissionMatrix.test.js`** (who may call it); the
+  suite fails until you add one. Never return `passwordHash`, reset tokens or
+  another user's check-in code (`qrId`) from a route.
 - Frontend: `cd frontend && npm run lint` must pass (Biome).
 - Every new backend file starts with `"use strict";`.
 - Every exported function has JSDoc `@param` / `@returns` for documentation.

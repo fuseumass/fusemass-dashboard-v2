@@ -206,6 +206,9 @@ userSchema.statics.backfillQrIds = function backfillQrIds() {
 };
 
 // Strip sensitive fields whenever a user document is serialized to JSON.
+// The check-in code (qrId) goes too: it's a credential (it checks someone in
+// and gets them fed), and admin user search, role changes and setup-admin all
+// serialize *other* people's users. Its owner gets it from GET /api/applications/me/qr.
 userSchema.set("toJSON", {
   transform: function transform(_doc, ret) {
     delete ret.passwordHash;
@@ -214,6 +217,7 @@ userSchema.set("toJSON", {
     delete ret.emailVerificationToken;
     delete ret.emailVerificationExpires;
     delete ret.emailVerificationSentAt;
+    delete ret.qrId;
     return ret;
   },
 });

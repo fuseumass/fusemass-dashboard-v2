@@ -19,13 +19,21 @@ and meal service admin CRUD. CI (GitHub Actions) runs frontend lint, backend
 `test/checkedInEmail.test.js` cover T2 and T3 below, plus the QR emails, the
 checked-in email + calendar invite, and run-of-show CRUD.
 
+**On `feature/testing-backlog`:** `test/permissionMatrix.test.js` (T12: the
+role x route matrix and the guard that fails on unlisted routes),
+`test/sensitiveFields.test.js` (T15: no secrets in any response), and the
+secret-scanning + CSV job in CI (T15). They found and fixed a real leak: user
+JSON included each user's check-in code (`qrId`).
+
 ### Conventions for new tests
 - Concurrency guarantees ("never more than capacity", "never served twice")
   get a test that fires the requests **in parallel** with `Promise.all` and
   asserts the end state. Call `Model.init()` first so the unique indexes
   exist (see `resetFixtures` in `test/qrCheckin.test.js`).
 - Every new route gets **401 (no token)** and **403 (wrong role)** cases. T12
-  makes this systematic.
+  makes this systematic: **add a row for every new route to the `MATRIX` in
+  `test/permissionMatrix.test.js`** (the suite fails until you do), choosing
+  its access level (`public` / `authenticated` / `moderator` / `admin`).
 - Pure logic (bias, assignment generation, calendar building, raffle draws)
   lives in `utils/` and is unit-tested without HTTP or a database.
 - Mail: use `helpers/mailMock` and assert on the recorded `sendMail` calls
@@ -204,14 +212,20 @@ fixed.
 Missing permission checks were the most common bug in both old platforms
 (hardware checkout, RSVPs, prizes, mentorship tickets, travel-reimbursement
 approval, every judging admin action). Finance makes this matter more.
-- [ ] One table-driven test file: for **every** mounted route (method + path)
-      and every role (`none`, `applicant`, `workshop_organizer`, `judge`,
-      `moderator`, `admin`), the expected status class (2xx/4xx/401/403).
-      Judges in particular: 2xx only on `/api/judging/*` and `/api/auth/*`;
-      403 on applications, the attendee QR, staff, admin, workshops and
-      finance.
-- [ ] A guard test that walks Express's router stack and **fails when a route
-      exists that isn't in the matrix**, so new routes can't skip review.
+- [x] One table-driven test file: for **every** mounted route (method + path)
+      and every role, the expected status. Done in
+      `test/permissionMatrix.test.js` for the roles that exist today (`none`,
+      `applicant`, `moderator`, `admin`): 401 / 403 where denied, "let
+      through" where allowed, plus a pass with valid bodies and real ids
+      proving a denied request changes nothing and sends no email, and tokens
+      that claim a role the account doesn't have.
+- [ ] **Add the new roles to that file** when B17 / B47 land: add
+      `workshop_organizer` and `judge` to `ROLES` and `LEVELS`. Judges in
+      particular: 2xx only on `/api/judging/*` and `/api/auth/*`; 403 on
+      applications, the attendee QR, staff, admin, workshops and finance.
+- [x] A guard test that walks Express's router stack (`test/helpers/routes.js`)
+      and **fails when a route exists that isn't in the matrix** (or the matrix
+      lists one that no longer exists), so new routes can't skip review.
 - **Depends on:** B17, B47 (new roles); extend as modules land.
 
 ## T13. End-to-end event-day flow (Playwright)
@@ -236,10 +250,21 @@ approval, every judging admin action). Finance makes this matter more.
 ## T15. Security checks in CI
 Prompted by the judging repo committing judge passwords and participant data
 (B16).
-- [ ] Secret scanning on every PR (e.g. `gitleaks`), failing on hits; also
-      block committing `*.csv` exports outside `backend/data/`.
+- [x] Secret scanning on every PR (`gitleaks`, pinned + checksum-verified,
+      scans the PR's commits), failing on hits; also blocks committing `*.csv`
+      exports outside `backend/data/`. The `secrets + exports` job in
+      `.github/workflows/ci.yml`; add it to the required checks on `main`.
 - [ ] `npm audit --audit-level=high` for backend and frontend (B30).
-- [ ] Assert that no route responds with `passwordHash`, `resetPasswordToken`,
-      or another user's `qrId` (extend the existing `securityHardening`
-      tests).
+      **Blocked on B30:** both lockfiles currently have high or critical
+      advisories (backend: `proxy-addr` critical, `nodemailer` high; frontend:
+      3 high + 1 critical), so the step would turn every PR red until they're
+      fixed.
+- [x] Assert that no route responds with `passwordHash`, `resetPasswordToken`,
+      or another user's `qrId`. Done in `test/sensitiveFields.test.js` (next
+      to `securityHardening`): it crawls every GET route as nobody, an
+      applicant, a moderator and an admin, and runs the flows that return
+      users or touch a secret (register, login, reset, role change,
+      setup-admin, check-in, teams), scanning each response for the forbidden
+      keys and for the secret values. It caught `qrId` leaking through admin
+      user search, role changes and setup-admin (fixed in `schemas/user.js`).
 - **Depends on:** none.
