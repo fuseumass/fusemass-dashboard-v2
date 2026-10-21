@@ -2,6 +2,7 @@
 
 var mongoose = require("mongoose");
 var ScheduleEvent = require("../schemas/scheduleEvent");
+var publicSchedule = require("../utils/publicSchedule");
 
 // Admin CRUD for the run of show (mounted under /api/admin/schedule behind
 // isAdmin). The list is emailed to attendees as a calendar invite when they
@@ -37,12 +38,15 @@ function pickFields(body) {
 }
 
 /**
- * @param {object} fields - Candidate { title, startsAt, endsAt }.
+ * @param {object} fields - Candidate { title, startsAt, endsAt, published }.
  * @returns {string} An error message, or "" when valid.
  */
 function validateEvent(fields) {
   if (!fields.title) {
     return "title is required.";
+  }
+  if (fields.published !== undefined && typeof fields.published !== "boolean") {
+    return "published must be true or false.";
   }
   if (!fields.startsAt || !fields.endsAt) {
     return "startsAt and endsAt must be valid date-time values.";
@@ -73,7 +77,7 @@ function listScheduleEvents(_req, res) {
 
 /**
  * POST /api/admin/schedule — add an item to the run of show.
- * Body: { title, startsAt, endsAt, location?, description? }
+ * Body: { title, startsAt, endsAt, location?, description?, published? }
  * @param {object} req
  * @param {object} res
  * @returns {Promise<void>}
@@ -82,6 +86,9 @@ function createScheduleEvent(req, res) {
   var fields = pickFields(req.body);
   fields.startsAt = parseDate(req.body && req.body.startsAt);
   fields.endsAt = parseDate(req.body && req.body.endsAt);
+  if (req.body && req.body.published !== undefined) {
+    fields.published = req.body.published;
+  }
 
   var error = validateEvent(fields);
   if (error) {
@@ -91,6 +98,7 @@ function createScheduleEvent(req, res) {
 
   return ScheduleEvent.create(fields)
     .then(function afterCreate(event) {
+      publicSchedule.invalidate();
       res.status(201).json({ event: event });
     })
     .catch(function onError(err) {
@@ -101,7 +109,7 @@ function createScheduleEvent(req, res) {
 
 /**
  * PATCH /api/admin/schedule/:id — edit a run-of-show item.
- * Body: any of { title, startsAt, endsAt, location, description }
+ * Body: any of { title, startsAt, endsAt, location, description, published }
  * @param {object} req
  * @param {object} res
  * @returns {Promise<void>}
@@ -118,6 +126,9 @@ function updateScheduleEvent(req, res) {
   }
   if (req.body && req.body.endsAt !== undefined) {
     update.endsAt = parseDate(req.body.endsAt);
+  }
+  if (req.body && req.body.published !== undefined) {
+    update.published = req.body.published;
   }
 
   return ScheduleEvent.findById(req.params.id)
@@ -136,6 +147,7 @@ function updateScheduleEvent(req, res) {
 
       existing.set(update);
       return existing.save().then(function afterSave(event) {
+        publicSchedule.invalidate();
         res.status(200).json({ event: event });
       });
     })
@@ -163,6 +175,7 @@ function deleteScheduleEvent(req, res) {
         res.status(404).json({ error: "Run-of-show item not found." });
         return;
       }
+      publicSchedule.invalidate();
       res.status(200).json({ ok: true });
     })
     .catch(function onError(err) {

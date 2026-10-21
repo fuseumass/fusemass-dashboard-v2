@@ -106,9 +106,31 @@ function getResumeLink(blobName) {
     });
 }
 
+/**
+ * Open a stored resume for reading on the server (the sponsor resume bundle
+ * streams these into a ZIP). Callers are responsible for checking the
+ * requester may export resumes first.
+ *
+ * @param {string} blobName - Blob name returned by uploadResume.
+ * @returns {Promise<object>} A Node readable stream of the file's bytes.
+ */
+function downloadResume(blobName) {
+  if (!isAzureConfigured()) {
+    return Promise.reject(new Error("Azure Blob Storage is not configured."));
+  }
+
+  return buildContainerClient()
+    .getBlobClient(blobName)
+    .download()
+    .then(function afterDownload(response) {
+      return response.readableStreamBody;
+    });
+}
+
 module.exports = {
   RESUME_LINK_TTL_MS: RESUME_LINK_TTL_MS,
   isAzureConfigured: isAzureConfigured,
   uploadResume: uploadResume,
   getResumeLink: getResumeLink,
+  downloadResume: downloadResume,
 };

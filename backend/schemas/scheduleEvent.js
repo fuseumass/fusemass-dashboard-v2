@@ -15,6 +15,10 @@ var Schema = mongoose.Schema;
  * @property {Date} endsAt - End time.
  * @property {string} location - Where, e.g. "Main hall". Optional.
  * @property {string} description - Extra detail. Optional.
+ * @property {boolean} published - Shown on the public schedule feed for the
+ *   hackathon website (GET /api/public/schedule). Off until an admin turns it
+ *   on, so nothing becomes public by accident. Every item still goes into the
+ *   "checked in" email's calendar invite, published or not.
  */
 var scheduleEventSchema = new Schema(
   {
@@ -40,6 +44,10 @@ var scheduleEventSchema = new Schema(
       type: String,
       trim: true,
       default: "",
+    },
+    published: {
+      type: Boolean,
+      default: false,
     },
   },
   { timestamps: true }

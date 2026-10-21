@@ -852,11 +852,19 @@ can register with someone else's address, and their acceptance QR goes there.
 - **Depends on:** none.
 
 ### B43. Admin statistics
-- [ ] `GET /api/admin/stats`: applications by status and round, by
-      school/education level/gender/major/graduation year, first-time
-      hackers, submissions per day; on event day, checked-in count, meals
-      served, workshop attendance, hardware out.
-- [ ] Aggregations in Mongo (`$group`), not loading every document.
+- [x] `GET /api/admin/stats` (admin only): applications by status and round,
+      by school/education level/gender/major/T-shirt size/graduation year,
+      first-time hackers, submissions per day (stacked by status, in the
+      event's time zone), plus every custom choice question on the forms;
+      on event day, checked-in count (and forced walk-ins) and meals served.
+      Optional `?round=` and `?status=` scope the breakdowns. Graduation
+      year isn't a built-in field, so it is found among the rounds' custom
+      questions (label or key says graduation / grad year / class of).
+- [ ] Workshop attendance and hardware out. The endpoint already returns
+      `eventDay.workshopAttendance` and `eventDay.hardwareOut` as `null`; fill
+      them in `statsController.eventDayStats` when B21 and B22 exist.
+- [x] Aggregations in Mongo (`$group`), not loading every document (a test
+      fails if `Application.find` is called).
 - **Depends on:** none. **Related:** F26.
 
 ### B44. Force check-in (admin override)
@@ -867,11 +875,17 @@ can register with someone else's address, and their acceptance QR goes there.
 - **Depends on:** check-in on `feature/qr-checkin`.
 
 ### B45. Public schedule feed for the hackathon website
-- [ ] `GET /api/public/schedule` (no auth, cached): published run-of-show
-      items + published workshops, so the hackathon website (e.g.
-      `fuseumass/hackumass-website`) can show the live schedule instead of
-      copying it. Also a public `.ics` of the same.
-- **Depends on:** B18.
+- [x] `GET /api/public/schedule` (no auth, cached): published run-of-show
+      items, so the hackathon website (e.g. `fuseumass/hackumass-website`)
+      can show the live schedule instead of copying it. Also a public
+      `GET /api/public/schedule.ics` of the same. `ScheduleEvent.published`
+      (default off, so nothing goes public by accident) is set from the Run of
+      show page. Cached 30 s in memory (cleared on admin edits) and
+      `Cache-Control: public, max-age=60`; open CORS (`*`, no credentials) on
+      `/api/public` only.
+- [ ] Published workshops in the same feed (and the `.ics`): add them in
+      `utils/publicSchedule.js` `load()` once the Workshop model exists.
+- **Depends on:** B18 (for the workshops half).
 
 ### B46. Error reporting
 The old dashboard reported errors to Sentry (Raven); we only `console.error`.
@@ -900,11 +914,21 @@ rebuild.
 ### B29. CSV exports
 The old dashboard could export everything; organizers rely on it for
 sponsors, catering and insurance.
-- [ ] Admin CSV export for applications (with dynamic `answers` flattened),
-      check-ins, meal counts, workshop sign-ups, raffle winners, hardware
-      checkouts. Stream them; don't build the whole file in memory.
-- [ ] Resume bundle export for sponsors (zip of accepted applicants who opted
-      in), replacing the old `download_resumes.py` script.
+- [x] Admin CSV export for applications (with dynamic `answers` flattened),
+      check-ins and meal counts: `GET /api/admin/exports/applications.csv`
+      (`?round=&status=`), `checkins.csv`, `meals.csv`. Admin only, streamed in
+      batches of 500 by `_id` (no long-lived cursor), formula-injection safe
+      (`utils/csv.js`), never includes password hashes, tokens, QR codes or
+      resume blob names.
+- [ ] Workshop sign-ups, raffle winners and hardware checkout CSVs (need
+      B19, B21 and B22). Add them as routes in `routes/exports.js` using
+      `utils/csv.js` `sendCsv`.
+- [x] Resume bundle export for sponsors: `GET
+      /api/admin/exports/resumes.zip?consentKey=<key>[&round=<id>]`, a ZIP
+      streamed from Azure of accepted applicants who ticked the checkbox
+      question `consentKey` on the application form (nobody is included without
+      a consent question), plus an `index.csv`. Replaces `download_resumes.py`.
+      Streaming ZIP writer in `utils/zipStream.js`, no new dependency.
 - **Depends on:** none.
 
 ### B30. Dependency vulnerabilities

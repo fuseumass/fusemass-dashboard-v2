@@ -54,8 +54,8 @@ were presumably tracked in spreadsheets, so B33–B37 are a new design.
 | **Waitlisted email** | 📋 (deciding "waitlisted" sends nothing today) | B41 |
 | Application search | 🟡 status/round filters only | F14 |
 | Resume auto-check + flag suspicious applications, flag/unflag | 📋 | B42 |
-| Admin statistics (counts by school, gender, status, …) | 📋 | B43, F26 |
-| CSV export of applications | 📋 | B29 |
+| Admin statistics (counts by school, gender, status, …) | 🟡 built; workshop attendance + hardware out wait on B21/B22 | B43, F26 |
+| CSV export of applications | ✅ admin only, answers flattened, formula-safe | B29 |
 | RSVP + custom RSVP questions + un-RSVP | ⏸ | B32 |
 | Mass email to lists (not applied / accepted / waitlisted / undecided / test to self) | 📋 | B26 |
 | Reminder emails | 📋 | B26 |
@@ -70,7 +70,7 @@ were presumably tracked in spreadsheets, so B33–B37 are a new design.
 | Self check-in (virtual events) | ✖ it trusted a client-sent email; no virtual events planned | — |
 | Schedule, admin-editable | 🔍 run of show | — |
 | Schedule visible to attendees + "upcoming" on home | 📋 | F22 |
-| Public schedule feed for the hackathon website | 📋 | B45 |
+| Public schedule feed for the hackathon website | 🟡 run of show (JSON + .ics) built; workshops join once B18 exists | B45 |
 | Meal check-in | ➕ 🔍 | — |
 | "You're checked in" email + calendar invite | ➕ 🔍 | — |
 
@@ -140,6 +140,6 @@ were presumably tracked in spreadsheets, so B33–B37 are a new design.
 | ----------- | ------ | ---- |
 | Feature flags per module | 📋 (old flag check was broken) | B25 |
 | Per-hackathon config repo (names, texts, branding) | 🟡 env + org settings; branding broken | B28, F12 |
-| CSV exports (applications, events, judging, projects) | 📋 | B29 |
-| Resume bulk download (`download_resumes.py`) | 📋 | B29 |
+| CSV exports (applications, events, judging, projects) | 🟡 applications, check-ins, meals done; workshops, hardware, judging, projects pending | B29 |
+| Resume bulk download (`download_resumes.py`) | ✅ ZIP of consenting accepted applicants | B29 |
 | Error reporting (Sentry/Raven) | 📋 | B46 |

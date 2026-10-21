@@ -20,6 +20,7 @@ var adminRoutes = require("./routes/admin");
 var metaRoutes = require("./routes/meta");
 const staffRoutes = require("./routes/staff");
 var teamRoutes = require("./routes/teams");
+var publicRoutes = require("./routes/public");
 
 var app = express();
 
@@ -39,12 +40,25 @@ if (process.env.TRUST_PROXY) {
   app.set("trust proxy", Number.isNaN(hops) ? process.env.TRUST_PROXY : hops);
 }
 
+// --- Public feeds -----------------------------------------------------------
+// Read-only data for the hackathon's own website (e.g. the schedule). Mounted
+// before the credentialed CORS below so any site may read it: it carries no
+// cookies or tokens, and the routes only ever expose what an admin published.
+app.use(
+  "/api/public",
+  cors({ origin: "*", methods: ["GET", "HEAD", "OPTIONS"], maxAge: 86400 }),
+  publicRoutes
+);
+
 // --- Core middleware --------------------------------------------------------
 app.use(
   cors({
     // CLIENT_ORIGIN may list several frontend addresses, comma-separated.
     origin: clientOrigin.corsOrigin,
     credentials: true,
+    // The dashboard names exported files from this header, and browsers hide
+    // it from cross-origin pages unless it is listed here.
+    exposedHeaders: ["Content-Disposition"],
   })
 );
 app.use(express.json());
