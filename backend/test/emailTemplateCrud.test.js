@@ -45,6 +45,7 @@ test("B1: email template CRUD", async function emailTemplateCrud(t) {
         "application_accepted",
         "application_received",
         "application_rejected",
+        "application_waitlisted",
         "checked_in",
         "team_invite",
         "verify_email",

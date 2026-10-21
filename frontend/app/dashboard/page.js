@@ -4,6 +4,7 @@ import { ArrowRight, CircleCheck } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import ApplicationStatusBadge from "@/components/ApplicationStatusBadge";
+import ClosedRoundStatus from "@/components/ClosedRoundStatus";
 import PageHeader from "@/components/PageHeader";
 import { CardSkeleton } from "@/components/skeletons";
 import { Button } from "@/components/ui/button";
@@ -34,6 +35,7 @@ export default function DashboardHome() {
     loading: true,
     round: null,
     application: null,
+    latest: null,
   });
   const [qr, setQr] = useState(null);
   const [links, setLinks] = useState(null);
@@ -49,10 +51,16 @@ export default function DashboardHome() {
           loading: false,
           round: data.round,
           application: data.application,
+          latest: data.latest,
         }),
       )
       .catch(() =>
-        setState({ loading: false, round: null, application: null }),
+        setState({
+          loading: false,
+          round: null,
+          application: null,
+          latest: null,
+        }),
       );
     // Fetched on its own rather than off the open round's application: on
     // event day applications are closed, and that is exactly when it's needed.
@@ -91,9 +99,7 @@ export default function DashboardHome() {
               </CardHeader>
               <CardContent className="space-y-4">
                 {!state.round
-                  ? <p className="text-muted-foreground">
-                      Applications aren&apos;t open right now. Check back soon.
-                    </p>
+                  ? <ClosedRoundStatus latest={state.latest} />
                   : !state.application
                     ? <>
                         <p className="text-muted-foreground">

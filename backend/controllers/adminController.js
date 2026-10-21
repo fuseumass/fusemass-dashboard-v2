@@ -11,15 +11,23 @@ var passwordToken = require("../utils/passwordToken");
 var primaryClientOrigin = require("../utils/clientOrigin").primaryClientOrigin;
 var formConfigUtil = require("../utils/formConfig");
 var applicationStatus = require("../utils/applicationStatus");
+var applicationFlags = require("../utils/applicationFlags");
+var waitlist = require("../utils/waitlist");
 var validator = require("validator");
 var mongoose = require("mongoose");
 
-// The review table's columns (see listApplications).
-var LIST_FIELDS = "name university status round applicant resumeBlobName createdAt updatedAt";
+// The review table's columns (see listApplications). `flagged` is just the
+// yes/no; the reasons come with the full application.
+var LIST_FIELDS = "name university status round applicant resumeBlobName flagged createdAt updatedAt";
+
+// Staff routes pass this to toJSON to include the flag fields applicants
+// never see (see the Application schema's toJSON).
+var WITH_FLAGS = { includeFlags: true };
 
 var DECISION_TEMPLATE_KEYS = {
   accepted: "application_accepted",
   rejected: "application_rejected",
+  waitlisted: "application_waitlisted",
 };
 
 /**
@@ -27,6 +35,11 @@ var DECISION_TEMPLATE_KEYS = {
  * List applications for the review dashboard. Optional filters:
  *   ?status=draft|pending|accepted|rejected|waitlisted
  *   ?round=<roundId>
+ *   ?flagged=true   only flagged applications
+ *
+ * Also returns `flaggedCount`: how many applications are flagged among those
+ * matching status/round (the flagged filter itself doesn't change it), so the
+ * page can show "Flagged (3)" whichever list is on screen.
  *
  * @param {object} req - Express request.
  * @param {object} res - Express response.
@@ -41,18 +54,28 @@ function listApplications(req, res) {
   if (req.query && req.query.round) {
     filter.round = req.query.round;
   }
+  var flaggedOnly = Boolean(req.query) && (req.query.flagged === "true" || req.query.flagged === "1");
+  var listFilter = flaggedOnly ? Object.assign({}, filter, { flagged: true }) : filter;
 
   // Only the review table's columns: answers and the round's form come from
   // GET /api/admin/applications/:id when a reviewer opens one, so the list
   // stays small however long the form is (with the whole form copied into
   // every row it was ~10 KB per application).
-  return Application.find(filter)
-    .select(LIST_FIELDS)
-    .populate("applicant", "name email role")
-    .populate("round", "name")
-    .sort({ createdAt: -1 })
-    .then(function afterFind(applications) {
-      res.status(200).json({ applications: applications });
+  return Promise.all([
+    Application.find(listFilter)
+      .select(LIST_FIELDS)
+      .populate("applicant", "name email role")
+      .populate("round", "name")
+      .sort({ createdAt: -1 }),
+    Application.countDocuments(Object.assign({}, filter, { flagged: true })),
+  ])
+    .then(function afterFind(found) {
+      res.status(200).json({
+        applications: found[0].map(function toRow(application) {
+          return application.toJSON(WITH_FLAGS);
+        }),
+        flaggedCount: found[1],
+      });
     })
     .catch(function onError(err) {
       console.error("listApplications failed:", err);
@@ -78,12 +101,13 @@ function getApplication(req, res) {
   return Application.findById(req.params.id)
     .populate("applicant", "name email role")
     .populate("round", "name formConfig")
+    .populate("flaggedBy", "name email")
     .then(function afterFind(application) {
       if (!application) {
         res.status(404).json({ error: "Application not found." });
         return;
       }
-      res.status(200).json({ application: application.toJSON() });
+      res.status(200).json({ application: application.toJSON(WITH_FLAGS) });
     })
     .catch(function onError(err) {
       console.error("getApplication failed:", err);
@@ -92,10 +116,92 @@ function getApplication(req, res) {
 }
 
 /**
+ * POST /api/admin/applications/:id/flag
+ * Flag an application for a closer look, with a reason. Flagging one that is
+ * already flagged adds the reason (and records who flagged last).
+ *
+ * Body: { reason: string } (required, shortened to 300 characters)
+ *
+ * @param {object} req - Express request (req.user set by the moderator guard).
+ * @param {object} res - Express response.
+ * @returns {Promise<void>}
+ */
+function flagApplication(req, res) {
+  var reason = applicationFlags.cleanReason(req.body && req.body.reason);
+  if (!reason) {
+    res.status(400).json({ error: "A reason is required to flag an application." });
+    return Promise.resolve();
+  }
+  if (!mongoose.isValidObjectId(req.params.id)) {
+    res.status(404).json({ error: "Application not found." });
+    return Promise.resolve();
+  }
+
+  return Application.findByIdAndUpdate(
+    req.params.id,
+    {
+      $set: { flagged: true, flaggedBy: req.user.id, flaggedAt: new Date() },
+      $addToSet: { flagReasons: reason },
+    },
+    { new: true }
+  )
+    .populate("applicant", "name email role")
+    .populate("flaggedBy", "name email")
+    .then(function afterUpdate(application) {
+      if (!application) {
+        res.status(404).json({ error: "Application not found." });
+        return;
+      }
+      res.status(200).json({ application: application.toJSON(WITH_FLAGS) });
+    })
+    .catch(function onError(err) {
+      console.error("flagApplication failed:", err);
+      res.status(500).json({ error: "Could not flag the application." });
+    });
+}
+
+/**
+ * DELETE /api/admin/applications/:id/flag
+ * Clear an application's flag and its reasons. Clearing one that isn't
+ * flagged is a successful no-op.
+ *
+ * @param {object} req - Express request.
+ * @param {object} res - Express response.
+ * @returns {Promise<void>}
+ */
+function unflagApplication(req, res) {
+  if (!mongoose.isValidObjectId(req.params.id)) {
+    res.status(404).json({ error: "Application not found." });
+    return Promise.resolve();
+  }
+
+  return Application.findByIdAndUpdate(
+    req.params.id,
+    { $set: { flagged: false, flagReasons: [] }, $unset: { flaggedBy: "", flaggedAt: "" } },
+    { new: true }
+  )
+    .populate("applicant", "name email role")
+    .then(function afterUpdate(application) {
+      if (!application) {
+        res.status(404).json({ error: "Application not found." });
+        return;
+      }
+      res.status(200).json({ application: application.toJSON(WITH_FLAGS) });
+    })
+    .catch(function onError(err) {
+      console.error("unflagApplication failed:", err);
+      res.status(500).json({ error: "Could not clear the flag." });
+    });
+}
+
+/**
  * PATCH /api/admin/applications/:id
  * Set an application's review status.
  *
  * Body: { decision: "accepted" | "rejected" | "waitlisted" | "pending" }
+ *
+ * Accepting, rejecting and waitlisting each email the applicant (moving back
+ * to pending sends nothing).
  *
  * @param {object} req - Express request.
  * @param {object} res - Express response.
@@ -128,7 +234,7 @@ function decideApplication(req, res) {
     .populate("applicant", "name email role")
     .then(function afterUpdate(application) {
       if (application) {
-        res.status(200).json({ application: application.toJSON() });
+        res.status(200).json({ application: application.toJSON(WITH_FLAGS) });
 
         var templateKey = DECISION_TEMPLATE_KEYS[decision];
         var recipient = application.applicant && application.applicant.email;
@@ -162,7 +268,7 @@ function decideApplication(req, res) {
             res.status(404).json({ error: "Application not found." });
             return;
           }
-          res.status(200).json({ application: existing.toJSON() });
+          res.status(200).json({ application: existing.toJSON(WITH_FLAGS) });
         });
     })
     .catch(function onError(err) {
@@ -271,7 +377,8 @@ function listRounds(_req, res) {
 
 /**
  * POST /api/admin/rounds — create a new application round.
- * Body: { name, description?, isOpen?, opensAt?, closesAt?, order? }
+ * Body: { name, description?, isOpen?, opensAt?, closesAt?, order?,
+ *         waitlistAfterAccepted? }
  * @param {object} req
  * @param {object} res
  * @returns {Promise<void>}
@@ -282,6 +389,10 @@ function createRound(req, res) {
   var shapeErrors = formConfigUtil
     .validateFormConfigShape(req.body.formConfig)
     .errors.concat(formConfigUtil.validateProfileFieldsShape(req.body.profileFields).errors);
+  var limit = waitlist.parseLimit(req.body.waitlistAfterAccepted);
+  if (limit.error) {
+    shapeErrors.push(limit.error);
+  }
   if (shapeErrors.length) {
     res.status(400).json({ error: shapeErrors.join(" ") });
     return Promise.resolve();
@@ -296,6 +407,7 @@ function createRound(req, res) {
     order: req.body.order ? Number(req.body.order) : 0,
     formConfig: req.body.formConfig || [],
     profileFields: req.body.profileFields || {},
+    waitlistAfterAccepted: limit.value,
   })
     .then(function afterCreate(round) {
       res.status(201).json({ round: round });
@@ -308,13 +420,25 @@ function createRound(req, res) {
 
 /**
  * PATCH /api/admin/rounds/:id — update a round (rename, open/close, reschedule).
- * Body: any of { name, description, isOpen, opensAt, closesAt, order }
+ * Body: any of { name, description, isOpen, opensAt, closesAt, order,
+ * formConfig, profileFields, waitlistAfterAccepted }. `waitlistAfterAccepted`
+ * is a whole number of 1+, or null/"" to remove the limit.
  * @param {object} req
  * @param {object} res
  * @returns {Promise<void>}
  */
 function updateRound(req, res) {
-  var allowed = ["name", "description", "isOpen", "opensAt", "closesAt", "order", "formConfig", "profileFields"];
+  var allowed = [
+    "name",
+    "description",
+    "isOpen",
+    "opensAt",
+    "closesAt",
+    "order",
+    "formConfig",
+    "profileFields",
+    "waitlistAfterAccepted",
+  ];
   var update = {};
   allowed.forEach(function pick(key) {
     if (req.body && req.body[key] !== undefined) {
@@ -325,6 +449,14 @@ function updateRound(req, res) {
   var shapeErrors = formConfigUtil
     .validateFormConfigShape(update.formConfig)
     .errors.concat(formConfigUtil.validateProfileFieldsShape(update.profileFields).errors);
+  if (update.waitlistAfterAccepted !== undefined) {
+    var limit = waitlist.parseLimit(update.waitlistAfterAccepted);
+    if (limit.error) {
+      shapeErrors.push(limit.error);
+    } else {
+      update.waitlistAfterAccepted = limit.value;
+    }
+  }
   if (shapeErrors.length) {
     res.status(400).json({ error: shapeErrors.join(" ") });
     return Promise.resolve();
@@ -880,6 +1012,8 @@ module.exports = {
   listApplications: listApplications,
   getApplication: getApplication,
   decideApplication: decideApplication,
+  flagApplication: flagApplication,
+  unflagApplication: unflagApplication,
   searchUsers: searchUsers,
   setRole: setRole,
   listRounds: listRounds,

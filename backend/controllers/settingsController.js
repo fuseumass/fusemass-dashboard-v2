@@ -48,8 +48,9 @@ function getSettings(_req, res) {
 
 /**
  * PATCH /api/admin/settings — update org settings (admin only).
- * Body: { googleAuthEnabled?, publicApplications?, checkInPopupEnabled?: boolean,
- *         checkInPopupFields?: string[], teamMaxSize?: number,
+ * Body: { googleAuthEnabled?, publicApplications?, autoFlagApplications?,
+ *         checkInPopupEnabled?: boolean, checkInPopupFields?: string[],
+ *         teamMaxSize?: number,
  *         features?: { meals?, hardware?, workshops?, judging?, raffle?: boolean },
  *         branding?: { orgName?, primaryColor?, secondaryColor?, accentColor?
  *                      (#RRGGBB), logoUrl?, logoDarkUrl?, faviconUrl? (https URL) } }
@@ -84,6 +85,9 @@ function updateSettings(req, res) {
   }
   if (req.body && req.body.publicApplications !== undefined) {
     update.publicApplications = Boolean(req.body.publicApplications);
+  }
+  if (req.body && req.body.autoFlagApplications !== undefined) {
+    update.autoFlagApplications = Boolean(req.body.autoFlagApplications);
   }
   if (req.body && req.body.teamMaxSize !== undefined) {
     var size = Number(req.body.teamMaxSize);

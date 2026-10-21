@@ -48,12 +48,13 @@ were presumably tracked in spreadsheets, so B33–B37 are a new design.
 | Custom questions from YAML config | ✅ per-round `formConfig`, incl. resume upload questions | — |
 | University / major autocomplete | 🟡 university + skills; majors are free text | F14 |
 | Application mode open / closed | ✅ rounds open/close | — |
-| Waitlist mode (auto-waitlist past capacity) | 📋 | B41 |
+| Waitlist mode (auto-waitlist past capacity) | ✅ per-round `waitlistAfterAccepted`; first submissions past it are waitlisted and emailed | B41 |
 | Accept / deny / waitlist decisions | ✅ | — |
 | Accepted / denied emails | ✅ | — |
-| **Waitlisted email** | 📋 (deciding "waitlisted" sends nothing today) | B41 |
+| **Waitlisted email** | ✅ built-in `application_waitlisted` template | B41 |
+| Accepted status still visible after applications close | ✅ `latest` on `GET /api/applications/me`, shown on the home page | B27, F22 |
 | Application search | 🟡 status/round filters only | F14 |
-| Resume auto-check + flag suspicious applications, flag/unflag | 📋 | B42 |
+| Resume auto-check + flag suspicious applications, flag/unflag | 🟡 flag/unflag, list filter + count, optional auto-checks (short resume, name missing, duplicate phone/resume). Resume text is read for Word files and plain-text PDFs only; other PDFs skip the text rules | B42 |
 | Admin statistics (counts by school, gender, status, …) | 🟡 built; workshop attendance + hardware out wait on B21/B22 | B43, F26 |
 | CSV export of applications | ✅ admin only, answers flattened, formula-safe | B29 |
 | RSVP + custom RSVP questions + un-RSVP | ⏸ | B32 |

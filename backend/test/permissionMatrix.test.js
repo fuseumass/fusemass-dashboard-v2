@@ -123,6 +123,11 @@ var MATRIX = [
     body: { decision: "accepted" },
   }),
   row("GET", "/api/admin/applications/:id/resume", "moderator", { use: { id: "application" } }),
+  row("POST", "/api/admin/applications/:id/flag", "moderator", {
+    use: { id: "application" },
+    body: { reason: "Matrix check" },
+  }),
+  row("DELETE", "/api/admin/applications/:id/flag", "moderator", { use: { id: "application" } }),
   row("GET", "/api/admin/teams", "moderator"),
   row("GET", "/api/staff/attendees", "moderator"),
   row("GET", "/api/staff/attendee", "moderator"),

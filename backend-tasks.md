@@ -91,10 +91,16 @@ serving). `POST /api/staff/meals/:mealId/checkin`, guarded by `isModerator`.
 open* round. On event day applications are closed, so an accepted attendee's
 home page says "Applications aren't open right now". This is exactly when
 they need it.
-- [ ] Return the applicant's most recent application across all rounds when no
+- [x] Return the applicant's most recent application across all rounds when no
       round is open (or add `GET /api/applications/me/latest`).
-- [ ] Include `checkedIn` and the round name so the home page can show "You're
+- [x] Include `checkedIn` and the round name so the home page can show "You're
       in — see you at check-in" vs. "You're checked in".
+- **Status:** done. `GET /api/applications/me` keeps `round` / `application`
+  (the open round) and adds `latest: { application, round: { _id, name },
+  checkedIn, checkedInAt }` (null if they never submitted). `latest` picks an
+  accepted application over a newer rejected/pending one, skips drafts, and is
+  also sent while a round is open (so an attendee accepted in an earlier round
+  can be told so). Tests: `test/latestApplication.test.js`.
 - **Depends on:** none. **Related:** F22.
 
 ### B26. Email outbox: log, retry and resend
@@ -866,23 +872,53 @@ could register with someone else's address, and their acceptance QR goes there.
 - **Depends on:** none.
 
 ### B41. Waitlist email and waitlist mode
-- [ ] Deciding "waitlisted" currently sends **no email**: `DECISION_TEMPLATE_KEYS`
+- [x] Deciding "waitlisted" currently sends **no email**: `DECISION_TEMPLATE_KEYS`
       in `adminController` only has accepted/rejected. Add a built-in
       `application_waitlisted` template and send it.
-- [ ] Optional waitlist mode (the old dashboard had it): once a round reaches a
+- [x] Optional waitlist mode (the old dashboard had it): once a round reaches a
       configured number of accepted applicants, new applications are
       waitlisted automatically and told so.
+- **Status:** done. Built-in `application_waitlisted` template, sent on a
+  reviewer's "waitlisted" decision (once; repeating it is a no-op). Waitlist
+  mode is a per-round `waitlistAfterAccepted` (whole number of 1+, empty = off;
+  `POST`/`PATCH /api/admin/rounds`, admin only, hidden from applicants). When a
+  round has that many accepted applications, a *first submission* (draft ->
+  submitted, or a new application, with or without an account) is saved as
+  `waitlisted` and the applicant gets the waitlist email instead of "received".
+  Already-submitted applications are never moved, reviewers can still accept
+  past the limit, and nobody is promoted automatically. **Behaviour change:**
+  re-submitting an already submitted application (an edit) now keeps its review
+  status; before, every edit reset it to `pending`, which would have undone
+  acceptances and taken people off the waitlist. Tests: `test/waitlist.test.js`.
 - **Depends on:** none.
 
 ### B42. Flag suspicious applications
-- [ ] `Application.flagged`, `flagReasons: [String]`, `flaggedBy`; moderators
+- [x] `Application.flagged`, `flagReasons: [String]`, `flaggedBy`; moderators
       can flag/unflag with a reason; review list filter + count.
-- [ ] Optional automatic checks on submit: resume text too short, resume
+- [x] Optional automatic checks on submit: resume text too short, resume
       doesn't mention the applicant's name, duplicate phone or resume across
       accounts.
 - **Don't repeat:** the old auto-flag (`event_application.rb`) had a misplaced
   `!` in its university/major check, so it flagged the wrong applications.
   Write the rule as a small pure function with tests.
+- **Status:** done. Moderators: `POST` / `DELETE /api/admin/applications/:id/flag`
+  (reason required, max 300 chars); `GET /api/admin/applications?flagged=true`
+  and a `flaggedCount` in the list response; the list rows carry only
+  `flagged` (reasons and `flaggedBy` come with the full application). Flags
+  are staff-only: the Application JSON that applicants get never includes
+  them (opt-in `toJSON({ includeFlags: true })` for the moderator routes).
+  Automatic checks run on an application's first submission only, behind the
+  admin setting `autoFlagApplications` (off by default; flags are labels, they
+  never block or reject): `utils/applicationFlags.js` holds the rules as pure
+  functions with truth-table tests, `utils/resumeText.js` reads PDF/Word text.
+  Resume text is read **without a parsing dependency** (untrusted uploads, B30),
+  so it only covers Word files and PDFs whose text is plain strings (TeX, Word,
+  Quartz, groff); PDFs that store glyph numbers (Chrome, Google Docs, Skia),
+  encrypted or damaged files, and old `.doc` are "unreadable" and skip the
+  text rules instead of being flagged. Duplicate phone / resume use stored
+  fingerprints (`phoneKey`, `resumeHash`), so only applications submitted after
+  this lands can be matched. Tests: `test/flaggedApplications.test.js`,
+  `test/resumeText.test.js`.
 - **Depends on:** none.
 
 ### B43. Admin statistics

@@ -276,9 +276,13 @@ serving.
 - **Depends on:** B6 (done), B7. **Related:** T3.
 
 ### F22. Event-day applicant home
-- [ ] Show accepted status even after applications close (needs B27; today the
+- [x] Show accepted status even after applications close (needs B27; today the
       page says "Applications aren't open right now" to accepted attendees on
-      event day).
+      event day). Basic version landed with B27 (`ClosedRoundStatus`: round
+      name, "You're in" / "You're checked in", other statuses); restyle it when
+      this page gets the "Today" view. Not handled yet: an attendee accepted in
+      an earlier round while a *different* round is open still sees "Start your
+      application" (`latest` is in the response; the page ignores it then).
 - [ ] "Today" view: next run-of-show items, my workshops (F17), my hardware
       (F20), Discord + website links, QR always one tap away (pinned on
       mobile).
