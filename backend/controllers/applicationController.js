@@ -8,6 +8,7 @@ var OrgSettings = require("../schemas/orgSettings");
 var User = require("../schemas/user");
 var passwordToken = require("../utils/passwordToken");
 var azureBlob = require("../utils/azureBlob");
+var discord = require("../utils/discord");
 var mailer = require("../utils/mailer");
 var formConfigUtil = require("../utils/formConfig");
 var qrCode = require("../utils/qrCode");
@@ -162,6 +163,7 @@ function apply(req, res) {
             res.status(200).json({ application: application.toJSON() });
 
             if (status === "pending" && !alreadySubmitted) {
+              announceApplication(application, round, false);
               mailer
                 .sendTemplateEmail(claims.email, "application_received", {
                   name: application.name,
@@ -255,6 +257,32 @@ function getMyQr(req, res) {
     .catch(function onError(err) {
       console.error("getMyQr failed:", err);
       res.status(500).json({ error: "Could not load your check-in QR code." });
+    });
+}
+
+/**
+ * Post a newly submitted application to the applications Discord webhook
+ * (when configured), with its running count in the round. Fire and forget.
+ *
+ * @param {object} application - The submitted Application.
+ * @param {object} round - Its ApplicationRound.
+ * @param {boolean} withoutAccount - Whether it came from the no-account form.
+ * @returns {void}
+ */
+function announceApplication(application, round, withoutAccount) {
+  if (!process.env.DISCORD_APPLICATIONS_WEBHOOK_URL) {
+    return;
+  }
+  Application.countDocuments({ round: round._id, status: { $ne: "draft" } })
+    .then(function afterCount(total) {
+      return discord.notifyApplication(application, {
+        roundName: round.name,
+        withoutAccount: withoutAccount,
+        totalInRound: total,
+      });
+    })
+    .catch(function onError(err) {
+      console.error("Failed to announce application:", err);
     });
 }
 
@@ -383,6 +411,7 @@ function applyPublic(req, res) {
 
               return Application.create(fields).then(function afterCreate(application) {
                 res.status(201).json({ application: application.toJSON() });
+                announceApplication(application, round, true);
 
                 mailer
                   .sendTemplateEmail(email, "application_received", {
