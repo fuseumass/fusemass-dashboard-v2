@@ -2,7 +2,6 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import Logo from "@/components/Logo";
 import {
   Sidebar,
   SidebarContent,
@@ -16,13 +15,22 @@ import {
   SidebarRail,
   useSidebar,
 } from "@/components/ui/sidebar";
-import { config } from "@/lib/config";
+import { API_URL } from "@/lib/api";
+import { useBranding } from "@/lib/branding";
 import { isActive } from "@/lib/nav";
 
-// The org mark at the top: the logo when expanded, a one-letter tile when the
-// sidebar is collapsed to icons (a wide logo would not fit the rail).
+// The org mark at the top: a tile in the brand colour with the org's initial
+// (or its uploaded logo), then the name. Collapsed to the icon rail, only the
+// tile shows.
 export function SidebarBrand({ onNavigate }) {
   const { setOpenMobile } = useSidebar();
+  const branding = useBranding();
+  const name = branding.orgName || "Dashboard";
+  const logo = branding.logoUrl
+    ? branding.logoUrl.startsWith("/")
+      ? `${API_URL}${branding.logoUrl}`
+      : branding.logoUrl
+    : "";
   function handleNavigate() {
     setOpenMobile(false);
     if (onNavigate) {
@@ -35,15 +43,22 @@ export function SidebarBrand({ onNavigate }) {
         <SidebarMenuButton
           asChild
           size="lg"
-          tooltip={config.orgName}
+          tooltip={name}
           className="data-[size=lg]:h-12"
         >
           <Link href="/dashboard" onClick={handleNavigate}>
-            <span className="hidden size-8 shrink-0 items-center justify-center rounded-md bg-sidebar-accent text-sm font-semibold text-sidebar-accent-foreground group-data-[collapsible=icon]:flex">
-              {config.orgName.charAt(0).toUpperCase()}
-            </span>
-            <span className="min-w-0 group-data-[collapsible=icon]:hidden">
-              <Logo variant="v2" height={32} />
+            {logo
+              ? // biome-ignore lint/performance/noImgElement: admin-uploaded logo served by the API
+                <img
+                  src={logo}
+                  alt=""
+                  className="size-8 shrink-0 rounded-md object-contain"
+                />
+              : <span className="flex size-8 shrink-0 items-center justify-center rounded-md bg-brand text-sm font-semibold text-brand-foreground">
+                  {name.charAt(0).toUpperCase()}
+                </span>}
+            <span className="min-w-0 truncate text-base font-semibold tracking-tight group-data-[collapsible=icon]:hidden">
+              {name}
             </span>
           </Link>
         </SidebarMenuButton>
@@ -84,6 +99,7 @@ export function NavGroups({ groups, onNavigate }) {
                       asChild
                       isActive={active}
                       tooltip={item.label}
+                      className="data-active:bg-brand/12 data-active:text-link data-active:[&_svg]:text-link"
                     >
                       <Link
                         href={item.href}

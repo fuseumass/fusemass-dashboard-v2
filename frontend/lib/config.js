@@ -10,5 +10,8 @@ export const config = {
   brandColor: process.env.NEXT_PUBLIC_BRAND_COLOR || "#4f46e5",
   // IANA zone the event happens in (e.g. "America/New_York"); empty means
   // "show times in the viewer's own zone". See lib/datetime.js.
+  // localStorage key for the last brand colours seen (lib/branding.js writes
+  // it, the boot script in app/layout.js reads it before the first paint).
+  brandStorageKey: "brand-colors",
   eventTimezone: process.env.NEXT_PUBLIC_EVENT_TIMEZONE || "",
 };

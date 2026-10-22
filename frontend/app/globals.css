@@ -6,18 +6,24 @@
 @custom-variant dark (&:is(.dark *));
 
 /*
- * Design tokens. One neutral grey scale does almost all the work; the brand
- * colour is reserved for primary actions, focus rings and selection (see
- * DESIGN.md). Every value has a light and a dark counterpart below.
+ * Design tokens. Neutral greys for surfaces and text; the org's brand colours
+ * (set at runtime from Settings, see lib/branding.js) carry identity: primary
+ * actions, the active nav item, the sidebar mark, focus rings, links, charts.
+ * Every value has a light and a dark counterpart below. See DESIGN.md.
  *
  * Components never use raw colours: they use the utilities these tokens map
  * to in @theme inline (bg-card, text-muted-foreground, border-border, ...).
  */
 :root {
-  /* White-label brand colour. app/layout.js overrides --brand on <html> from
-     NEXT_PUBLIC_BRAND_COLOR; --primary and --ring below follow it. */
+  /* White-label brand colours. lib/branding.js overrides these on <html>
+     with the values an admin saved in Settings (and picks the readable
+     -foreground); NEXT_PUBLIC_BRAND_COLOR is only the first-paint default.
+     --primary, --ring and the sidebar selection follow --brand. */
   --brand: #4f46e5;
   --brand-foreground: #ffffff;
+  --brand-secondary: #0f172a;
+  --brand-secondary-foreground: #ffffff;
+  --brand-accent: var(--brand);
 
   --radius: 0.5rem;
 
@@ -130,6 +136,10 @@
   --color-link: var(--link);
   --color-overlay: var(--overlay);
   --color-brand: var(--brand);
+  --color-brand-foreground: var(--brand-foreground);
+  --color-brand-secondary: var(--brand-secondary);
+  --color-brand-secondary-foreground: var(--brand-secondary-foreground);
+  --color-brand-accent: var(--brand-accent);
 
   --color-success: var(--success);
   --color-success-foreground: var(--success-foreground);

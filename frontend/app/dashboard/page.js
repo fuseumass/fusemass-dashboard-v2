@@ -17,13 +17,12 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { apiFetch } from "@/lib/api";
-import { config } from "@/lib/config";
 import { formatDateTime } from "@/lib/datetime";
 import { useUser } from "@/lib/userContext";
 
 const STATUS_LABELS = {
-  draft: "Draft, not submitted",
-  pending: "Submitted, under review",
+  draft: "Draft",
+  pending: "In review",
   accepted: "Accepted",
   rejected: "Not accepted",
   waitlisted: "Waitlisted",
@@ -69,12 +68,24 @@ export default function DashboardHome() {
       .catch(() => setQr(null));
   }, []);
 
+  // What the application card shows. With no open round, your standing from
+  // any round. With a round open, your application in it; but if you have
+  // none there and were already accepted in an earlier round, that acceptance
+  // (an attendee shouldn't be told to apply again).
+  const latestAccepted =
+    state.latest?.application?.status === "accepted" ? state.latest : null;
+  const standing = !state.round
+    ? state.latest || { none: true }
+    : !state.application
+      ? latestAccepted
+      : null;
+
+  const shownApplication = standing?.application || state.application;
+  const shownRound = standing?.round || state.round;
+
   return (
     <div>
-      <PageHeader
-        title={`Welcome, ${user.name.split(" ")[0]}`}
-        description={`Your ${config.orgName} dashboard.`}
-      />
+      <PageHeader title={user.name.split(" ")[0]} description={user.email} />
 
       <div className="grid items-start gap-4 md:grid-cols-2">
         {state.loading
@@ -82,29 +93,28 @@ export default function DashboardHome() {
           : <Card>
               <CardHeader>
                 <CardTitle>Application</CardTitle>
-                {state.application
+                {shownApplication
                   ? <CardAction>
                       <ApplicationStatusBadge
-                        status={state.application.status}
+                        status={shownApplication.status}
                         label={
-                          STATUS_LABELS[state.application.status] ||
-                          state.application.status
+                          STATUS_LABELS[shownApplication.status] ||
+                          shownApplication.status
                         }
                       />
                     </CardAction>
                   : null}
-                {state.round
-                  ? <CardDescription>{state.round.name} round</CardDescription>
+                {shownRound
+                  ? <CardDescription>{shownRound.name}</CardDescription>
                   : null}
               </CardHeader>
               <CardContent className="space-y-4">
-                {!state.round
-                  ? <ClosedRoundStatus latest={state.latest} />
+                {standing
+                  ? <ClosedRoundStatus latest={standing} />
                   : !state.application
                     ? <>
                         <p className="text-muted-foreground">
-                          The {state.round.name} round is open. You haven&apos;t
-                          applied yet.
+                          {`Applications for the ${state.round.name} round are open.`}
                         </p>
                         <Button asChild>
                           <Link href="/dashboard/application">
@@ -134,7 +144,7 @@ export default function DashboardHome() {
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
-                {user.checkedIn
+                {user.checkedIn && !standing?.checkedIn
                   ? <p className="flex items-center gap-1.5 font-medium text-success">
                       <CircleCheck className="size-4" aria-hidden="true" />
                       You&apos;re checked in

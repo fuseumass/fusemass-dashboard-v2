@@ -17,6 +17,16 @@ const ALL_ON = {
 let cached = null;
 const listeners = new Set();
 
+/**
+ * The public site metadata (GET /api/meta/branding: `{ branding, features }`),
+ * fetched once per page load and shared by lib/branding.js and useFeatures.
+ * @param {boolean} [force] - Skip the cache (after an admin saved settings).
+ * @returns {Promise<object>}
+ */
+export function loadSiteMeta(force) {
+  return load(force);
+}
+
 function load(force) {
   if (!cached || force) {
     // "reload" skips the browser's 60 s HTTP cache, used after an admin saved.

@@ -3,48 +3,40 @@
 import { CircleCheck } from "lucide-react";
 
 const STATUS_LINES = {
-  pending: "Submitted — under review.",
-  rejected: "Not accepted.",
+  draft: "You started an application but didn't submit it.",
+  pending:
+    "Your application is in review. We'll email you when there's a decision.",
+  rejected: "We couldn't offer you a spot this time.",
   waitlisted:
-    "You're on the waitlist. We'll email you if a spot opens up — there's nothing more you need to do.",
+    "You're on the waitlist. If a spot opens, we'll email you. You don't need to do anything.",
 };
 
-// What the home page's application card says when no application round is
-// open. `latest` is the applicant's standing across all rounds (from
-// GET /api/applications/me): an accepted attendee is told they're in (or
-// already checked in) rather than that applications are closed, which is the
-// message they'd otherwise get on event day.
+// The home page's application card when there's nothing to apply to: no
+// round is open, or the applicant was already accepted in an earlier round.
+// `latest` is their standing across all rounds (GET /api/applications/me);
+// `{ none: true }` means they never applied.
 export default function ClosedRoundStatus({ latest }) {
-  if (!latest) {
+  if (!latest || latest.none || !latest.application) {
     return (
-      <p className="muted">
-        Applications aren&apos;t open right now. Check back soon.
+      <p className="text-muted-foreground">
+        Applications are closed right now.
       </p>
     );
   }
 
   const status = latest.application.status;
-  return (
-    <>
-      {latest.round
-        ? <p style={{ marginBottom: "0.5rem" }}>
-            Round: <strong>{latest.round.name}</strong>
-          </p>
-        : null}
-      {status === "accepted"
-        ? latest.checkedIn
-          ? <p style={{ color: "var(--success)", fontWeight: 600 }}>
-              <CircleCheck
-                size={16}
-                aria-hidden="true"
-                style={{ verticalAlign: "-3px" }}
-              />{" "}
-              You&apos;re checked in. Enjoy the event!
-            </p>
-          : <p style={{ fontWeight: 600 }}>
-              You&apos;re in! See you at check-in — have your QR code ready.
-            </p>
-        : <p>{STATUS_LINES[status] || status}</p>}
-    </>
-  );
+  if (status !== "accepted") {
+    return (
+      <p className="text-muted-foreground">{STATUS_LINES[status] || status}</p>
+    );
+  }
+  if (latest.checkedIn) {
+    return (
+      <p className="flex items-center gap-1.5 font-medium text-success">
+        <CircleCheck className="size-4" aria-hidden="true" />
+        You're checked in.
+      </p>
+    );
+  }
+  return <p>You're accepted. Bring the QR code below to check-in.</p>;
 }
