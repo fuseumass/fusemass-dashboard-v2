@@ -9,10 +9,12 @@ Related: `AGENTS.md` (plain JavaScript, white-label), `frontend-tasks.md`
 
 ## 1. Principles
 
-**Restraint.** One primary action per screen. Neutral surfaces, 1 px borders,
-almost no shadow. The brand colour is for primary actions, focus rings and
-selection (the active nav item, a checked box). It is not for page
-backgrounds, headings, or decoration.
+**Restraint, with a clear brand.** One primary action per screen. Neutral
+surfaces, 1 px borders, almost no shadow. The org's brand colour carries the
+identity: primary buttons, the sidebar mark, the active nav item, links,
+focus rings, progress bars and the main chart series. The secondary colour is
+for a second chart series or a brand chip. Neither is for page backgrounds,
+large tinted panels or decoration.
 
 **Tools, not marketing.** Staff and admin screens are working tools. Aim for
 Linear / Vercel dashboard density: `text-sm` tables with 36 to 40 px rows,
@@ -61,9 +63,14 @@ Every token has a light and a dark value. Dark mode is a `.dark` class on
 toggle). Never branch on the OS media query in components: use `dark:` variants
 and tokens, and the theme will follow.
 
-`--brand` is set from `NEXT_PUBLIC_BRAND_COLOR` in `app/layout.js` and feeds
-`--primary`, `--ring` and the sidebar accent. Runtime branding and contrast
-handling are tracked in F12.
+Brand colours are set by an admin in Settings and served by
+`GET /api/meta/branding`. `lib/branding.js` writes them at runtime as
+`--brand`, `--brand-secondary`, `--brand-accent` (each with a readable
+`-foreground` picked by contrast), and an inline script in `app/layout.js`
+restores the last ones before the first paint. `NEXT_PUBLIC_BRAND_COLOR` is
+only the default. Utilities: `bg-brand`, `text-brand-foreground`,
+`bg-brand-secondary`, `bg-brand/12` (selection tint), plus `bg-primary`,
+`ring-ring` and `text-link`, which follow `--brand`.
 
 ## 3. Type, spacing, density
 
@@ -155,6 +162,18 @@ that name the result: "Create meal", "Send reset link", not "Submit" or "OK".
 Say what happened and what to do next. No exclamation marks in UI chrome, no
 emoji, no "please" padding, no jokes in error messages.
 
+Text that reads as machine-written, and what to do instead:
+
+- Em dashes and en dashes in sentences. Use a period, comma, colon or
+  parentheses.
+- Greetings and cheer ("Welcome back", "You're in!", "Enjoy the event").
+  State the fact: "You're accepted. Bring your QR code to check-in."
+- Subtitles that repeat the title ("Users: manage users"). Drop them, or say
+  something the reader didn't know ("24 applications, 6 waiting").
+- Marketing words: seamless, effortless, powerful, easily, simply.
+- Raw keys in the UI (`application_rejected`, `failed`). Show a human label
+  ("Decision: rejected", "Failed").
+
 ## 6. Motion
 
 Only overlays animate (dialogs, sheets, menus, toasts): 150 to 200 ms,
@@ -198,6 +217,6 @@ Copy into the PR description (also in `.github/pull_request_template.md`):
 - [ ] Uses `components/ui/*`, not new one-off buttons, inputs or cards
 - [ ] Loading, empty, error and "many items" states exist
 - [ ] Buttons have pending and disabled states; forms cannot double-submit
-- [ ] Sentence-case copy, verbs on buttons, no exclamation marks or emoji
+- [ ] Sentence-case copy, verbs on buttons, no exclamation marks, emoji or em dashes
 - [ ] Keyboard-only walkthrough done; every input has a label
 - [ ] `cd frontend && npm run lint && npm run build` pass
