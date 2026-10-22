@@ -1,28 +1,32 @@
-import { Badge } from "@/components/ui/badge";
+import StatusDot from "@/components/StatusDot";
 
 // One place that decides how an application status looks, so the applicant's
-// home and the review screens never disagree. Colour comes from the status
-// tokens (success / warning / info / destructive), not from raw values.
-const STATUS_VARIANTS = {
-  draft: "secondary",
+// home and the review screens never disagree: a coloured dot and a word.
+const STATUS_TONES = {
+  draft: "neutral",
   pending: "info",
   accepted: "success",
-  rejected: "destructive",
+  rejected: "danger",
   waitlisted: "warning",
+};
+
+const STATUS_WORDS = {
+  draft: "Draft",
+  pending: "Pending",
+  accepted: "Accepted",
+  rejected: "Rejected",
+  waitlisted: "Waitlisted",
 };
 
 /**
  * @param {object} props - { status: draft|pending|accepted|rejected|waitlisted,
- *   label: optional text, defaults to the status itself }.
+ *   label: optional text, defaults to the status word }.
  * @returns {JSX.Element}
  */
 export default function ApplicationStatusBadge({ status, label }) {
   return (
-    <Badge
-      variant={STATUS_VARIANTS[status] || "secondary"}
-      className="capitalize"
-    >
-      {label || status}
-    </Badge>
+    <StatusDot tone={STATUS_TONES[status] || "neutral"}>
+      {label || STATUS_WORDS[status] || status}
+    </StatusDot>
   );
 }
