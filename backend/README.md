@@ -136,6 +136,7 @@ Optional environment variables:
 | Variable                  | Default | Meaning                                       |
 | ------------------------- | ------- | --------------------------------------------- |
 | `EMAIL_DAILY_LIMIT`       | `500`   | Sending-account limit per 24 h; `0` = no check |
+| `EMAIL_MIN_INTERVAL_MS`   | `1000`  | Gap between the starts of two sends, so bursts stay under the provider's per-second limit; `0` = off |
 | `EMAIL_RETRY_INTERVAL_MS` | `30000` | How often the retry worker looks for due emails |
 | `EMAIL_LOG_RETENTION_DAYS`| `90`    | How long outbox rows are kept                 |
 

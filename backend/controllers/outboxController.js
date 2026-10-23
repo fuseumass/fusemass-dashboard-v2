@@ -409,9 +409,59 @@ function resendEmail(req, res) {
 }
 
 /**
+ * Failed account-setup emails worth another go: the error wasn't permanent
+ * and the person still can't sign in. Their old link is never resent; each
+ * gets a fresh one (reissueSetupLink).
+ * @param {number} limit - Most rows to return.
+ * @returns {Promise<object[]>} EmailLog documents.
+ */
+function findReissuableSetupLinks(limit) {
+  return EmailLog.find({
+    status: "failed",
+    templateKey: "account_setup",
+    permanent: { $ne: true },
+  })
+    .sort({ createdAt: 1 })
+    .limit(limit);
+}
+
+/**
+ * Reissue setup links one after another (each send is paced by the mailer).
+ * @param {object[]} rows - Failed account_setup rows.
+ * @param {object} admin - req.user.
+ * @returns {Promise<number>} How many new links went out.
+ */
+function reissueAll(rows, admin) {
+  var sent = 0;
+  return rows
+    .reduce(function chain(previous, row) {
+      return previous.then(function next() {
+        return reissueSetupLink(row, admin).then(function afterReissue(result) {
+          if (result.row && result.row.status === "sent") {
+            sent += 1;
+          } else if (result.error) {
+            // Already signed in or account gone: nothing to resend, so take
+            // it off the failures list.
+            return EmailLog.updateOne(
+              { _id: row._id, status: "failed" },
+              { $set: { status: "cancelled", lastError: result.error } }
+            );
+          }
+          return undefined;
+        });
+      });
+    }, Promise.resolve())
+    .then(function done() {
+      return sent;
+    });
+}
+
+/**
  * POST /api/admin/outbox/retry-failed   Body: { dryRun?, allowOverLimit? }
  * Put every failed email that is worth retrying back in the queue (not
- * permanent errors, interrupted sends or single-use links).
+ * permanent errors, interrupted sends or single-use links), and send a fresh
+ * account-setup link in place of each setup email that failed for a
+ * temporary reason.
  * @param {object} req - Express request.
  * @param {object} res - Express response.
  * @returns {Promise<void>}
@@ -423,20 +473,30 @@ function retryFailed(req, res) {
     return Promise.resolve();
   }
 
-  return outbox
-    .findRetryableFailed(RETRY_ALL_LIMIT)
-    .then(function afterFind(ids) {
-      return checkDailyLimit(ids.length, body).then(function afterQuota(quota) {
+  return Promise.all([outbox.findRetryableFailed(RETRY_ALL_LIMIT), findReissuableSetupLinks(RETRY_ALL_LIMIT)])
+    .then(function afterFind(found) {
+      var ids = found[0];
+      var setupRows = found[1];
+      var total = ids.length + setupRows.length;
+      return checkDailyLimit(total, body).then(function afterQuota(quota) {
         if (body.dryRun === true) {
-          res.status(200).json({ dryRun: true, requeued: 0, wouldRequeue: ids.length, overLimit: quota.over });
+          res.status(200).json({
+            dryRun: true,
+            requeued: 0,
+            wouldRequeue: ids.length,
+            wouldReissue: setupRows.length,
+            overLimit: quota.over,
+          });
           return undefined;
         }
         if (quota.blocked) {
-          sendOverLimit(res, ids.length, quota);
+          sendOverLimit(res, total, quota);
           return undefined;
         }
         return outbox.requeueFailed(ids).then(function afterRequeue(count) {
-          res.status(200).json({ requeued: count });
+          return reissueAll(setupRows, req.user).then(function afterReissue(reissued) {
+            res.status(200).json({ requeued: count, reissued: reissued });
+          });
         });
       });
     })

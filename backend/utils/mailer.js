@@ -47,6 +47,45 @@ function isMailConfigured() {
   return Boolean(process.env.SMTP_HOST && process.env.SMTP_USER);
 }
 
+// Sends start at least this far apart, so a burst (a reviewer accepting 30
+// people, each with an acceptance and a setup email) is spread out instead of
+// hitting the provider's per-second limit (Bird answers "452 Rate limit
+// exceeded"). Only the start times are spaced: a slow or stuck send never
+// holds up the ones after it. EMAIL_MIN_INTERVAL_MS, default 1 s; 0 = off.
+var DEFAULT_MIN_INTERVAL_MS = 1000;
+var nextSlotAt = 0;
+
+/**
+ * @returns {number} Minimum milliseconds between the starts of two sends.
+ */
+function minIntervalMs() {
+  var raw = process.env.EMAIL_MIN_INTERVAL_MS;
+  if (raw === undefined || raw === "" || Number.isNaN(Number(raw))) {
+    return DEFAULT_MIN_INTERVAL_MS;
+  }
+  return Math.max(0, Number(raw));
+}
+
+/**
+ * Send one message through the transport in the next free slot.
+ * @param {object} mail - nodemailer message.
+ * @returns {Promise<object>} nodemailer's info.
+ */
+function sendPaced(mail) {
+  var now = Date.now();
+  var startAt = Math.max(now, nextSlotAt);
+  nextSlotAt = startAt + minIntervalMs();
+  var wait = startAt - now;
+  if (wait <= 0) {
+    return buildTransport().sendMail(mail);
+  }
+  return new Promise(function delay(resolve) {
+    setTimeout(resolve, wait);
+  }).then(function send() {
+    return buildTransport().sendMail(mail);
+  });
+}
+
 /**
  * Build a nodemailer transport from environment config. Created lazily so the
  * app can boot without SMTP configured (password reset simply won't send).
@@ -95,8 +134,7 @@ function sendPasswordReset(to, resetUrl) {
 
   return outbox
     .send(entry, function deliver() {
-      return buildTransport()
-        .sendMail({
+      return sendPaced({
           from: from,
           to: to,
           subject: subject,
@@ -265,7 +303,7 @@ function deliverRendered(to, template, values, options) {
         // invite with "Add to calendar".
         mail.icalEvent = opts.icalEvent;
       }
-      return buildTransport().sendMail(mail);
+      return sendPaced(mail);
     })
     .then(function afterSend(info) {
       return { messageId: info && info.messageId, subject: renderedSubject };

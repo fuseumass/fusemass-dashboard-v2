@@ -109,7 +109,12 @@ export default function OutboxPage() {
         body: JSON.stringify({}),
       }),
     );
-    if (result) setNotice(`${result.requeued} failed emails queued to retry.`);
+    if (result)
+      setNotice(
+        result.reissued
+          ? `${result.requeued} failed emails queued to retry. ${result.reissued} new account setup links sent.`
+          : `${result.requeued} failed emails queued to retry.`,
+      );
   }
 
   async function previewAcceptance() {
