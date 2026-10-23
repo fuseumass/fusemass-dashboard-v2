@@ -151,8 +151,54 @@ function formatRunOfShow(events) {
   return "Run of show (also attached as a calendar invite):\n" + rows.join("\n");
 }
 
+/**
+ * A start and end time for an email, in the event's time zone, e.g.
+ * "Sat, Oct 24, 2:00 PM – 3:00 PM" (the end gets its own date when the time
+ * range crosses midnight).
+ * @param {Date|string} startsAt - Start.
+ * @param {Date|string} endsAt - End.
+ * @returns {string}
+ */
+function formatTimeRange(startsAt, endsAt) {
+  var timeZone = eventTimeZone();
+  var day = new Intl.DateTimeFormat("en-US", { timeZone: timeZone, weekday: "short", month: "short", day: "numeric" });
+  var time = new Intl.DateTimeFormat("en-US", { timeZone: timeZone, hour: "numeric", minute: "2-digit" });
+  var start = new Date(startsAt);
+  var end = new Date(endsAt);
+  var sameDay = day.format(start) === day.format(end);
+  return (
+    day.format(start) + ", " + time.format(start) + " – " + (sameDay ? "" : day.format(end) + ", ") + time.format(end)
+  );
+}
+
+/**
+ * @param {object} workshop - Workshop document.
+ * @param {string} method - PUBLISH or CANCEL.
+ * @returns {string} Calendar content with a stable identity.
+ */
+function buildWorkshopIcs(workshop, method) {
+  var website = process.env.ORG_WEBSITE_URL || process.env.CLIENT_ORIGIN || "http://localhost";
+  var domain;
+  try { domain = new URL(website).host; } catch (_err) { domain = "localhost"; }
+  var lines = [
+    "BEGIN:VCALENDAR", "VERSION:2.0",
+    "PRODID:-//" + escapeText(process.env.ORG_NAME || "Event") + "//Workshops//EN",
+    "CALSCALE:GREGORIAN", "METHOD:" + method, "BEGIN:VEVENT",
+    "UID:workshop-" + String(workshop._id) + "@" + domain,
+    "DTSTAMP:" + toIcsDate(new Date()), "SEQUENCE:" + (workshop.sequence || 0),
+    "DTSTART:" + toIcsDate(workshop.startsAt), "DTEND:" + toIcsDate(workshop.endsAt),
+    "SUMMARY:" + escapeText(workshop.title), "LOCATION:" + escapeText(workshop.location),
+    "DESCRIPTION:" + escapeText(workshop.description),
+  ];
+  if (method === "CANCEL") lines.push("STATUS:CANCELLED");
+  lines.push("END:VEVENT", "END:VCALENDAR");
+  return lines.map(foldLine).join("\r\n") + "\r\n";
+}
+
 module.exports = {
+  buildWorkshopIcs: buildWorkshopIcs,
   eventTimeZone: eventTimeZone,
   buildRunOfShowIcs: buildRunOfShowIcs,
   formatRunOfShow: formatRunOfShow,
+  formatTimeRange: formatTimeRange,
 };

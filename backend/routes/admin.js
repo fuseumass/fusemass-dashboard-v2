@@ -17,7 +17,13 @@ var requireFeature = require("../utils/requireFeature");
 var validateBody = require("../utils/validateBody");
 var applicationStatus = require("../utils/applicationStatus");
 
+var workshopController = require("../controllers/workshopController");
 var router = express.Router();
+router.use("/workshops", requireFeature("workshops"));
+router.get("/workshops", isAdmin, workshopController.listAdmin);
+router.post("/workshops", isAdmin, workshopController.create);
+router.patch("/workshops/:id", isAdmin, workshopController.update);
+router.delete("/workshops/:id", isAdmin, workshopController.remove);
 
 // Logo / favicon uploads: kept in memory (capped at 1 MiB) and handed to the
 // branding controller, which checks the real image type from the bytes.

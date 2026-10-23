@@ -80,12 +80,12 @@ were presumably tracked in spreadsheets, so B33–B37 are a new design.
 
 | Old feature | Status | Task |
 | ----------- | ------ | ---- |
-| Events with `rsvpable` + `max_seats` | 📋 (old never enforced seats) | B18, B19 |
-| RSVP / un-RSVP to an event | 📋 | B19, F17 |
+| Events with `rsvpable` + `max_seats` | ✅ admin CRUD, publication and atomic capacity; organizer assignment deferred | B18, B19 |
+| RSVP / un-RSVP to an event | ✅ accepted attendees, overlap warnings and My workshops; waitlist deferred | B19, F17 |
 | Per-event attendance check-in | 📋 Top Hat-style code; requires event check-in | B21 |
 | Workshop materials / announcements | ➕ 📋 visible to every accepted attendee | B20 |
 | Workshop raffle | ➕ 📋 after the workshop ends, attendees only; winner emailed to collect from the organizer room | B21 |
-| Calendar invites per workshop | ➕ 📋 | B19 |
+| Calendar invites per workshop | ✅ signup, changes and cancellations; stable UID and sequence; subscription feed deferred | B19 |
 
 ## Hardware
 

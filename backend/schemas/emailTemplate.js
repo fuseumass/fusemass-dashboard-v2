@@ -6,6 +6,29 @@ var Schema = mongoose.Schema;
 
 var DEFAULT_TEMPLATES = [
   {
+    // Sent when an attendee signs up for a workshop, with a calendar invite.
+    key: "workshop_signup",
+    subject: "You're signed up: {{title}}",
+    body:
+      "Hi {{name}},\n\nYou're signed up for {{title}}.\n\nWhen: {{when}}\nWhere: {{location}}\n\nThe calendar invite is attached. To cancel, use the Workshops page on your dashboard.",
+  },
+  {
+    // Sent to everyone signed up when a workshop's time or place changes. The
+    // attached invite updates the one already in their calendar.
+    key: "workshop_changed",
+    subject: "New time or place: {{title}}",
+    body:
+      "Hi {{name}},\n\n{{title}} has a new time or place.\n\nWhen: {{when}}\nWhere: {{location}}\n\nThe attached invite updates the one already in your calendar.",
+  },
+  {
+    // Sent when an attendee cancels, or an admin cancels the workshop. The
+    // attachment removes it from their calendar.
+    key: "workshop_cancelled",
+    subject: "Cancelled: {{title}}",
+    body:
+      "Hi {{name}},\n\nYou're no longer signed up for {{title}} ({{when}}).\n\nThe attachment removes it from your calendar.",
+  },
+  {
     key: "application_received",
     subject: "Thanks for applying to {{orgName}}",
     body:

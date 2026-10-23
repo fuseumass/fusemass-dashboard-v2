@@ -90,6 +90,7 @@ app.use("/api/admin", adminRoutes);
 app.use("/api/meta", metaRoutes);
 app.use("/api/staff", staffRoutes);
 app.use("/api/teams", teamRoutes);
+app.use("/api/workshops", require("./routes/workshops"));
 
 // --- Fallback error handler (Express 4 signature: err, req, res, next) ------
 app.use(function errorHandler(err, req, res, _next) {

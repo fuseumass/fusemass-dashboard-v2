@@ -1,0 +1,12 @@
+"use strict";
+var router = require("express").Router();
+var controller = require("../controllers/workshopController");
+var isAuthenticated = require("../utils/isAuthenticated");
+var requireFeature = require("../utils/requireFeature");
+router.use(requireFeature("workshops"));
+router.use(isAuthenticated, controller.accepted);
+router.get("/", controller.list);
+router.get("/mine", controller.list);
+router.post("/:id/signup", controller.signup);
+router.delete("/:id/signup", controller.cancelSignup);
+module.exports = router;
