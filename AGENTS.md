@@ -30,6 +30,10 @@ platform — no hackathon-specific names in code; branding comes from env vars.
 ## Before you commit
 
 - Backend: every file must pass `node --check` (valid syntax). No type-check step.
+- Backend: `cd backend && npm test` must pass. A **new route needs a row in the
+  `MATRIX` in `backend/test/permissionMatrix.test.js`** (who may call it); the
+  suite fails until you add one. Never return `passwordHash`, reset tokens or
+  another user's check-in code (`qrId`) from a route.
 - Frontend: `cd frontend && npm run lint` must pass (Biome).
 - Every new backend file starts with `"use strict";`.
 - Every exported function has JSDoc `@param` / `@returns` for documentation.
@@ -39,6 +43,10 @@ platform — no hackathon-specific names in code; branding comes from env vars.
 - **The frontend has its own `frontend/AGENTS.md`** with a warning that this is
   Next.js 16 (App Router) with breaking changes vs. older Next. Consult
   `frontend/node_modules/next/dist/docs/` before writing frontend routing code.
+- **UI work:** read [`frontend/DESIGN.md`](./frontend/DESIGN.md) first. Use the
+  shadcn/ui components in `frontend/components/ui/` (plain JS) and the design
+  tokens; no inline styles, no raw hex colours, no new uses of the legacy
+  `.btn`/`.card`/`.input` classes. Attach light, dark and 375 px screenshots.
 - Backlog lives in [`backend-tasks.md`](./backend-tasks.md),
   [`frontend-tasks.md`](./frontend-tasks.md), and
   [`testing-tasks.md`](./testing-tasks.md) (cross-linked as `B#`/`F#`/`T#`).

@@ -29,7 +29,7 @@ were presumably tracked in spreadsheets, so B33–B37 are a new design.
 | Old feature | Status | Task |
 | ----------- | ------ | ---- |
 | Email/password sign-up, login, forgot password | ✅ | — |
-| Email confirmation on sign-up (Devise `confirmable`) | 📋 | B40 |
+| Email confirmation on sign-up (Devise `confirmable`) | ✅ link on register, resend, required to apply (existing users count as verified) | B40 |
 | Google sign-in | ➕ ✅ | — |
 | Roles: admin / organizer / attendee | ✅ as admin / moderator / applicant | — |
 | Mentor role | ✖ mentorship runs on Discord | B31 |
@@ -38,7 +38,8 @@ were presumably tracked in spreadsheets, so B33–B37 are a new design.
 | Admin role management (`pages#permissions`) | ✅ Users page | — |
 | "Redeem code" to upgrade your own role | ✖ security hole (let anyone become admin) | B17 |
 | Slack: join gate, DMs, account re-association | ✖ replaced by Discord link + email | B26 |
-| Marketing-email consent (`non_transactional_email_consent`) | 📋 | B26 |
+| Marketing-email consent (`non_transactional_email_consent`) | 🟡 backend done (off by default, sign-up/profile field, unsubscribe link, enforced for announcements); sign-up checkbox + profile toggle are UI follow-ups | B26 |
+| Failed-email page (`/check-failed-emails` in the judging app) | ➕ ✅ email outbox: log, backoff retries, resend, `/dashboard/admin/outbox` | B26 |
 
 ## Registration & review
 
@@ -48,17 +49,18 @@ were presumably tracked in spreadsheets, so B33–B37 are a new design.
 | Custom questions from YAML config | ✅ per-round `formConfig`, incl. resume upload questions | — |
 | University / major autocomplete | 🟡 university + skills; majors are free text | F14 |
 | Application mode open / closed | ✅ rounds open/close | — |
-| Waitlist mode (auto-waitlist past capacity) | 📋 | B41 |
+| Waitlist mode (auto-waitlist past capacity) | ✅ per-round `waitlistAfterAccepted`; first submissions past it are waitlisted and emailed | B41 |
 | Accept / deny / waitlist decisions | ✅ | — |
 | Accepted / denied emails | ✅ | — |
-| **Waitlisted email** | 📋 (deciding "waitlisted" sends nothing today) | B41 |
+| **Waitlisted email** | ✅ built-in `application_waitlisted` template | B41 |
+| Accepted status still visible after applications close | ✅ `latest` on `GET /api/applications/me`, shown on the home page | B27, F22 |
 | Application search | 🟡 status/round filters only | F14 |
-| Resume auto-check + flag suspicious applications, flag/unflag | 📋 | B42 |
-| Admin statistics (counts by school, gender, status, …) | 📋 | B43, F26 |
-| CSV export of applications | 📋 | B29 |
+| Resume auto-check + flag suspicious applications, flag/unflag | 🟡 flag/unflag, list filter + count, optional auto-checks (short resume, name missing, duplicate phone/resume). Resume text is read for Word files and plain-text PDFs only; other PDFs skip the text rules | B42 |
+| Admin statistics (counts by school, gender, status, …) | 🟡 built; workshop attendance + hardware out wait on B21/B22 | B43, F26 |
+| CSV export of applications | ✅ admin only, answers flattened, formula-safe | B29 |
 | RSVP + custom RSVP questions + un-RSVP | ⏸ | B32 |
-| Mass email to lists (not applied / accepted / waitlisted / undecided / test to self) | 📋 | B26 |
-| Reminder emails | 📋 | B26 |
+| Mass email to lists (not applied / accepted / waitlisted / undecided / test to self) | 🟡 API done (`POST /api/admin/outbox/bulk`, consent-aware); compose UI pending. Workshop-signup and hardware-holder lists wait for B18 / hardware checkout | B26 |
+| Reminder emails | 🟡 send by hand as a bulk email to a segment; no scheduled reminders yet | B26 |
 
 ## Event day
 
@@ -70,7 +72,7 @@ were presumably tracked in spreadsheets, so B33–B37 are a new design.
 | Self check-in (virtual events) | ✖ it trusted a client-sent email; no virtual events planned | — |
 | Schedule, admin-editable | 🔍 run of show | — |
 | Schedule visible to attendees + "upcoming" on home | 📋 | F22 |
-| Public schedule feed for the hackathon website | 📋 | B45 |
+| Public schedule feed for the hackathon website | 🟡 run of show (JSON + .ics) built; workshops join once B18 exists | B45 |
 | Meal check-in | ➕ 🔍 | — |
 | "You're checked in" email + calendar invite | ➕ 🔍 | — |
 
@@ -101,7 +103,7 @@ were presumably tracked in spreadsheets, so B33–B37 are a new design.
 
 | Old feature | Status | Task |
 | ----------- | ------ | ---- |
-| Help tickets with screenshot, resolve / deny, search | ✖ created on Discord instead | B31 |
+| Help tickets with screenshot, resolve / deny, search | ✖ created on Discord instead (✅ home page links to the mentorship channel via `ORG_DISCORD_MENTORSHIP_URL`) | B31 |
 | Mentor notifications by tech tag; Slack DM link | ✖ Discord | B31 |
 
 ## Projects, prizes & judging
@@ -138,8 +140,8 @@ were presumably tracked in spreadsheets, so B33–B37 are a new design.
 
 | Old feature | Status | Task |
 | ----------- | ------ | ---- |
-| Feature flags per module | 📋 (old flag check was broken) | B25 |
-| Per-hackathon config repo (names, texts, branding) | 🟡 env + org settings; branding broken | B28, F12 |
-| CSV exports (applications, events, judging, projects) | 📋 | B29 |
-| Resume bulk download (`download_resumes.py`) | 📋 | B29 |
+| Feature flags per module | 🟡 backend ✅ (`OrgSettings.features`, `requireFeature`, gates meals; each new module must mount it); nav hides meals items; full nav config is F13 | B25, F13 |
+| Per-hackathon config repo (names, texts, branding) | 🟡 backend ✅ runtime branding API (`GET /api/meta/branding`, admin settings, logo upload) + admin card; the site still needs to apply it (colour flags fix) | B28, F12 |
+| CSV exports (applications, events, judging, projects) | 🟡 applications, check-ins, meals done; workshops, hardware, judging, projects pending | B29 |
+| Resume bulk download (`download_resumes.py`) | ✅ ZIP of consenting accepted applicants | B29 |
 | Error reporting (Sentry/Raven) | 📋 | B46 |

@@ -116,21 +116,59 @@ var applicationSchema = new Schema(
     reviewedAt: {
       type: Date,
     },
+
+    // ---- Flags -------------------------------------------------------------
+    // Reviewers' "look closer at this one" marker (see utils/applicationFlags).
+    // Set by a moderator (with a reason, `flaggedBy` = them) or by the
+    // automatic checks on submit (`flaggedBy` unset). Staff-only: left out of
+    // the application JSON applicants get (see the toJSON transform below).
+    flagged: { type: Boolean, default: false, index: true },
+    flagReasons: [{ type: String, trim: true }],
+    flaggedBy: { type: Schema.Types.ObjectId, ref: "User" },
+    flaggedAt: { type: Date },
+
+    // True when domain auto-accept (utils/autoAccept, the admin setting)
+    // accepted this application rather than a reviewer, so the worker can
+    // count its own acceptances against the per-day number.
+    autoAccepted: { type: Boolean },
+
+    // Fingerprints for spotting the same phone number / resume file on two
+    // accounts: the phone's last 10 digits and the resume's SHA-256. Kept
+    // whether or not automatic flagging is on, so turning it on later can
+    // already compare against earlier applications. Never sent to clients.
+    phoneKey: { type: String, index: true, sparse: true },
+    resumeHash: { type: String, index: true, sparse: true },
   },
   { timestamps: true }
 );
 
 // One application per applicant per round.
 applicationSchema.index({ applicant: 1, round: 1 }, { unique: true });
+// "How many did auto-accept accept in the last 24 hours?"
+applicationSchema.index({ autoAccepted: 1, reviewedAt: 1 }, { sparse: true });
 
 // Clients only need to know whether a resume exists; opening it goes through
 // an access-checked signed link. `resumeUrl` is the permanent blob URL older
 // builds stored — dropped so it can't leak from those documents either.
+//
+// Flags are for staff, so they are left out unless the caller asks with
+// `application.toJSON({ includeFlags: true })`, which only the moderator
+// routes do. Leaving them out by default means a route that returns an
+// application to its applicant can't leak them by forgetting something.
 applicationSchema.set("toJSON", {
-  transform: function transform(_doc, ret) {
+  transform: function transform(_doc, ret, options) {
     ret.hasResume = Boolean(ret.resumeBlobName);
     delete ret.resumeBlobName;
     delete ret.resumeUrl;
+    delete ret.phoneKey;
+    delete ret.resumeHash;
+    if (!(options && options.includeFlags)) {
+      delete ret.flagged;
+      delete ret.flagReasons;
+      delete ret.flaggedBy;
+      delete ret.flaggedAt;
+      delete ret.autoAccepted;
+    }
     return ret;
   },
 });

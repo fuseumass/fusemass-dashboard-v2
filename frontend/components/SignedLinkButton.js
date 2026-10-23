@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { Button } from "@/components/ui/button";
 import { openSignedLink } from "@/lib/api";
 
 // A link-styled button for private files (resumes). Clicking asks the backend
@@ -24,30 +25,19 @@ export default function SignedLinkButton({ path, children }) {
 
   return (
     <>
-      <button
+      <Button
         type="button"
-        className="link"
+        variant="link"
+        className="h-auto p-0 text-left font-medium whitespace-normal"
         onClick={open}
-        disabled={opening}
-        style={{
-          background: "none",
-          border: "none",
-          padding: 0,
-          font: "inherit",
-          cursor: opening ? "wait" : "pointer",
-        }}
+        loading={opening}
       >
-        {opening ? "Opening…" : children}
-      </button>
+        {opening ? "Opening" : children}
+      </Button>
       {error
         ? <span
             role="alert"
-            style={{
-              display: "block",
-              color: "var(--danger)",
-              fontSize: "0.82rem",
-              marginTop: 4,
-            }}
+            className="mt-1 block text-[0.8rem] text-destructive"
           >
             {error}
           </span>

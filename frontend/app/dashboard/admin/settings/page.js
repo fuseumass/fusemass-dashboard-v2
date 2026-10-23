@@ -3,6 +3,10 @@
 import { ArrowDown, ArrowUp } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
+import AutoAcceptSettings from "@/components/AutoAcceptSettings";
+import BrandingFeaturesSettings from "@/components/BrandingFeaturesSettings";
+import ReviewSettings from "@/components/ReviewSettings";
+import WaitlistLimit from "@/components/WaitlistLimit";
 import { apiFetch } from "@/lib/api";
 import { useUser } from "@/lib/userContext";
 
@@ -28,8 +32,11 @@ export default function SettingsPage() {
         Organization setup — visible to admins only.
       </p>
       <AuthSettings />
+      <BrandingFeaturesSettings />
       <CheckInPopupSettings />
       <TeamSettings />
+      <ReviewSettings />
+      <AutoAcceptSettings />
       <EmailTemplateEditor />
       <RoundsManager />
     </div>
@@ -40,7 +47,9 @@ var TEMPLATE_LABELS = {
   application_received: "Application Received",
   application_accepted: "Application Accepted",
   application_rejected: "Application Rejected",
+  application_waitlisted: "Application Waitlisted",
   account_setup: "Account Setup (applied without an account)",
+  verify_email: "Verify Email (sign-up)",
   checked_in: "Checked In",
 };
 
@@ -53,6 +62,7 @@ var PLACEHOLDER_GUIDE = [
   "{{qrcode}}",
   "{{runOfShow}}",
   "{{setupUrl}}",
+  "{{verifyUrl}}",
 ];
 
 var QRCODE_TOKEN = /\{\{\s*qrcode\s*\}\}/;
@@ -84,6 +94,7 @@ function EmailTemplateEditor() {
           "application_received",
           "application_accepted",
           "application_rejected",
+          "application_waitlisted",
           "checked_in",
         ];
         const sorted = [...raw].sort((a, b) => {
@@ -1106,7 +1117,7 @@ function RoundRow({ round, onChanged }) {
             style={{
               width: "auto",
               padding: "0.35rem 0.7rem",
-              color: "var(--danger)",
+              color: "var(--destructive)",
             }}
             disabled={saving}
             onClick={remove}
@@ -1154,6 +1165,12 @@ function RoundRow({ round, onChanged }) {
           </button>
         </div>
       </div>
+
+      <WaitlistLimit
+        key={round.waitlistAfterAccepted ?? "none"}
+        round={round}
+        onChanged={onChanged}
+      />
 
       {showForm
         ? <div style={{ marginTop: "0.75rem" }}>
@@ -1464,7 +1481,7 @@ function FormFieldEditor({
           style={{
             width: "auto",
             padding: "0.25rem 0.6rem",
-            color: "var(--danger)",
+            color: "var(--destructive)",
           }}
           onClick={onRemove}
         >

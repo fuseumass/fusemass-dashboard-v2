@@ -7,26 +7,34 @@ var MealService = require("../schemas/mealService");
 var MealCheckIn = require("../schemas/mealCheckin");
 var User = require("../schemas/user");
 var mailer = require("../utils/mailer");
-var passwordToken = require("../utils/passwordToken");
 var primaryClientOrigin = require("../utils/clientOrigin").primaryClientOrigin;
 var formConfigUtil = require("../utils/formConfig");
 var applicationStatus = require("../utils/applicationStatus");
+var applicationFlags = require("../utils/applicationFlags");
+var waitlist = require("../utils/waitlist");
+var decisions = require("../utils/decisions");
 var validator = require("validator");
 var mongoose = require("mongoose");
 
-// The review table's columns (see listApplications).
-var LIST_FIELDS = "name university status round applicant resumeBlobName createdAt updatedAt";
+// The review table's columns (see listApplications). `flagged` is just the
+// yes/no; the reasons come with the full application.
+var LIST_FIELDS = "name university status round applicant resumeBlobName flagged createdAt updatedAt";
 
-var DECISION_TEMPLATE_KEYS = {
-  accepted: "application_accepted",
-  rejected: "application_rejected",
-};
+// Staff routes pass this to toJSON to include the flag fields applicants
+// never see (see the Application schema's toJSON).
+var WITH_FLAGS = { includeFlags: true };
+
 
 /**
  * GET /api/admin/applications
  * List applications for the review dashboard. Optional filters:
  *   ?status=draft|pending|accepted|rejected|waitlisted
  *   ?round=<roundId>
+ *   ?flagged=true   only flagged applications
+ *
+ * Also returns `flaggedCount`: how many applications are flagged among those
+ * matching status/round (the flagged filter itself doesn't change it), so the
+ * page can show "Flagged (3)" whichever list is on screen.
  *
  * @param {object} req - Express request.
  * @param {object} res - Express response.
@@ -41,18 +49,28 @@ function listApplications(req, res) {
   if (req.query && req.query.round) {
     filter.round = req.query.round;
   }
+  var flaggedOnly = Boolean(req.query) && (req.query.flagged === "true" || req.query.flagged === "1");
+  var listFilter = flaggedOnly ? Object.assign({}, filter, { flagged: true }) : filter;
 
   // Only the review table's columns: answers and the round's form come from
   // GET /api/admin/applications/:id when a reviewer opens one, so the list
   // stays small however long the form is (with the whole form copied into
   // every row it was ~10 KB per application).
-  return Application.find(filter)
-    .select(LIST_FIELDS)
-    .populate("applicant", "name email role")
-    .populate("round", "name")
-    .sort({ createdAt: -1 })
-    .then(function afterFind(applications) {
-      res.status(200).json({ applications: applications });
+  return Promise.all([
+    Application.find(listFilter)
+      .select(LIST_FIELDS)
+      .populate("applicant", "name email role")
+      .populate("round", "name")
+      .sort({ createdAt: -1 }),
+    Application.countDocuments(Object.assign({}, filter, { flagged: true })),
+  ])
+    .then(function afterFind(found) {
+      res.status(200).json({
+        applications: found[0].map(function toRow(application) {
+          return application.toJSON(WITH_FLAGS);
+        }),
+        flaggedCount: found[1],
+      });
     })
     .catch(function onError(err) {
       console.error("listApplications failed:", err);
@@ -78,12 +96,13 @@ function getApplication(req, res) {
   return Application.findById(req.params.id)
     .populate("applicant", "name email role")
     .populate("round", "name formConfig")
+    .populate("flaggedBy", "name email")
     .then(function afterFind(application) {
       if (!application) {
         res.status(404).json({ error: "Application not found." });
         return;
       }
-      res.status(200).json({ application: application.toJSON() });
+      res.status(200).json({ application: application.toJSON(WITH_FLAGS) });
     })
     .catch(function onError(err) {
       console.error("getApplication failed:", err);
@@ -92,10 +111,92 @@ function getApplication(req, res) {
 }
 
 /**
+ * POST /api/admin/applications/:id/flag
+ * Flag an application for a closer look, with a reason. Flagging one that is
+ * already flagged adds the reason (and records who flagged last).
+ *
+ * Body: { reason: string } (required, shortened to 300 characters)
+ *
+ * @param {object} req - Express request (req.user set by the moderator guard).
+ * @param {object} res - Express response.
+ * @returns {Promise<void>}
+ */
+function flagApplication(req, res) {
+  var reason = applicationFlags.cleanReason(req.body && req.body.reason);
+  if (!reason) {
+    res.status(400).json({ error: "A reason is required to flag an application." });
+    return Promise.resolve();
+  }
+  if (!mongoose.isValidObjectId(req.params.id)) {
+    res.status(404).json({ error: "Application not found." });
+    return Promise.resolve();
+  }
+
+  return Application.findByIdAndUpdate(
+    req.params.id,
+    {
+      $set: { flagged: true, flaggedBy: req.user.id, flaggedAt: new Date() },
+      $addToSet: { flagReasons: reason },
+    },
+    { new: true }
+  )
+    .populate("applicant", "name email role")
+    .populate("flaggedBy", "name email")
+    .then(function afterUpdate(application) {
+      if (!application) {
+        res.status(404).json({ error: "Application not found." });
+        return;
+      }
+      res.status(200).json({ application: application.toJSON(WITH_FLAGS) });
+    })
+    .catch(function onError(err) {
+      console.error("flagApplication failed:", err);
+      res.status(500).json({ error: "Could not flag the application." });
+    });
+}
+
+/**
+ * DELETE /api/admin/applications/:id/flag
+ * Clear an application's flag and its reasons. Clearing one that isn't
+ * flagged is a successful no-op.
+ *
+ * @param {object} req - Express request.
+ * @param {object} res - Express response.
+ * @returns {Promise<void>}
+ */
+function unflagApplication(req, res) {
+  if (!mongoose.isValidObjectId(req.params.id)) {
+    res.status(404).json({ error: "Application not found." });
+    return Promise.resolve();
+  }
+
+  return Application.findByIdAndUpdate(
+    req.params.id,
+    { $set: { flagged: false, flagReasons: [] }, $unset: { flaggedBy: "", flaggedAt: "" } },
+    { new: true }
+  )
+    .populate("applicant", "name email role")
+    .then(function afterUpdate(application) {
+      if (!application) {
+        res.status(404).json({ error: "Application not found." });
+        return;
+      }
+      res.status(200).json({ application: application.toJSON(WITH_FLAGS) });
+    })
+    .catch(function onError(err) {
+      console.error("unflagApplication failed:", err);
+      res.status(500).json({ error: "Could not clear the flag." });
+    });
+}
+
+/**
  * PATCH /api/admin/applications/:id
  * Set an application's review status.
  *
  * Body: { decision: "accepted" | "rejected" | "waitlisted" | "pending" }
+ *
+ * Accepting, rejecting and waitlisting each email the applicant (moving back
+ * to pending sends nothing).
  *
  * @param {object} req - Express request.
  * @param {object} res - Express response.
@@ -110,46 +211,13 @@ function decideApplication(req, res) {
 
   var decision = req.body.decision;
 
-  // The status change is its own guard: the filter only matches an
-  // application that is not already at `decision`, so of two concurrent
-  // requests (a double-clicked button) exactly one can perform the
-  // transition and therefore exactly one can send the email. Reading the
-  // previous status separately and comparing afterwards let both requests
-  // observe the same "before" value and both send.
-  return Application.findOneAndUpdate(
-    { _id: req.params.id, status: { $ne: decision } },
-    {
-      status: decision,
-      reviewedBy: admin.id,
-      reviewedAt: new Date(),
-    },
-    { new: true }
-  )
-    .populate("applicant", "name email role")
+  // decisions.decide makes the status change and sends the email; of two
+  // concurrent requests (a double-clicked button) only one changes anything.
+  return decisions
+    .decide(req.params.id, decision, admin.id)
     .then(function afterUpdate(application) {
       if (application) {
-        res.status(200).json({ application: application.toJSON() });
-
-        var templateKey = DECISION_TEMPLATE_KEYS[decision];
-        var recipient = application.applicant && application.applicant.email;
-        if (templateKey && recipient) {
-          // If the template contains {{qrcode}} (the accepted one does by
-          // default), the mailer issues the applicant's check-in code
-          // (SHA-256 of their email) and embeds it as a QR image.
-          mailer
-            .sendTemplateEmail(recipient, templateKey, {
-              name: application.name,
-              status: application.status,
-            })
-            .catch(function onMailError(err) {
-              console.error("Failed to send decision email:", err);
-            });
-        }
-        if (decision === "accepted" && application.applicant) {
-          sendAccountSetupIfNeeded(application).catch(function onSetupError(err) {
-            console.error("Failed to send account setup email:", err);
-          });
-        }
+        res.status(200).json({ application: application.toJSON(WITH_FLAGS) });
         return undefined;
       }
 
@@ -162,35 +230,13 @@ function decideApplication(req, res) {
             res.status(404).json({ error: "Application not found." });
             return;
           }
-          res.status(200).json({ application: existing.toJSON() });
+          res.status(200).json({ application: existing.toJSON(WITH_FLAGS) });
         });
     })
     .catch(function onError(err) {
       console.error("decideApplication failed:", err);
       res.status(500).json({ error: "Could not update application." });
     });
-}
-
-/**
- * When an accepted applicant applied without an account (so has no password
- * and no Google link), email them a 7-day link to set a password, so they can
- * sign in to see their status and check-in QR code.
- *
- * @param {object} application - The accepted Application, applicant populated.
- * @returns {Promise<void>}
- */
-function sendAccountSetupIfNeeded(application) {
-  return User.findById(application.applicant._id).then(function afterFind(user) {
-    if (!passwordToken.needsPasswordSetup(user)) {
-      return undefined;
-    }
-    return passwordToken.issuePasswordToken(user, passwordToken.SETUP_TTL_MS).then(function afterIssue(rawToken) {
-      return mailer.sendTemplateEmail(user.email, "account_setup", {
-        name: application.name || user.name,
-        setupUrl: passwordToken.passwordLink(rawToken, { setup: true }),
-      });
-    });
-  });
 }
 
 /**
@@ -271,7 +317,8 @@ function listRounds(_req, res) {
 
 /**
  * POST /api/admin/rounds — create a new application round.
- * Body: { name, description?, isOpen?, opensAt?, closesAt?, order? }
+ * Body: { name, description?, isOpen?, opensAt?, closesAt?, order?,
+ *         waitlistAfterAccepted? }
  * @param {object} req
  * @param {object} res
  * @returns {Promise<void>}
@@ -282,6 +329,10 @@ function createRound(req, res) {
   var shapeErrors = formConfigUtil
     .validateFormConfigShape(req.body.formConfig)
     .errors.concat(formConfigUtil.validateProfileFieldsShape(req.body.profileFields).errors);
+  var limit = waitlist.parseLimit(req.body.waitlistAfterAccepted);
+  if (limit.error) {
+    shapeErrors.push(limit.error);
+  }
   if (shapeErrors.length) {
     res.status(400).json({ error: shapeErrors.join(" ") });
     return Promise.resolve();
@@ -296,6 +347,7 @@ function createRound(req, res) {
     order: req.body.order ? Number(req.body.order) : 0,
     formConfig: req.body.formConfig || [],
     profileFields: req.body.profileFields || {},
+    waitlistAfterAccepted: limit.value,
   })
     .then(function afterCreate(round) {
       res.status(201).json({ round: round });
@@ -308,13 +360,25 @@ function createRound(req, res) {
 
 /**
  * PATCH /api/admin/rounds/:id — update a round (rename, open/close, reschedule).
- * Body: any of { name, description, isOpen, opensAt, closesAt, order }
+ * Body: any of { name, description, isOpen, opensAt, closesAt, order,
+ * formConfig, profileFields, waitlistAfterAccepted }. `waitlistAfterAccepted`
+ * is a whole number of 1+, or null/"" to remove the limit.
  * @param {object} req
  * @param {object} res
  * @returns {Promise<void>}
  */
 function updateRound(req, res) {
-  var allowed = ["name", "description", "isOpen", "opensAt", "closesAt", "order", "formConfig", "profileFields"];
+  var allowed = [
+    "name",
+    "description",
+    "isOpen",
+    "opensAt",
+    "closesAt",
+    "order",
+    "formConfig",
+    "profileFields",
+    "waitlistAfterAccepted",
+  ];
   var update = {};
   allowed.forEach(function pick(key) {
     if (req.body && req.body[key] !== undefined) {
@@ -325,6 +389,14 @@ function updateRound(req, res) {
   var shapeErrors = formConfigUtil
     .validateFormConfigShape(update.formConfig)
     .errors.concat(formConfigUtil.validateProfileFieldsShape(update.profileFields).errors);
+  if (update.waitlistAfterAccepted !== undefined) {
+    var limit = waitlist.parseLimit(update.waitlistAfterAccepted);
+    if (limit.error) {
+      shapeErrors.push(limit.error);
+    } else {
+      update.waitlistAfterAccepted = limit.value;
+    }
+  }
   if (shapeErrors.length) {
     res.status(400).json({ error: shapeErrors.join(" ") });
     return Promise.resolve();
@@ -496,6 +568,7 @@ function sampleTemplateValues(user) {
     name: user.name,
     status: "accepted",
     setupUrl: primaryClientOrigin() + "/reset-password?token=sample&setup=1",
+    verifyUrl: primaryClientOrigin() + "/verify-email?token=sample",
     runOfShow: calendar.formatRunOfShow([
       {
         title: "Opening ceremony (sample)",
@@ -879,6 +952,8 @@ module.exports = {
   listApplications: listApplications,
   getApplication: getApplication,
   decideApplication: decideApplication,
+  flagApplication: flagApplication,
+  unflagApplication: unflagApplication,
   searchUsers: searchUsers,
   setRole: setRole,
   listRounds: listRounds,

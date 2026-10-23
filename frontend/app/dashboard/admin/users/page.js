@@ -1,7 +1,20 @@
 "use client";
 
+import { Search, Users } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
+import DataTable from "@/components/DataTable";
+import EmptyState from "@/components/EmptyState";
+import PageHeader from "@/components/PageHeader";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Input } from "@/components/ui/input";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { apiFetch } from "@/lib/api";
 import { useUser } from "@/lib/userContext";
 
@@ -49,105 +62,93 @@ export default function UsersPage() {
     }
   }
 
+  const columns = [
+    { accessorKey: "name", header: "Name" },
+    { accessorKey: "email", header: "Email" },
+    {
+      accessorKey: "role",
+      header: "Role",
+      cell: ({ row }) => {
+        const u = row.original;
+        const isSelf = u._id === user._id;
+        return (
+          <div className="flex items-center gap-2">
+            <Select
+              value={u.role}
+              disabled={isSelf}
+              onValueChange={(role) => setRole(u._id, role)}
+            >
+              <SelectTrigger
+                size="sm"
+                aria-label={`Role for ${u.name}`}
+                className="w-36 capitalize"
+              >
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {ROLES.map((r) => (
+                  <SelectItem key={r} value={r} className="capitalize">
+                    {r}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            {isSelf
+              ? <span className="text-xs text-muted-foreground">You</span>
+              : null}
+          </div>
+        );
+      },
+    },
+  ];
+
   return (
     <div>
-      <h1
-        style={{ fontSize: "1.5rem", fontWeight: 700, marginBottom: "0.25rem" }}
-      >
-        Users
-      </h1>
-      <p className="muted" style={{ marginBottom: "1.25rem" }}>
-        Search by name or email, then assign a role.
-      </p>
-
-      <input
-        className="input"
-        style={{ maxWidth: 420, marginBottom: "1rem" }}
-        placeholder="Search users…"
-        value={query}
-        onChange={(e) => setQuery(e.target.value)}
+      <PageHeader
+        title="Users"
+        description="Search by name or email, then assign a role."
       />
 
-      {error
-        ? <div className="alert-error" style={{ marginBottom: "1rem" }}>
-            {error}
+      <DataTable
+        columns={columns}
+        data={users}
+        loading={loading}
+        getRowId={(u) => u._id}
+        toolbar={
+          <div className="space-y-3">
+            <div className="relative max-w-sm">
+              <Search
+                className="pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-muted-foreground"
+                aria-hidden="true"
+              />
+              <Input
+                type="search"
+                className="pl-8"
+                placeholder="Search users…"
+                aria-label="Search users"
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+              />
+            </div>
+            {error
+              ? <Alert variant="destructive">
+                  <AlertDescription>{error}</AlertDescription>
+                </Alert>
+              : null}
           </div>
-        : null}
-
-      <div className="card" style={{ overflowX: "auto" }}>
-        <table
-          style={{
-            width: "100%",
-            borderCollapse: "collapse",
-            fontSize: "0.9rem",
-          }}
-        >
-          <thead>
-            <tr
-              style={{
-                textAlign: "left",
-                borderBottom: "1px solid var(--border)",
-              }}
-            >
-              <th style={{ padding: "0.75rem 1rem", fontWeight: 600 }}>Name</th>
-              <th style={{ padding: "0.75rem 1rem", fontWeight: 600 }}>
-                Email
-              </th>
-              <th style={{ padding: "0.75rem 1rem", fontWeight: 600 }}>Role</th>
-            </tr>
-          </thead>
-          <tbody>
-            {loading && users.length === 0
-              ? <tr>
-                  <td colSpan={3} style={{ padding: "1rem" }} className="muted">
-                    Loading…
-                  </td>
-                </tr>
-              : users.length === 0
-                ? <tr>
-                    <td
-                      colSpan={3}
-                      style={{ padding: "1rem" }}
-                      className="muted"
-                    >
-                      No users found.
-                    </td>
-                  </tr>
-                : users.map((u) => (
-                    <tr
-                      key={u._id}
-                      style={{ borderBottom: "1px solid var(--border)" }}
-                    >
-                      <td style={{ padding: "0.75rem 1rem" }}>{u.name}</td>
-                      <td style={{ padding: "0.75rem 1rem" }}>{u.email}</td>
-                      <td style={{ padding: "0.75rem 1rem" }}>
-                        <select
-                          className="select"
-                          style={{ maxWidth: 160 }}
-                          value={u.role}
-                          disabled={u._id === user._id}
-                          onChange={(e) => setRole(u._id, e.target.value)}
-                        >
-                          {ROLES.map((r) => (
-                            <option key={r} value={r}>
-                              {r}
-                            </option>
-                          ))}
-                        </select>
-                        {u._id === user._id
-                          ? <div
-                              className="muted"
-                              style={{ fontSize: "0.72rem", marginTop: 2 }}
-                            >
-                              (you)
-                            </div>
-                          : null}
-                      </td>
-                    </tr>
-                  ))}
-          </tbody>
-        </table>
-      </div>
+        }
+        emptyState={
+          <EmptyState
+            icon={Users}
+            title="No users found"
+            description={
+              query
+                ? "No one matches that search. Try a different name or email."
+                : "People appear here once they create an account."
+            }
+          />
+        }
+      />
     </div>
   );
 }

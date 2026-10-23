@@ -3,13 +3,26 @@
 import { ArrowRight, CircleCheck } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useState } from "react";
+import ApplicationStatusBadge from "@/components/ApplicationStatusBadge";
+import ClosedRoundStatus from "@/components/ClosedRoundStatus";
+import PageHeader from "@/components/PageHeader";
+import { CardSkeleton } from "@/components/skeletons";
+import { Button } from "@/components/ui/button";
+import {
+  Card,
+  CardAction,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
 import { apiFetch } from "@/lib/api";
-import { config } from "@/lib/config";
+import { formatDateTime } from "@/lib/datetime";
 import { useUser } from "@/lib/userContext";
 
 const STATUS_LABELS = {
-  draft: "Draft — not submitted",
-  pending: "Submitted — under review",
+  draft: "Draft",
+  pending: "In review",
   accepted: "Accepted",
   rejected: "Not accepted",
   waitlisted: "Waitlisted",
@@ -21,20 +34,32 @@ export default function DashboardHome() {
     loading: true,
     round: null,
     application: null,
+    latest: null,
   });
   const [qr, setQr] = useState(null);
+  const [links, setLinks] = useState(null);
 
   useEffect(() => {
+    // Discord invite and the optional mentorship link (tickets live on Discord).
+    apiFetch("/api/meta/links")
+      .then((data) => setLinks(data.links))
+      .catch(() => setLinks(null));
     apiFetch("/api/applications/me")
       .then((data) =>
         setState({
           loading: false,
           round: data.round,
           application: data.application,
+          latest: data.latest,
         }),
       )
       .catch(() =>
-        setState({ loading: false, round: null, application: null }),
+        setState({
+          loading: false,
+          round: null,
+          application: null,
+          latest: null,
+        }),
       );
     // Fetched on its own rather than off the open round's application: on
     // event day applications are closed, and that is exactly when it's needed.
@@ -43,122 +68,144 @@ export default function DashboardHome() {
       .catch(() => setQr(null));
   }, []);
 
+  // What the application card shows. With no open round, your standing from
+  // any round. With a round open, your application in it; but if you have
+  // none there and were already accepted in an earlier round, that acceptance
+  // (an attendee shouldn't be told to apply again).
+  const latestAccepted =
+    state.latest?.application?.status === "accepted" ? state.latest : null;
+  const standing = !state.round
+    ? state.latest || { none: true }
+    : !state.application
+      ? latestAccepted
+      : null;
+
+  const shownApplication = standing?.application || state.application;
+  const shownRound = standing?.round || state.round;
+
   return (
     <div>
-      <h1
-        style={{ fontSize: "1.6rem", fontWeight: 700, marginBottom: "0.35rem" }}
-      >
-        Welcome, {user.name.split(" ")[0]}
-      </h1>
-      <p className="muted" style={{ marginBottom: "1.5rem" }}>
-        Your {config.orgName} dashboard.
-      </p>
+      <PageHeader title={user.name.split(" ")[0]} description={user.email} />
 
-      <div className="card" style={{ padding: "1.5rem", maxWidth: 560 }}>
-        <h2
-          style={{
-            fontSize: "1.05rem",
-            fontWeight: 600,
-            marginBottom: "0.75rem",
-          }}
-        >
-          Application
-        </h2>
-
+      <div className="grid items-start gap-4 md:grid-cols-2">
         {state.loading
-          ? <p className="muted">Loading…</p>
-          : !state.round
-            ? <p className="muted">
-                Applications aren&apos;t open right now. Check back soon.
-              </p>
-            : !state.application
-              ? <>
-                  <p className="muted" style={{ marginBottom: "1rem" }}>
-                    The <strong>{state.round.name}</strong> round is open. You
-                    haven&apos;t applied yet.
-                  </p>
-                  <Link
-                    href="/dashboard/application"
-                    className="btn btn-primary"
-                    style={{ maxWidth: 220 }}
-                  >
-                    Start your application
-                  </Link>
-                </>
-              : <>
-                  <p style={{ marginBottom: "0.5rem" }}>
-                    Round: <strong>{state.round.name}</strong>
-                  </p>
-                  <p style={{ marginBottom: "1rem" }}>
-                    Status:{" "}
-                    <strong>
-                      {STATUS_LABELS[state.application.status] ||
-                        state.application.status}
-                    </strong>
-                  </p>
-                  <Link href="/dashboard/application" className="link">
-                    View or edit your application{" "}
-                    <ArrowRight
-                      size={14}
-                      aria-hidden="true"
-                      style={{ verticalAlign: "-2px" }}
-                    />
-                  </Link>
-                </>}
-      </div>
+          ? <CardSkeleton lines={2} />
+          : <Card>
+              <CardHeader>
+                <CardTitle>Application</CardTitle>
+                {shownApplication
+                  ? <CardAction>
+                      <ApplicationStatusBadge
+                        status={shownApplication.status}
+                        label={
+                          STATUS_LABELS[shownApplication.status] ||
+                          shownApplication.status
+                        }
+                      />
+                    </CardAction>
+                  : null}
+                {shownRound
+                  ? <CardDescription>{shownRound.name}</CardDescription>
+                  : null}
+              </CardHeader>
+              <CardContent className="space-y-4">
+                {standing
+                  ? <ClosedRoundStatus latest={standing} />
+                  : !state.application
+                    ? <>
+                        <p className="text-muted-foreground">
+                          {`Applications for the ${state.round.name} round are open.`}
+                        </p>
+                        <Button asChild>
+                          <Link href="/dashboard/application">
+                            Start your application
+                          </Link>
+                        </Button>
+                      </>
+                    : <Button asChild variant="outline">
+                        <Link href="/dashboard/application">
+                          View or edit your application
+                          <ArrowRight
+                            data-icon="inline-end"
+                            aria-hidden="true"
+                          />
+                        </Link>
+                      </Button>}
+              </CardContent>
+            </Card>}
 
-      {qr
-        ? <div
-            className="card"
-            style={{ padding: "1.5rem", maxWidth: 560, marginTop: "1rem" }}
-          >
-            <h2
-              style={{
-                fontSize: "1.05rem",
-                fontWeight: 600,
-                marginBottom: "0.25rem",
-              }}
-            >
-              Your check-in QR code
-            </h2>
-            {user.checkedIn
-              ? <p
-                  style={{
-                    marginBottom: "0.5rem",
-                    color: "var(--success)",
-                    fontWeight: 600,
-                  }}
-                >
-                  <CircleCheck
-                    size={16}
-                    aria-hidden="true"
-                    style={{ verticalAlign: "-3px" }}
-                  />{" "}
-                  You&apos;re checked in
-                  {user.checkedInAt
-                    ? ` (${new Date(user.checkedInAt).toLocaleString([], {
-                        weekday: "short",
-                        hour: "numeric",
-                        minute: "2-digit",
-                      })})`
-                    : ""}
-                </p>
-              : null}
-            <p className="muted" style={{ marginBottom: "1rem" }}>
-              Show this at event check-in and at every meal. It&apos;s the same
-              code as in your acceptance email.
-            </p>
-            {/* A data: URL generated by the API; next/image adds nothing here. */}
-            {/* biome-ignore lint/performance/noImgElement: data URL, not a static asset */}
-            <img
-              src={qr.qrCode}
-              alt="Your check-in QR code"
-              width={240}
-              height={240}
-              style={{ display: "block", background: "#fff", borderRadius: 8 }}
-            />
-          </div>
-        : null}
+        {qr
+          ? <Card>
+              <CardHeader>
+                <CardTitle>Your check-in QR code</CardTitle>
+                <CardDescription>
+                  Show this at event check-in and at every meal. It&apos;s the
+                  same code as in your acceptance email.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                {user.checkedIn && !standing?.checkedIn
+                  ? <p className="flex items-center gap-1.5 font-medium text-success">
+                      <CircleCheck className="size-4" aria-hidden="true" />
+                      You&apos;re checked in
+                      {user.checkedInAt
+                        ? ` (${formatDateTime(user.checkedInAt)})`
+                        : ""}
+                    </p>
+                  : null}
+                {/* A data: URL generated by the API; next/image adds nothing here. */}
+                {/* biome-ignore lint/performance/noImgElement: data URL, not a static asset */}
+                <img
+                  src={qr.qrCode}
+                  alt="Your check-in QR code"
+                  width={240}
+                  height={240}
+                  className="block size-60 rounded-md bg-white"
+                />
+              </CardContent>
+            </Card>
+          : null}
+        {links && (links.discordUrl || links.mentorshipUrl)
+          ? <Card>
+              <CardHeader>
+                <CardTitle>Community</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                {links.discordUrl
+                  ? <div>
+                      <a
+                        className="font-medium text-link hover:underline"
+                        href={links.discordUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                      >
+                        Join the Discord
+                      </a>
+                      <p className="text-sm text-muted-foreground">
+                        Announcements, and a place to meet other hackers.
+                      </p>
+                    </div>
+                  : null}
+                {links.mentorshipUrl
+                  ? <div>
+                      <a
+                        className="font-medium text-link hover:underline"
+                        href={links.mentorshipUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                      >
+                        Ask a mentor on Discord
+                      </a>
+                      <p className="text-sm text-muted-foreground">
+                        Stuck? Open a mentorship ticket and a mentor will pick
+                        it up.
+                      </p>
+                    </div>
+                  : null}
+              </CardContent>
+            </Card>
+          : null}
+      </div>
     </div>
   );
 }

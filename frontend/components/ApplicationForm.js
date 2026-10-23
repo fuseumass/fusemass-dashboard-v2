@@ -690,7 +690,7 @@ function DynamicField({ field, value, onChange }) {
           <span>
             <RichText text={field.label} />
             {field.required
-              ? <span style={{ color: "var(--danger)" }}> *</span>
+              ? <span style={{ color: "var(--destructive)" }}> *</span>
               : null}
           </span>
         </label>
@@ -781,7 +781,7 @@ function ChoiceGroup({ field, value, onChange }) {
       <legend className="field-label">
         <RichText text={field.label} />
         {field.required
-          ? <span style={{ color: "var(--danger)" }}> *</span>
+          ? <span style={{ color: "var(--destructive)" }}> *</span>
           : null}
       </legend>
       <Description text={field.description} />
@@ -923,7 +923,9 @@ function Field({ label, required, description, children }) {
       <label style={{ display: "block" }}>
         <span className="field-label">
           <RichText text={label} />
-          {required ? <span style={{ color: "var(--danger)" }}> *</span> : null}
+          {required
+            ? <span style={{ color: "var(--destructive)" }}> *</span>
+            : null}
         </span>
         <Description text={description} />
         {children}

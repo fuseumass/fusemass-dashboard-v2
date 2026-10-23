@@ -2,36 +2,49 @@
 
 import Link from "next/link";
 import { useState } from "react";
+import { useForm } from "react-hook-form";
+import { z } from "zod";
 import AuthShell from "@/components/AuthShell";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Button } from "@/components/ui/button";
+import {
+  Form,
+  FormControl,
+  FormField,
+  FormItem,
+  FormLabel,
+  FormMessage,
+  FormRootError,
+} from "@/components/ui/form";
+import { Input } from "@/components/ui/input";
 import { apiFetch } from "@/lib/api";
+import { applyServerError, zodResolver } from "@/lib/forms";
+
+const forgotSchema = z.object({
+  email: z
+    .string()
+    .trim()
+    .refine((value) => value.includes("@"), "Enter a valid email address."),
+});
 
 export default function ForgotPasswordPage() {
-  const [email, setEmail] = useState("");
   const [sent, setSent] = useState(false);
-  const [error, setError] = useState("");
-  const [submitting, setSubmitting] = useState(false);
 
-  async function handleSubmit(event) {
-    event.preventDefault();
-    setError("");
-    setSubmitting(true);
+  const form = useForm({
+    resolver: zodResolver(forgotSchema),
+    defaultValues: { email: "" },
+  });
 
-    if (!email.trim() || !email.includes("@")) {
-      setError("Please enter a valid email address.");
-      setSubmitting(false);
-      return;
-    }
-
+  async function onSubmit(values) {
+    form.clearErrors("root.server");
     try {
       await apiFetch("/api/auth/forgot-password", {
         method: "POST",
-        body: JSON.stringify({ email }),
+        body: JSON.stringify(values),
       });
       setSent(true);
     } catch (err) {
-      setError(err.message);
-    } finally {
-      setSubmitting(false);
+      applyServerError(form, err);
     }
   }
 
@@ -39,57 +52,50 @@ export default function ForgotPasswordPage() {
     <AuthShell
       title="Reset your password"
       subtitle="We'll email you a link to set a new password"
-    >
-      {sent
-        ? <div className="alert-success">
-            If an account exists for that email, a reset link is on its way.
-            Check your inbox.
-          </div>
-        : <form
-            onSubmit={handleSubmit}
-            style={{ display: "flex", flexDirection: "column", gap: "0.9rem" }}
-          >
-            <div>
-              <label className="field-label" htmlFor="email">
-                Email
-              </label>
-              <input
-                id="email"
-                type="email"
-                className="input"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                required
-              />
-            </div>
-
-            {error
-              ? <div className="alert-error" role="alert">
-                  {error}
-                </div>
-              : null}
-
-            <button
-              type="submit"
-              className="btn btn-primary"
-              disabled={submitting}
-            >
-              {submitting ? "Sending…" : "Send reset link"}
-            </button>
-          </form>}
-
-      <p
-        className="muted"
-        style={{
-          textAlign: "center",
-          marginTop: "1.25rem",
-          fontSize: "0.9rem",
-        }}
-      >
-        <Link href="/login" className="link">
+      footer={
+        <Link href="/login" className="font-medium text-link hover:underline">
           Back to log in
         </Link>
-      </p>
+      }
+    >
+      {sent
+        ? <Alert variant="success">
+            <AlertDescription>
+              If an account exists for that email, a reset link is on its way.
+              Check your inbox.
+            </AlertDescription>
+          </Alert>
+        : <Form {...form}>
+            <form
+              onSubmit={form.handleSubmit(onSubmit)}
+              noValidate
+              className="space-y-4"
+            >
+              <FormField
+                control={form.control}
+                name="email"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Email</FormLabel>
+                    <FormControl>
+                      <Input type="email" autoComplete="email" {...field} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <FormRootError />
+
+              <Button
+                type="submit"
+                className="w-full"
+                loading={form.formState.isSubmitting}
+              >
+                {form.formState.isSubmitting ? "Sending" : "Send reset link"}
+              </Button>
+            </form>
+          </Form>}
     </AuthShell>
   );
 }

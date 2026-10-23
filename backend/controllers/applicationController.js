@@ -12,6 +12,10 @@ var discord = require("../utils/discord");
 var mailer = require("../utils/mailer");
 var formConfigUtil = require("../utils/formConfig");
 var qrCode = require("../utils/qrCode");
+var applicationStatus = require("../utils/applicationStatus");
+var applicationFlags = require("../utils/applicationFlags");
+var resumeText = require("../utils/resumeText");
+var waitlist = require("../utils/waitlist");
 
 /**
  * Parse a form field that may arrive as a JSON string (multipart form data
@@ -41,6 +45,100 @@ function parseMaybeJson(value, fallback) {
  */
 function findOpenRound() {
   return ApplicationRound.findOne({ isOpen: true }).sort({ order: 1 });
+}
+
+/**
+ * A round as applicants may see it: without staff-only settings (the waitlist
+ * limit is the round's capacity, which is for organizers).
+ * @param {(object|null)} round - An ApplicationRound document.
+ * @returns {(object|null)} Plain round JSON, or null.
+ */
+function roundForApplicant(round) {
+  if (!round) {
+    return null;
+  }
+  var json = round.toJSON();
+  delete json.waitlistAfterAccepted;
+  return json;
+}
+
+/**
+ * The status a newly submitted application starts with: "waitlisted" once
+ * the round has reached its accepted limit (waitlist mode), otherwise
+ * "pending". Applications already submitted are never moved by this.
+ *
+ * @param {object} round - The ApplicationRound being applied to.
+ * @returns {Promise<string>} "pending" or "waitlisted".
+ */
+function submissionStatus(round) {
+  if (!waitlist.hasLimit(round.waitlistAfterAccepted)) {
+    return Promise.resolve("pending");
+  }
+  return Application.countDocuments({ round: round._id, status: "accepted" }).then(function afterCount(accepted) {
+    return waitlist.shouldWaitlist(round.waitlistAfterAccepted, accepted) ? "waitlisted" : "pending";
+  });
+}
+
+/**
+ * Email a newly submitted application's owner: the waitlist email when it
+ * was waitlisted on arrival (the "received" one says "pending review", which
+ * would be wrong), otherwise the received email. Errors are logged, not thrown.
+ *
+ * @param {string} to - Recipient address.
+ * @param {object} application - The saved Application.
+ * @returns {Promise<void>}
+ */
+function sendSubmissionEmail(to, application) {
+  var key = application.status === "waitlisted" ? "application_waitlisted" : "application_received";
+  return mailer
+    .sendTemplateEmail(to, key, {
+      name: application.name,
+      status: application.status,
+    })
+    .catch(function onMailError(err) {
+      console.error("Failed to send " + key + " email:", err);
+    });
+}
+
+/**
+ * The automatic reasons to flag a first submission, when admins have turned
+ * automatic flagging on (empty otherwise). Best effort: a failure here is
+ * logged and the application is simply submitted unflagged.
+ *
+ * @param {object} input
+ * @param {*} input.applicantId - The applicant's user id (their own other
+ *   applications don't count as duplicates).
+ * @param {string} input.name - Applicant name, to look for in the resume.
+ * @param {string} input.phoneKey - applicationFlags.phoneKey of their phone.
+ * @param {string} input.resumeHash - SHA-256 of their resume file, or "".
+ * @param {(object|undefined)} input.file - The multer file uploaded with this
+ *   submission, whose text is checked.
+ * @returns {Promise<Array<string>>}
+ */
+function autoFlagReasonsFor(input) {
+  return OrgSettings.getSingleton()
+    .then(function afterSettings(settings) {
+      if (!settings.autoFlagApplications) {
+        return [];
+      }
+      var others = { applicant: { $ne: input.applicantId } };
+      return Promise.all([
+        input.file ? resumeText.extractText(input.file.buffer) : Promise.resolve(null),
+        input.phoneKey ? Application.exists(Object.assign({ phoneKey: input.phoneKey }, others)) : null,
+        input.resumeHash ? Application.exists(Object.assign({ resumeHash: input.resumeHash }, others)) : null,
+      ]).then(function afterChecks(found) {
+        return applicationFlags.autoFlagReasons({
+          name: input.name,
+          resumeText: found[0],
+          duplicatePhone: Boolean(found[1]),
+          duplicateResume: Boolean(found[2]),
+        });
+      });
+    })
+    .catch(function onError(err) {
+      console.error("Automatic application checks failed:", err);
+      return [];
+    });
 }
 
 /**
@@ -93,9 +191,14 @@ function apply(req, res) {
       }
       // A required resume question is satisfied by a resume uploaded earlier.
       return Application.findOne({ applicant: claims.id, round: openRound._id })
-        .select("resumeBlobName")
+        .select("resumeBlobName resumeHash status")
         .then(function afterExisting(existing) {
-          return { round: openRound, hadResume: Boolean(existing && existing.resumeBlobName) };
+          return {
+            round: openRound,
+            hadResume: Boolean(existing && existing.resumeBlobName),
+            previousStatus: existing ? existing.status : null,
+            previousResumeHash: (existing && existing.resumeHash) || "",
+          };
         });
     })
     .then(function afterLookup(found) {
@@ -130,49 +233,77 @@ function apply(req, res) {
       }
 
       return resumeStep.then(function afterResume(resumeBlobName) {
-        var update = Object.assign({}, profile, {
-          applicant: claims.id,
-          round: round._id,
-          status: status,
-          answers: answersCheck.answers,
-        });
-        if (resumeBlobName) {
-          update.resumeBlobName = resumeBlobName;
-        }
+        // Submitting a draft (or a brand new application) is the one moment
+        // an application gets its starting status (waitlisted when the round
+        // is full) and its automatic flags. Submitting again to edit one
+        // that's already in keeps whatever status review gave it: an edit
+        // must not undo an acceptance, or take someone off the waitlist.
+        var previousStatus = found.previousStatus;
+        var firstSubmission = status === "pending" && (!previousStatus || previousStatus === "draft");
+        var statusStep =
+          status !== "pending"
+            ? Promise.resolve(status)
+            : firstSubmission
+              ? submissionStatus(round)
+              : Promise.resolve(previousStatus);
+        var resumeHash = req.file ? applicationFlags.fileHash(req.file.buffer) : found.previousResumeHash;
+        var flagStep = firstSubmission
+          ? autoFlagReasonsFor({
+              applicantId: claims.id,
+              name: profile.name,
+              phoneKey: applicationFlags.phoneKey(profile.phone),
+              resumeHash: resumeHash,
+              file: req.file,
+            })
+          : Promise.resolve([]);
 
-        // A single atomic upsert performs the write and reports what was
-        // there before it: `new: false` returns the pre-update document, or
-        // null when this call is the one that inserted. Only the first
-        // draft->pending (or new->pending) transition counts as "submitted",
-        // and deriving that from the write itself means two concurrent
-        // submits cannot both observe "not yet submitted" and both send.
-        // Reading the document first and then updating allowed exactly that.
-        return Application.findOneAndUpdate(
-          { applicant: claims.id, round: round._id },
-          { $set: update },
-          { new: false, upsert: true, setDefaultsOnInsert: true }
-        ).then(function afterSave(previous) {
-          var alreadySubmitted = Boolean(previous) && previous.status !== "draft";
+        return Promise.all([statusStep, flagStep]).then(function afterDecided(decided) {
+          var update = Object.assign({}, profile, {
+            applicant: claims.id,
+            round: round._id,
+            status: decided[0],
+            answers: answersCheck.answers,
+            phoneKey: applicationFlags.phoneKey(profile.phone),
+          });
+          if (resumeBlobName) {
+            update.resumeBlobName = resumeBlobName;
+            update.resumeHash = resumeHash;
+          }
+          var operations = { $set: update };
+          if (decided[1].length) {
+            update.flagged = true;
+            update.flaggedAt = new Date();
+            // Added, not assigned: a moderator may have flagged the draft already.
+            operations.$addToSet = { flagReasons: { $each: decided[1] } };
+          }
 
-          // The pre-image is not what the client should get back, so reload
-          // the saved document. The write has already landed, so this read
-          // is not part of the decision and cannot race it.
-          return Application.findOne({ applicant: claims.id, round: round._id }).then(function afterReload(
-            application
-          ) {
-            res.status(200).json({ application: application.toJSON() });
+          // A single atomic upsert performs the write and reports what was
+          // there before it: `new: false` returns the pre-update document, or
+          // null when this call is the one that inserted. Only the first
+          // draft->pending (or new->pending) transition counts as "submitted",
+          // and deriving that from the write itself means two concurrent
+          // submits cannot both observe "not yet submitted" and both send.
+          // Reading the document first and then updating allowed exactly that.
+          return Application.findOneAndUpdate({ applicant: claims.id, round: round._id }, operations, {
+            new: false,
+            upsert: true,
+            setDefaultsOnInsert: true,
+          }).then(function afterSave(previous) {
+            var alreadySubmitted = Boolean(previous) && previous.status !== "draft";
 
-            if (status === "pending" && !alreadySubmitted) {
-              announceApplication(application, round, false);
-              mailer
-                .sendTemplateEmail(claims.email, "application_received", {
-                  name: application.name,
-                  status: application.status,
-                })
-                .catch(function onMailError(err) {
-                  console.error("Failed to send application-received email:", err);
-                });
-            }
+            // The pre-image is not what the client should get back, so reload
+            // the saved document. The write has already landed, so this read
+            // is not part of the decision and cannot race it.
+            return Application.findOne({ applicant: claims.id, round: round._id }).then(function afterReload(
+              application
+            ) {
+              res.status(200).json({ application: application.toJSON() });
+
+              if (status === "pending" && !alreadySubmitted) {
+                announceApplication(application, round, false);
+                sendSubmissionEmail(claims.email, application);
+              }
+            });
           });
         });
       });
@@ -184,9 +315,43 @@ function apply(req, res) {
 }
 
 /**
+ * What an applicant's home page shows once the open round (if any) has
+ * nothing for them: their most relevant submitted application across all
+ * rounds, with the round's name and whether they have checked in.
+ *
+ * @param {Array<object>} applications - The applicant's submitted
+ *   applications, `round` populated with its name.
+ * @param {(object|null)} user - The applicant's `{ checkedIn, checkedInAt }`.
+ * @returns {(object|null)} `{ application, round, checkedIn, checkedInAt }`,
+ *   or null when they have never submitted one.
+ */
+function latestSummary(applications, user) {
+  var picked = applicationStatus.pickLatest(applications);
+  if (!picked) {
+    return null;
+  }
+  return {
+    application: {
+      _id: picked._id,
+      status: picked.status,
+      name: picked.name,
+      createdAt: picked.createdAt,
+      updatedAt: picked.updatedAt,
+    },
+    round: picked.round ? { _id: picked.round._id, name: picked.round.name } : null,
+    checkedIn: Boolean(user && user.checkedIn),
+    checkedInAt: (user && user.checkedInAt) || null,
+  };
+}
+
+/**
  * GET /api/applications/me
- * Return the open round and the applicant's application for it (or null). The
- * frontend uses this to decide whether to show the form or the status.
+ * Return the open round and the applicant's application for it (or null),
+ * plus `latest`: their most relevant submitted application across ALL rounds
+ * (null if none). The frontend decides what to show from these: the form or
+ * the status for the open round, and, when applications have closed, the
+ * accepted attendee's status and check-in state (event day is exactly when
+ * no round is open).
  *
  * @param {object} req - Express request.
  * @param {object} res - Express response.
@@ -199,10 +364,18 @@ function getMine(req, res) {
     return Promise.resolve();
   }
 
-  return findOpenRound()
-    .then(function afterRound(round) {
+  return Promise.all([
+    findOpenRound(),
+    Application.find({ applicant: claims.id, status: { $ne: "draft" } })
+      .select("status name round createdAt updatedAt")
+      .populate("round", "name"),
+    User.findById(claims.id).select("checkedIn checkedInAt").lean(),
+  ])
+    .then(function afterLoad(loaded) {
+      var round = loaded[0];
+      var latest = latestSummary(loaded[1], loaded[2]);
       if (!round) {
-        res.status(200).json({ round: null, application: null });
+        res.status(200).json({ round: null, application: null, latest: latest });
         return null;
       }
       return Application.findOne({
@@ -210,8 +383,9 @@ function getMine(req, res) {
         round: round._id,
       }).then(function afterLookup(application) {
         res.status(200).json({
-          round: round,
+          round: roundForApplicant(round),
           application: application ? application.toJSON() : null,
+          latest: latest,
         });
       });
     })
@@ -312,7 +486,7 @@ function getPublicRound(_req, res) {
         res.status(404).json({ error: "Applying without an account isn't enabled." });
         return;
       }
-      res.status(200).json({ round: results[1] || null });
+      res.status(200).json({ round: roundForApplicant(results[1]) });
     })
     .catch(function onError(err) {
       console.error("getPublicRound failed:", err);
@@ -387,7 +561,19 @@ function applyPublic(req, res) {
           return undefined;
         }
 
-        var userStep = existing ? Promise.resolve(existing) : User.create({ name: name, email: email, role: "applicant" });
+        // Unverified until they set a password through an emailed link, which
+        // is what proves the address is theirs (see authController.resetPassword).
+        // The form is multipart, so the opt-in checkbox arrives as a string.
+        var wantsAnnouncements = body.marketingEmailConsent === true || body.marketingEmailConsent === "true";
+        var userStep = existing
+          ? Promise.resolve(existing)
+          : User.create({
+              name: name,
+              email: email,
+              role: "applicant",
+              emailVerified: false,
+              marketingEmailConsent: wantsAnnouncements,
+            });
 
         return userStep.then(function afterUserReady(user) {
           return Application.exists({ applicant: user._id, round: round._id }).then(function afterExists(already) {
@@ -398,29 +584,42 @@ function applyPublic(req, res) {
 
             var resumeStep = req.file ? azureBlob.uploadResume(req.file, String(user._id)) : Promise.resolve("");
             return resumeStep.then(function afterResume(resumeBlobName) {
-              var fields = Object.assign({}, buildProfile(body), {
-                name: name,
-                applicant: user._id,
-                round: round._id,
-                status: "pending",
-                answers: answersCheck.answers,
-              });
-              if (resumeBlobName) {
-                fields.resumeBlobName = resumeBlobName;
-              }
+              var profile = buildProfile(body);
+              var resumeHash = req.file ? applicationFlags.fileHash(req.file.buffer) : "";
 
-              return Application.create(fields).then(function afterCreate(application) {
-                res.status(201).json({ application: application.toJSON() });
-                announceApplication(application, round, true);
+              return Promise.all([
+                submissionStatus(round),
+                autoFlagReasonsFor({
+                  applicantId: user._id,
+                  name: name,
+                  phoneKey: applicationFlags.phoneKey(profile.phone),
+                  resumeHash: resumeHash,
+                  file: req.file,
+                }),
+              ]).then(function afterDecided(decided) {
+                var fields = Object.assign({}, profile, {
+                  name: name,
+                  applicant: user._id,
+                  round: round._id,
+                  status: decided[0],
+                  answers: answersCheck.answers,
+                  phoneKey: applicationFlags.phoneKey(profile.phone),
+                });
+                if (resumeBlobName) {
+                  fields.resumeBlobName = resumeBlobName;
+                  fields.resumeHash = resumeHash;
+                }
+                if (decided[1].length) {
+                  fields.flagged = true;
+                  fields.flagReasons = decided[1];
+                  fields.flaggedAt = new Date();
+                }
 
-                mailer
-                  .sendTemplateEmail(email, "application_received", {
-                    name: application.name,
-                    status: application.status,
-                  })
-                  .catch(function onMailError(err) {
-                    console.error("Failed to send application-received email:", err);
-                  });
+                return Application.create(fields).then(function afterCreate(application) {
+                  res.status(201).json({ application: application.toJSON() });
+                  announceApplication(application, round, true);
+                  sendSubmissionEmail(email, application);
+                });
               });
             });
           });

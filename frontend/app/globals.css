@@ -1,55 +1,210 @@
 @import "tailwindcss";
+@import "tw-animate-css";
+@import "shadcn/tailwind.css";
 
+/* Dark mode is a class on <html>, toggled by next-themes (default: system). */
+@custom-variant dark (&:is(.dark *));
+
+/*
+ * Design tokens. Neutral greys for surfaces and text; the org's brand colours
+ * (set at runtime from Settings, see lib/branding.js) carry identity: primary
+ * actions, the active nav item, the sidebar mark, focus rings, links, charts.
+ * Every value has a light and a dark counterpart below. See DESIGN.md.
+ *
+ * Components never use raw colours: they use the utilities these tokens map
+ * to in @theme inline (bg-card, text-muted-foreground, border-border, ...).
+ */
 :root {
-  --background: #f6f7fb;
-  --surface: #ffffff;
-  --foreground: #171821;
-  --muted: #6b7280;
-  --border: #e5e7eb;
-  --input-bg: #ffffff;
-  /* --brand is overridden at runtime by the layout from NEXT_PUBLIC_BRAND_COLOR */
+  /* White-label brand colours. lib/branding.js overrides these on <html>
+     with the values an admin saved in Settings (and picks the readable
+     -foreground); NEXT_PUBLIC_BRAND_COLOR is only the first-paint default.
+     --primary, --ring and the sidebar selection follow --brand. */
   --brand: #4f46e5;
   --brand-foreground: #ffffff;
-  --danger: #dc2626;
-  --success: #16a34a;
-  --radius: 12px;
+  --brand-secondary: #0f172a;
+  --brand-secondary-foreground: #ffffff;
+  --brand-accent: var(--brand);
+
+  --radius: 0.5rem;
+
+  --background: oklch(0.985 0 0);
+  --foreground: oklch(0.205 0 0);
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0.205 0 0);
+  --popover: oklch(1 0 0);
+  --popover-foreground: oklch(0.205 0 0);
+
+  --primary: var(--brand);
+  --primary-foreground: var(--brand-foreground);
+  --secondary: oklch(0.961 0 0);
+  --secondary-foreground: oklch(0.269 0 0);
+  --muted: oklch(0.961 0 0);
+  --muted-foreground: oklch(0.5 0 0);
+  --accent: oklch(0.945 0 0);
+  --accent-foreground: oklch(0.205 0 0);
+  --destructive: oklch(0.55 0.22 27);
+
+  --border: oklch(0.915 0 0);
+  --input: oklch(0.87 0 0);
+  --ring: var(--brand);
+
+  /* Text-sized brand colour for links; lightened in dark mode to stay legible. */
+  --link: var(--brand);
+
+  /* Status colours. Each reads as text at 4.5:1 on a light surface and works
+     as a solid fill with its -foreground. */
+  --success: oklch(0.527 0.154 150);
+  --success-foreground: oklch(0.985 0 0);
+  --warning: oklch(0.555 0.15 50);
+  --warning-foreground: oklch(0.985 0 0);
+  --info: oklch(0.5 0.19 258);
+  --info-foreground: oklch(0.985 0 0);
+
+  /* Scrim behind modal panels and drawers. */
+  --overlay: oklch(0 0 0 / 40%);
+
+  --sidebar: oklch(0.985 0 0);
+  --sidebar-foreground: oklch(0.269 0 0);
+  --sidebar-primary: var(--brand);
+  --sidebar-primary-foreground: var(--brand-foreground);
+  --sidebar-accent: oklch(0.94 0 0);
+  --sidebar-accent-foreground: oklch(0.205 0 0);
+  --sidebar-border: oklch(0.915 0 0);
+  --sidebar-ring: var(--brand);
+}
+
+.dark {
+  --background: oklch(0.145 0 0);
+  --foreground: oklch(0.965 0 0);
+  --card: oklch(0.185 0 0);
+  --card-foreground: oklch(0.965 0 0);
+  --popover: oklch(0.205 0 0);
+  --popover-foreground: oklch(0.965 0 0);
+
+  --secondary: oklch(0.25 0 0);
+  --secondary-foreground: oklch(0.965 0 0);
+  --muted: oklch(0.25 0 0);
+  --muted-foreground: oklch(0.72 0 0);
+  --accent: oklch(0.28 0 0);
+  --accent-foreground: oklch(0.965 0 0);
+  --destructive: oklch(0.7 0.19 22);
+
+  --border: oklch(1 0 0 / 10%);
+  --input: oklch(1 0 0 / 15%);
+
+  --link: color-mix(in oklab, var(--brand) 55%, white);
+
+  --success: oklch(0.75 0.17 152);
+  --success-foreground: oklch(0.2 0.03 152);
+  --warning: oklch(0.8 0.16 80);
+  --warning-foreground: oklch(0.22 0.04 80);
+  --info: oklch(0.72 0.14 250);
+  --info-foreground: oklch(0.2 0.04 250);
+
+  --overlay: oklch(0 0 0 / 60%);
+
+  --sidebar: oklch(0.165 0 0);
+  --sidebar-foreground: oklch(0.9 0 0);
+  --sidebar-accent: oklch(0.255 0 0);
+  --sidebar-accent-foreground: oklch(0.965 0 0);
+  --sidebar-border: oklch(1 0 0 / 10%);
 }
 
 @theme inline {
-  --color-background: var(--background);
-  --color-surface: var(--surface);
-  --color-foreground: var(--foreground);
-  --color-brand: var(--brand);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
+  --font-heading: var(--font-sans);
+
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-link: var(--link);
+  --color-overlay: var(--overlay);
+  --color-brand: var(--brand);
+  --color-brand-foreground: var(--brand-foreground);
+  --color-brand-secondary: var(--brand-secondary);
+  --color-brand-secondary-foreground: var(--brand-secondary-foreground);
+  --color-brand-accent: var(--brand-accent);
+
+  --color-success: var(--success);
+  --color-success-foreground: var(--success-foreground);
+  --color-warning: var(--warning);
+  --color-warning-foreground: var(--warning-foreground);
+  --color-info: var(--info);
+  --color-info-foreground: var(--info-foreground);
+
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-ring: var(--sidebar-ring);
+
+  --radius-sm: calc(var(--radius) * 0.6);
+  --radius-md: calc(var(--radius) * 0.8);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) * 1.4);
+  --radius-2xl: calc(var(--radius) * 1.8);
+  --radius-3xl: calc(var(--radius) * 2.2);
+  --radius-4xl: calc(var(--radius) * 2.6);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0b0c10;
-    --surface: #15171f;
-    --foreground: #ededed;
-    --muted: #9ca3af;
-    --border: #262a35;
-    --input-bg: #10121a;
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  html {
+    @apply font-sans;
+  }
+  body {
+    @apply bg-background text-foreground;
+    -webkit-font-smoothing: antialiased;
+  }
+  /* Overlay motion is short and ease-out; honour the OS "reduce motion" flag
+     by turning it off entirely. */
+  @media (prefers-reduced-motion: reduce) {
+    /* biome-ignore-start lint/complexity/noImportantStyles: must beat every component's own duration */
+    *,
+    ::before,
+    ::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+      scroll-behavior: auto !important;
+    }
+    /* biome-ignore-end lint/complexity/noImportantStyles: must beat every component's own duration */
   }
 }
 
-body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: var(--font-sans), Arial, Helvetica, sans-serif;
-}
-
-/* ---- Small design-system layer so pages stay clean ---------------------- */
+/* ---- LEGACY layer: delete when F14 has migrated the last page ----------------
+ * These pre-date the shadcn/ui components. They are kept so pages that have
+ * not been migrated yet keep working, but they now read the same tokens, so
+ * they follow the theme (light, dark, brand). Do not use them in new code:
+ * use components/ui/* and Tailwind utilities instead. The removal list lives
+ * in the F11 section of the PR description.
+ */
 
 .card {
-  background: var(--surface);
+  background: var(--card);
   border: 1px solid var(--border);
-  border-radius: var(--radius);
-  box-shadow:
-    0 1px 2px rgba(0, 0, 0, 0.04),
-    0 8px 24px rgba(0, 0, 0, 0.04);
+  border-radius: var(--radius-xl);
 }
 
 .field-label {
@@ -64,23 +219,29 @@ body {
 .select,
 .textarea {
   width: 100%;
-  padding: 0.625rem 0.75rem;
-  font-size: 0.95rem;
+  padding: 0.5rem 0.75rem;
+  font-size: 0.875rem;
   color: var(--foreground);
-  background: var(--input-bg);
-  border: 1px solid var(--border);
-  border-radius: 10px;
+  background: transparent;
+  border: 1px solid var(--input);
+  border-radius: var(--radius-lg);
   outline: none;
   transition:
     border-color 0.15s,
     box-shadow 0.15s;
 }
 
-.input:focus,
-.select:focus,
-.textarea:focus {
-  border-color: var(--brand);
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--brand) 20%, transparent);
+.dark .input,
+.dark .select,
+.dark .textarea {
+  background: color-mix(in oklab, var(--input) 30%, transparent);
+}
+
+.input:focus-visible,
+.select:focus-visible,
+.textarea:focus-visible {
+  border-color: var(--ring);
+  box-shadow: 0 0 0 3px color-mix(in oklab, var(--ring) 30%, transparent);
 }
 
 .btn {
@@ -88,31 +249,35 @@ body {
   align-items: center;
   justify-content: center;
   gap: 0.5rem;
-  padding: 0.625rem 1rem;
-  font-size: 0.95rem;
-  font-weight: 600;
-  border-radius: 10px;
+  padding: 0.5rem 0.875rem;
+  font-size: 0.875rem;
+  font-weight: 500;
+  border-radius: var(--radius-lg);
   border: 1px solid transparent;
   cursor: pointer;
   transition:
-    opacity 0.15s,
-    background 0.15s,
+    background-color 0.15s,
     border-color 0.15s;
   width: 100%;
 }
 
+.btn:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px color-mix(in oklab, var(--ring) 40%, transparent);
+}
+
 .btn:disabled {
-  opacity: 0.6;
+  opacity: 0.5;
   cursor: not-allowed;
 }
 
 .btn-primary {
-  background: var(--brand);
-  color: var(--brand-foreground);
+  background: var(--primary);
+  color: var(--primary-foreground);
 }
 
 .btn-primary:hover:not(:disabled) {
-  opacity: 0.92;
+  background: color-mix(in oklab, var(--primary) 88%, black);
 }
 
 .btn-ghost {
@@ -122,11 +287,11 @@ body {
 }
 
 .btn-ghost:hover:not(:disabled) {
-  background: color-mix(in srgb, var(--foreground) 5%, transparent);
+  background: var(--muted);
 }
 
 .link {
-  color: var(--brand);
+  color: var(--link);
   font-weight: 500;
   text-decoration: none;
 }
@@ -135,26 +300,27 @@ body {
   text-decoration: underline;
 }
 
-.alert-error {
-  background: color-mix(in srgb, var(--danger) 10%, transparent);
-  color: var(--danger);
-  border: 1px solid color-mix(in srgb, var(--danger) 30%, transparent);
-  border-radius: 10px;
+.alert-error,
+.alert-success {
+  border-radius: var(--radius-lg);
   padding: 0.625rem 0.75rem;
   font-size: 0.875rem;
+}
+
+.alert-error {
+  background: color-mix(in oklab, var(--destructive) 10%, transparent);
+  color: var(--destructive);
+  border: 1px solid color-mix(in oklab, var(--destructive) 30%, transparent);
 }
 
 .alert-success {
-  background: color-mix(in srgb, var(--success) 10%, transparent);
+  background: color-mix(in oklab, var(--success) 10%, transparent);
   color: var(--success);
-  border: 1px solid color-mix(in srgb, var(--success) 30%, transparent);
-  border-radius: 10px;
-  padding: 0.625rem 0.75rem;
-  font-size: 0.875rem;
+  border: 1px solid color-mix(in oklab, var(--success) 30%, transparent);
 }
 
 .muted {
-  color: var(--muted);
+  color: var(--muted-foreground);
 }
 
 /* Chips for multi-select skills */
@@ -164,9 +330,9 @@ body {
   gap: 0.35rem;
   padding: 0.2rem 0.55rem;
   font-size: 0.8rem;
-  border-radius: 999px;
-  background: color-mix(in srgb, var(--brand) 12%, transparent);
-  color: var(--brand);
+  border-radius: var(--radius-md);
+  background: var(--secondary);
+  color: var(--secondary-foreground);
 }
 
 .chip button {
@@ -174,7 +340,7 @@ body {
   border: none;
   background: transparent;
   color: inherit;
-  font-weight: 700;
+  font-weight: 600;
   line-height: 1;
 }
 
@@ -187,10 +353,10 @@ body {
   margin-top: 4px;
   max-height: 240px;
   overflow-y: auto;
-  background: var(--surface);
+  background: var(--popover);
   border: 1px solid var(--border);
-  border-radius: 10px;
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
+  border-radius: var(--radius-lg);
+  box-shadow: 0 4px 12px color-mix(in oklab, var(--foreground) 10%, transparent);
 }
 
 .ac-option {
@@ -202,13 +368,13 @@ body {
   color: var(--foreground);
   font: inherit;
   padding: 0.5rem 0.75rem;
-  font-size: 0.9rem;
+  font-size: 0.875rem;
   cursor: pointer;
 }
 
 .ac-option:hover,
 .ac-option[data-active="true"] {
-  background: color-mix(in srgb, var(--brand) 10%, transparent);
+  background: var(--accent);
 }
 
 @keyframes spin {

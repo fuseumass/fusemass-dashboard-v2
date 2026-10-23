@@ -2,9 +2,34 @@
 
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Suspense, useState } from "react";
+import { Suspense } from "react";
+import { useForm } from "react-hook-form";
+import { z } from "zod";
 import AuthShell from "@/components/AuthShell";
+import PasswordInput from "@/components/PasswordInput";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Button } from "@/components/ui/button";
+import {
+  Form,
+  FormControl,
+  FormField,
+  FormItem,
+  FormLabel,
+  FormMessage,
+  FormRootError,
+} from "@/components/ui/form";
 import { apiFetch, saveToken } from "@/lib/api";
+import { applyServerError, zodResolver } from "@/lib/forms";
+
+const resetSchema = z
+  .object({
+    password: z.string().min(8, "Password must be at least 8 characters long."),
+    confirm: z.string(),
+  })
+  .refine((values) => values.password === values.confirm, {
+    message: "Passwords do not match.",
+    path: ["confirm"],
+  });
 
 export default function ResetPasswordPage() {
   return (
@@ -22,107 +47,98 @@ function ResetInner() {
   // someone who applied without an account.
   const isSetup = params.get("setup") === "1";
 
-  const [password, setPassword] = useState("");
-  const [confirm, setConfirm] = useState("");
-  const [error, setError] = useState("");
-  const [submitting, setSubmitting] = useState(false);
+  const form = useForm({
+    resolver: zodResolver(resetSchema),
+    defaultValues: { password: "", confirm: "" },
+  });
 
-  async function handleSubmit(event) {
-    event.preventDefault();
-    setError("");
-    if (password !== confirm) {
-      setError("Passwords do not match.");
-      return;
-    }
-    setSubmitting(true);
-
-    if (password.length < 8) {
-      setError("Password must be at least 8 characters long.");
-      setSubmitting(false);
-      return;
-    }
-
+  async function onSubmit(values) {
+    form.clearErrors("root.server");
     try {
       const data = await apiFetch("/api/auth/reset-password", {
         method: "POST",
-        body: JSON.stringify({ token, password }),
+        body: JSON.stringify({ token, password: values.password }),
       });
       saveToken(data.token);
       router.push("/dashboard");
     } catch (err) {
-      setError(err.message);
-    } finally {
-      setSubmitting(false);
+      applyServerError(form, err);
     }
   }
 
   if (!token) {
     return (
-      <AuthShell title="Invalid link">
-        <div className="alert-error">
-          This reset link is missing its token or is malformed.
-        </div>
-        <p
-          className="muted"
-          style={{
-            textAlign: "center",
-            marginTop: "1.25rem",
-            fontSize: "0.9rem",
-          }}
-        >
-          <Link href="/forgot-password" className="link">
+      <AuthShell
+        title="Invalid link"
+        footer={
+          <Link
+            href="/forgot-password"
+            className="font-medium text-link hover:underline"
+          >
             Request a new link
           </Link>
-        </p>
+        }
+      >
+        <Alert variant="destructive">
+          <AlertDescription>
+            This reset link is missing its token or is malformed.
+          </AlertDescription>
+        </Alert>
       </AuthShell>
     );
   }
 
   return (
     <AuthShell title={isSetup ? "Set up your account" : "Set a new password"}>
-      <form
-        onSubmit={handleSubmit}
-        style={{ display: "flex", flexDirection: "column", gap: "0.9rem" }}
-      >
-        <div>
-          <label className="field-label" htmlFor="password">
-            New password
-          </label>
-          <input
-            id="password"
-            type="password"
-            className="input"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            minLength={8}
-            required
+      <Form {...form}>
+        <form
+          onSubmit={form.handleSubmit(onSubmit)}
+          noValidate
+          className="space-y-4"
+        >
+          <FormField
+            control={form.control}
+            name="password"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>New password</FormLabel>
+                <FormControl>
+                  <PasswordInput autoComplete="new-password" {...field} />
+                </FormControl>
+                <FormMessage />
+              </FormItem>
+            )}
           />
-        </div>
-        <div>
-          <label className="field-label" htmlFor="confirm">
-            Confirm password
-          </label>
-          <input
-            id="confirm"
-            type="password"
-            className="input"
-            value={confirm}
-            onChange={(e) => setConfirm(e.target.value)}
-            minLength={8}
-            required
+
+          <FormField
+            control={form.control}
+            name="confirm"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>Confirm password</FormLabel>
+                <FormControl>
+                  <PasswordInput autoComplete="new-password" {...field} />
+                </FormControl>
+                <FormMessage />
+              </FormItem>
+            )}
           />
-        </div>
 
-        {error
-          ? <div className="alert-error" role="alert">
-              {error}
-            </div>
-          : null}
+          <FormRootError />
 
-        <button type="submit" className="btn btn-primary" disabled={submitting}>
-          {submitting ? "Saving…" : isSetup ? "Set password" : "Reset password"}
-        </button>
-      </form>
+          <Button
+            type="submit"
+            className="w-full"
+            loading={form.formState.isSubmitting}
+          >
+            {form.formState.isSubmitting
+              ? "Saving"
+              : isSetup
+                ? "Set password"
+                : "Reset password"}
+          </Button>
+        </form>
+      </Form>
     </AuthShell>
   );
 }

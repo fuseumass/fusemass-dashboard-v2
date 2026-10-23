@@ -11,6 +11,8 @@ var parseToken = require("./utils/parseToken");
 var passportUtil = require("./utils/passport");
 var EmailTemplate = require("./schemas/emailTemplate");
 var discord = require("./utils/discord");
+var outbox = require("./utils/outbox");
+var autoAccept = require("./utils/autoAccept");
 var clientOrigin = require("./utils/clientOrigin");
 var healthController = require("./controllers/healthController");
 
@@ -20,6 +22,7 @@ var adminRoutes = require("./routes/admin");
 var metaRoutes = require("./routes/meta");
 const staffRoutes = require("./routes/staff");
 var teamRoutes = require("./routes/teams");
+var publicRoutes = require("./routes/public");
 
 var app = express();
 
@@ -39,12 +42,25 @@ if (process.env.TRUST_PROXY) {
   app.set("trust proxy", Number.isNaN(hops) ? process.env.TRUST_PROXY : hops);
 }
 
+// --- Public feeds -----------------------------------------------------------
+// Read-only data for the hackathon's own website (e.g. the schedule). Mounted
+// before the credentialed CORS below so any site may read it: it carries no
+// cookies or tokens, and the routes only ever expose what an admin published.
+app.use(
+  "/api/public",
+  cors({ origin: "*", methods: ["GET", "HEAD", "OPTIONS"], maxAge: 86400 }),
+  publicRoutes
+);
+
 // --- Core middleware --------------------------------------------------------
 app.use(
   cors({
     // CLIENT_ORIGIN may list several frontend addresses, comma-separated.
     origin: clientOrigin.corsOrigin,
     credentials: true,
+    // The dashboard names exported files from this header, and browsers hide
+    // it from cross-origin pages unless it is listed here.
+    exposedHeaders: ["Content-Disposition"],
   })
 );
 app.use(express.json());
@@ -104,6 +120,11 @@ if (require.main === module) {
     .then(function afterSeed() {
       app.listen(PORT, function onListen() {
         console.log("HackUMass backend listening on port " + PORT + ".");
+        // Retries emails that failed to send (see utils/outbox). Started only
+        // here, so requiring this module in tests never starts a timer.
+        outbox.startWorker();
+        // Domain auto-accept, when an admin switched it on in Settings.
+        autoAccept.startWorker();
       });
     })
     .catch(function onError(err) {

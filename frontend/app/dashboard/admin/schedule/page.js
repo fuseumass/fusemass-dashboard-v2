@@ -11,6 +11,7 @@ const EMPTY_FORM = {
   endsAt: "",
   location: "",
   description: "",
+  published: false,
 };
 
 // ISO string -> the "YYYY-MM-DDTHH:mm" local value a datetime-local input wants.
@@ -77,6 +78,7 @@ export default function RunOfShowPage() {
       endsAt: toLocalInput(item.endsAt),
       location: item.location || "",
       description: item.description || "",
+      published: Boolean(item.published),
     });
   }
 
@@ -135,7 +137,10 @@ export default function RunOfShowPage() {
       <p className="muted" style={{ marginBottom: "1.5rem" }}>
         The event schedule. Attendees get it as a calendar invite in their
         &ldquo;You&apos;re checked in&rdquo; email. Meals are not added
-        automatically; list them here too if they should be on it.
+        automatically; list them here too if they should be on it. Items marked
+        public also appear on the hackathon website, through the public schedule
+        feed (<code>/api/public/schedule</code>, plus <code>schedule.ics</code>{" "}
+        for calendars); the rest stay private.
       </p>
 
       {error
@@ -211,6 +216,18 @@ export default function RunOfShowPage() {
               value={form.location}
               onChange={(e) => setField("location", e.target.value)}
             />
+          </div>
+          <div style={{ gridColumn: "1 / -1" }}>
+            <label
+              style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}
+            >
+              <input
+                type="checkbox"
+                checked={form.published}
+                onChange={(e) => setField("published", e.target.checked)}
+              />
+              Show on the public schedule (the hackathon website)
+            </label>
           </div>
           <div style={{ gridColumn: "1 / -1" }}>
             <label className="field-label" htmlFor="ros-description">
@@ -294,7 +311,17 @@ export default function RunOfShowPage() {
                         {formatWhen(item)}
                       </td>
                       <td style={cell}>
-                        <div style={{ fontWeight: 600 }}>{item.title}</div>
+                        <div style={{ fontWeight: 600 }}>
+                          {item.title}
+                          {item.published
+                            ? <span
+                                className="chip"
+                                style={{ marginLeft: 8, fontWeight: 400 }}
+                              >
+                                Public
+                              </span>
+                            : null}
+                        </div>
                         {item.description
                           ? <div
                               className="muted"

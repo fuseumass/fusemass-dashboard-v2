@@ -51,6 +51,21 @@ router.post(
   authController.resetPassword
 );
 
+// Public: confirm an email address from the emailed link. The token is 256
+// random bits, so no limiter is needed against guessing.
+router.post(
+  "/verify-email",
+  validateBody({ token: { required: true, type: "string" } }),
+  authController.verifyEmail
+);
+// Logged in: email a new verification link (limited per IP and per account).
+router.post(
+  "/resend-verification",
+  authRateLimit.resendVerification,
+  isAuthenticated,
+  authController.resendVerification
+);
+
 // One-time first-admin bootstrap, gated by the SETUP_ADMIN env var.
 router.post(
   "/setup-admin",
@@ -99,7 +114,26 @@ router.get(
   authController.googleCallback
 );
 
+// Public: the unsubscribe link in announcement emails (the token in the body
+// is the proof, so no login). Idempotent.
+router.post(
+  "/unsubscribe",
+  authRateLimit.unsubscribe,
+  validateBody({
+    u: { required: true, type: "string" },
+    t: { required: true, type: "string" },
+  }),
+  authController.unsubscribe
+);
+
 // Requires a valid token.
 router.get("/me", isAuthenticated, authController.me);
+// Own preferences: whether to get announcement emails.
+router.patch(
+  "/me",
+  isAuthenticated,
+  validateBody({ marketingEmailConsent: { required: true, type: "boolean" } }),
+  authController.updateMe
+);
 
 module.exports = router;

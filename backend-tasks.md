@@ -91,33 +91,66 @@ serving). `POST /api/staff/meals/:mealId/checkin`, guarded by `isModerator`.
 open* round. On event day applications are closed, so an accepted attendee's
 home page says "Applications aren't open right now". This is exactly when
 they need it.
-- [ ] Return the applicant's most recent application across all rounds when no
+- [x] Return the applicant's most recent application across all rounds when no
       round is open (or add `GET /api/applications/me/latest`).
-- [ ] Include `checkedIn` and the round name so the home page can show "You're
+- [x] Include `checkedIn` and the round name so the home page can show "You're
       in — see you at check-in" vs. "You're checked in".
+- **Status:** done. `GET /api/applications/me` keeps `round` / `application`
+  (the open round) and adds `latest: { application, round: { _id, name },
+  checkedIn, checkedInAt }` (null if they never submitted). `latest` picks an
+  accepted application over a newer rejected/pending one, skips drafts, and is
+  also sent while a round is open (so an attendee accepted in an earlier round
+  can be told so). Tests: `test/latestApplication.test.js`.
 - **Depends on:** none. **Related:** F22.
 
 ### B26. Email outbox: log, retry and resend
 Every email today is fire-and-forget: if SMTP blips during a batch of
 acceptances, those emails (and their QR codes) are lost silently. The judging
 platform had to bolt on a `/check-failed-emails` page for the same reason.
-- [ ] `EmailLog` schema: `to`, `templateKey`, `user`, `status`
+- [x] `EmailLog` schema: `to`, `templateKey`, `user`, `status`
       (`queued|sent|failed`), `attempts`, `lastError`, `sentAt`.
-- [ ] `utils/mailer` writes a log row per send; retry failed sends with
+      (`schemas/emailLog.js`. Also `cancelled` status, `category`,
+      `nextAttemptAt`, a lease (`lockedUntil`), the template `values` so a
+      retry renders the same email, and a TTL index (`expiresAt`, 90 days,
+      `EMAIL_LOG_RETENTION_DAYS`). Attachments are never stored: the QR is
+      redrawn from the address. Emails carrying a single-use link
+      (password reset, account setup) are `redacted`: no values, no body.)
+- [x] `utils/mailer` writes a log row per send; retry failed sends with
       backoff (an in-process interval is fine at our scale; no new
       infrastructure).
-- [ ] Admin: list failures, resend one, and **resend acceptance emails**
+      (`utils/outbox.js`. The caller still sees the first attempt's result.
+      Backoff 1 min, 5 min, 30 min, 2 h, 6 h, then `failed` after 6 attempts;
+      permanent SMTP errors fail at once. Atomic claim + lease = no double
+      sends; a send interrupted by a restart is marked failed "may have been
+      delivered", never auto-resent. The worker pauses after 3 transient
+      failures in a row. Callers that await and report failures to staff pass
+      `retry: false`.)
+- [x] Admin: list failures, resend one, and **resend acceptance emails**
       (needed for anyone accepted before QR codes shipped).
+      (`/api/admin/outbox`: list/filter, `:id/resend`, `:id/cancel`,
+      `retry-failed`, `cancel-queued`, `resend-acceptance`. Page:
+      `/dashboard/admin/outbox`, not yet linked from the sidebar.)
 - [ ] Bulk email to a segment (not applied / pending / accepted / waitlisted /
       rejected / checked in / workshop sign-ups / people still holding
       hardware / "test to myself"). This replaces the old dashboard's
       mailing lists and Slack blasts.
-- [ ] **Consent:** add `User.marketingEmailConsent` (asked at sign-up,
+      (`POST /api/admin/outbox/bulk` with a stored template; segments in
+      `utils/emailSegments.js`, plus "started but didn't submit". **Not yet:**
+      workshop sign-ups (waits for B18) and people still holding hardware
+      (waits for hardware checkout, B22). Both are listed as unavailable, and
+      turn on by filling in one resolver each. The compose UI is a frontend
+      follow-up.)
+- [x] **Consent:** add `User.marketingEmailConsent` (asked at sign-up,
       editable in profile, off by default) and an unsubscribe link. Bulk
       *announcement* emails go only to people who consented; transactional
       ones (decisions, QR, check-in, workshop invites, hardware receipts) always
       send. The old dashboard enforced this (`non_transactional_email_consent`)
       and had a branch for the SendGrid opt-in/opt-out rules; we don't yet.
+      (Backend done: `register` and the public application take
+      `marketingEmailConsent`, `PATCH /api/auth/me` edits it, announcements
+      carry an unsubscribe link (`/unsubscribe` page, `POST
+      /api/auth/unsubscribe`) and consent is re-checked at send time. **The
+      sign-up checkbox and profile toggle are frontend follow-ups.**)
 - **Depends on:** none. **Related:** B21 (raffle winners), B22 (hardware
   reminders), B24c (table emails).
 
@@ -196,13 +229,22 @@ staff screens.
 ### B25. Feature flags per module
 Let each hackathon switch modules on or off at runtime: meals, hardware,
 workshops, judging, raffles. The old dashboard had this; we should too.
-- [ ] `OrgSettings.features: { meals, hardware, workshops, judging, raffle }`
+- [x] `OrgSettings.features: { meals, hardware, workshops, judging, raffle }`
       (booleans, default on), editable via `PATCH /api/admin/settings`.
-- [ ] `utils/requireFeature("hardware")` middleware: answers **404** for
+      Partial updates; values must be real booleans (`"false"` is a 400, not
+      coerced to true); unknown keys are a 400.
+- [x] `utils/requireFeature("hardware")` middleware: answers **404** for
       everyone when the feature is off (admins too, so a disabled module
-      can't be half-used). Mount it on each module's router.
-- [ ] Expose the flags to the frontend (public part of
+      can't be half-used). Mount it on each module's router. **Mounted today
+      on `meals`** (`/api/admin/meals`, `/api/staff/meals`); the other four
+      flags default on and gate nothing until their modules exist.
+      **Rule for B17-B24: every router of a flag-gated module must mount
+      `requireFeature("<key>")` before its auth guards, with a test that it
+      404s for admin, moderator and anonymous callers while off** (see
+      `backend/README.md`, "Feature flags").
+- [x] Expose the flags to the frontend (public part of
       `GET /api/meta/branding`, see B28) so the nav hides disabled modules.
+      (Sidebar hides the meals items; the full nav config is F13.)
 - **Don't repeat:** the old `check_feature_flag?` called `.value` before its
   nil check (crashed when a flag was missing). Its bypass,
   `(not admin or not organizer)`, was true for everyone who wasn't both, so
@@ -822,41 +864,104 @@ printed cost sheets. It was never merged.
 ## Registration gaps (found in the parity review)
 
 ### B40. Email verification on sign-up
-The old dashboard confirmed emails (Devise `confirmable`); we don't, so anyone
-can register with someone else's address, and their acceptance QR goes there.
-- [ ] Send a verification link on register (token hashed in the DB, like the
+The old dashboard confirmed emails (Devise `confirmable`); we didn't, so anyone
+could register with someone else's address, and their acceptance QR goes there.
+- [x] Send a verification link on register (token hashed in the DB, like the
       reset token; 24 h expiry); `POST /api/auth/verify-email`; resend
       endpoint (rate-limited).
-- [ ] Applying requires a verified email. Google sign-ins count as verified.
-- [ ] Existing users: treat as verified (or re-verify on next login: decide).
+      Built: `POST /api/auth/register` stores `emailVerified: false` plus the
+      SHA-256 of a random token and emails `{{verifyUrl}}` (new built-in
+      `verify_email` template). `POST /api/auth/verify-email` `{ token }` is
+      public, atomic and single-use. `POST /api/auth/resend-verification`
+      (logged in) is limited per IP (`AUTH_RATE_LIMIT_MAX_RESEND_VERIFICATION`)
+      and to one email a minute per account.
+- [x] Applying requires a verified email. Google sign-ins count as verified.
+      Built: `POST /api/applications` answers 403 `{ code:
+      "EMAIL_NOT_VERIFIED" }` (drafts too) via the `isEmailVerified` guard,
+      which reads the flag from the database so verifying takes effect
+      without logging in again. Google sign-in marks the account verified.
+      Setting a password through any emailed link (reset, or the first-password
+      link sent to people who applied without an account) also verifies it.
+- [x] Existing users: treat as verified (or re-verify on next login: decide).
+      **Decided: treat as verified.** `User.emailVerified` defaults to `true`,
+      so accounts with no stored flag (everyone created before this) and every
+      path other than password sign-up stay verified; no migration, nobody is
+      locked out. Only `register` and the no-account application form create
+      unverified accounts.
+- Follow-ups outside this task: **people who apply without an account** are not
+  verified at application time (there is no inbox proof until they set a
+  password), so their decision emails still go to an address nobody has
+  confirmed; closing that needs a "confirm to submit" step on the public form.
+  Verification is enforced only while outgoing email is configured (otherwise
+  the link could never be delivered and applications would lock for everyone);
+  an explicit on/off setting could be added if an organiser wants it off with
+  email on. Unverified accounts are not purged.
 - **Depends on:** none.
 
 ### B41. Waitlist email and waitlist mode
-- [ ] Deciding "waitlisted" currently sends **no email**: `DECISION_TEMPLATE_KEYS`
+- [x] Deciding "waitlisted" currently sends **no email**: `DECISION_TEMPLATE_KEYS`
       in `adminController` only has accepted/rejected. Add a built-in
       `application_waitlisted` template and send it.
-- [ ] Optional waitlist mode (the old dashboard had it): once a round reaches a
+- [x] Optional waitlist mode (the old dashboard had it): once a round reaches a
       configured number of accepted applicants, new applications are
       waitlisted automatically and told so.
+- **Status:** done. Built-in `application_waitlisted` template, sent on a
+  reviewer's "waitlisted" decision (once; repeating it is a no-op). Waitlist
+  mode is a per-round `waitlistAfterAccepted` (whole number of 1+, empty = off;
+  `POST`/`PATCH /api/admin/rounds`, admin only, hidden from applicants). When a
+  round has that many accepted applications, a *first submission* (draft ->
+  submitted, or a new application, with or without an account) is saved as
+  `waitlisted` and the applicant gets the waitlist email instead of "received".
+  Already-submitted applications are never moved, reviewers can still accept
+  past the limit, and nobody is promoted automatically. **Behaviour change:**
+  re-submitting an already submitted application (an edit) now keeps its review
+  status; before, every edit reset it to `pending`, which would have undone
+  acceptances and taken people off the waitlist. Tests: `test/waitlist.test.js`.
 - **Depends on:** none.
 
 ### B42. Flag suspicious applications
-- [ ] `Application.flagged`, `flagReasons: [String]`, `flaggedBy`; moderators
+- [x] `Application.flagged`, `flagReasons: [String]`, `flaggedBy`; moderators
       can flag/unflag with a reason; review list filter + count.
-- [ ] Optional automatic checks on submit: resume text too short, resume
+- [x] Optional automatic checks on submit: resume text too short, resume
       doesn't mention the applicant's name, duplicate phone or resume across
       accounts.
 - **Don't repeat:** the old auto-flag (`event_application.rb`) had a misplaced
   `!` in its university/major check, so it flagged the wrong applications.
   Write the rule as a small pure function with tests.
+- **Status:** done. Moderators: `POST` / `DELETE /api/admin/applications/:id/flag`
+  (reason required, max 300 chars); `GET /api/admin/applications?flagged=true`
+  and a `flaggedCount` in the list response; the list rows carry only
+  `flagged` (reasons and `flaggedBy` come with the full application). Flags
+  are staff-only: the Application JSON that applicants get never includes
+  them (opt-in `toJSON({ includeFlags: true })` for the moderator routes).
+  Automatic checks run on an application's first submission only, behind the
+  admin setting `autoFlagApplications` (off by default; flags are labels, they
+  never block or reject): `utils/applicationFlags.js` holds the rules as pure
+  functions with truth-table tests, `utils/resumeText.js` reads PDF/Word text.
+  Resume text is read **without a parsing dependency** (untrusted uploads, B30),
+  so it only covers Word files and PDFs whose text is plain strings (TeX, Word,
+  Quartz, groff); PDFs that store glyph numbers (Chrome, Google Docs, Skia),
+  encrypted or damaged files, and old `.doc` are "unreadable" and skip the
+  text rules instead of being flagged. Duplicate phone / resume use stored
+  fingerprints (`phoneKey`, `resumeHash`), so only applications submitted after
+  this lands can be matched. Tests: `test/flaggedApplications.test.js`,
+  `test/resumeText.test.js`.
 - **Depends on:** none.
 
 ### B43. Admin statistics
-- [ ] `GET /api/admin/stats`: applications by status and round, by
-      school/education level/gender/major/graduation year, first-time
-      hackers, submissions per day; on event day, checked-in count, meals
-      served, workshop attendance, hardware out.
-- [ ] Aggregations in Mongo (`$group`), not loading every document.
+- [x] `GET /api/admin/stats` (admin only): applications by status and round,
+      by school/education level/gender/major/T-shirt size/graduation year,
+      first-time hackers, submissions per day (stacked by status, in the
+      event's time zone), plus every custom choice question on the forms;
+      on event day, checked-in count (and forced walk-ins) and meals served.
+      Optional `?round=` and `?status=` scope the breakdowns. Graduation
+      year isn't a built-in field, so it is found among the rounds' custom
+      questions (label or key says graduation / grad year / class of).
+- [ ] Workshop attendance and hardware out. The endpoint already returns
+      `eventDay.workshopAttendance` and `eventDay.hardwareOut` as `null`; fill
+      them in `statsController.eventDayStats` when B21 and B22 exist.
+- [x] Aggregations in Mongo (`$group`), not loading every document (a test
+      fails if `Application.find` is called).
 - **Depends on:** none. **Related:** F26.
 
 ### B44. Force check-in (admin override)
@@ -867,11 +972,17 @@ can register with someone else's address, and their acceptance QR goes there.
 - **Depends on:** check-in on `feature/qr-checkin`.
 
 ### B45. Public schedule feed for the hackathon website
-- [ ] `GET /api/public/schedule` (no auth, cached): published run-of-show
-      items + published workshops, so the hackathon website (e.g.
-      `fuseumass/hackumass-website`) can show the live schedule instead of
-      copying it. Also a public `.ics` of the same.
-- **Depends on:** B18.
+- [x] `GET /api/public/schedule` (no auth, cached): published run-of-show
+      items, so the hackathon website (e.g. `fuseumass/hackumass-website`)
+      can show the live schedule instead of copying it. Also a public
+      `GET /api/public/schedule.ics` of the same. `ScheduleEvent.published`
+      (default off, so nothing goes public by accident) is set from the Run of
+      show page. Cached 30 s in memory (cleared on admin edits) and
+      `Cache-Control: public, max-age=60`; open CORS (`*`, no credentials) on
+      `/api/public` only.
+- [ ] Published workshops in the same feed (and the `.ics`): add them in
+      `utils/publicSchedule.js` `load()` once the Workshop model exists.
+- **Depends on:** B18 (for the workshops half).
 
 ### B46. Error reporting
 The old dashboard reported errors to Sentry (Raven); we only `console.error`.
@@ -888,23 +999,46 @@ The brand colour is a build-time `NEXT_PUBLIC_*` variable, so changing it on
 a deployment does nothing, and there's no secondary colour at all (details in
 F12). Move branding to the backend so admins can change it without a
 rebuild.
-- [ ] `OrgSettings.branding`: `orgName`, `primaryColor`, `secondaryColor`,
+- [x] `OrgSettings.branding`: `orgName`, `primaryColor`, `secondaryColor`,
       `accentColor?`, `logoUrl`, `logoDarkUrl`, `faviconUrl`. Validate colours
       as hex (`#RRGGBB`) and reject anything else; never pass raw CSS through.
-- [ ] Defaults from **server** env (`BRAND_PRIMARY`, `BRAND_SECONDARY`, …) read
+- [x] Defaults from **server** env (`BRAND_PRIMARY`, `BRAND_SECONDARY`, …) read
       at request time, so one image can serve every hackathon.
-- [ ] Public `GET /api/meta/branding` (no auth, cacheable for ~60 s) returning
+- [x] Public `GET /api/meta/branding` (no auth, cacheable for ~60 s) returning
       branding + the public feature flags (B25). Logo upload via Azure.
+- **Decisions:** (1) **Logos are served by the API** from a second, *private*
+  container (`AZURE_STORAGE_BRANDING_CONTAINER`) at
+  `GET /api/meta/branding/files/<name>`, not from a public container, so the
+  storage account never needs anonymous blob access; only API-generated names
+  are served, bytes are re-checked, SVG is refused at upload, and responses
+  carry `nosniff` + a locked-down CSP. (2) Images can also be an admin-pasted
+  `https://` URL (works without Azure). (3) Precedence per field: admin
+  setting, then server env, then built-in default; env is read per request.
+  (4) The org name from branding drives the UI only; emails still use the
+  `ORG_NAME` env var. (5) Uploaded-logo links are root-relative unless
+  `API_PUBLIC_URL` is set. (6) A 10 s in-process settings cache
+  (`SETTINGS_CACHE_TTL_MS`) plus `max-age=60` keeps the endpoint off Cosmos DB.
+  Details: `backend/README.md`, "Branding".
 - **Depends on:** none. **Related:** F12.
 
 ### B29. CSV exports
 The old dashboard could export everything; organizers rely on it for
 sponsors, catering and insurance.
-- [ ] Admin CSV export for applications (with dynamic `answers` flattened),
-      check-ins, meal counts, workshop sign-ups, raffle winners, hardware
-      checkouts. Stream them; don't build the whole file in memory.
-- [ ] Resume bundle export for sponsors (zip of accepted applicants who opted
-      in), replacing the old `download_resumes.py` script.
+- [x] Admin CSV export for applications (with dynamic `answers` flattened),
+      check-ins and meal counts: `GET /api/admin/exports/applications.csv`
+      (`?round=&status=`), `checkins.csv`, `meals.csv`. Admin only, streamed in
+      batches of 500 by `_id` (no long-lived cursor), formula-injection safe
+      (`utils/csv.js`), never includes password hashes, tokens, QR codes or
+      resume blob names.
+- [ ] Workshop sign-ups, raffle winners and hardware checkout CSVs (need
+      B19, B21 and B22). Add them as routes in `routes/exports.js` using
+      `utils/csv.js` `sendCsv`.
+- [x] Resume bundle export for sponsors: `GET
+      /api/admin/exports/resumes.zip?consentKey=<key>[&round=<id>]`, a ZIP
+      streamed from Azure of accepted applicants who ticked the checkbox
+      question `consentKey` on the application form (nobody is included without
+      a consent question), plus an `index.csv`. Replaces `download_resumes.py`.
+      Streaming ZIP writer in `utils/zipStream.js`, no new dependency.
 - **Depends on:** none.
 
 ### B30. Dependency vulnerabilities
@@ -925,9 +1059,11 @@ moderate `ip-address`, moderate `csv-parse` (fix is a major bump to v7).
 The old dashboard had mentor tickets (attendee posts a request with a
 screenshot, mentors claim and resolve). **Decided: mentorship tickets are
 created on Discord**, so there's nothing to build here beyond linking to it:
-- [ ] Optional `ORG_DISCORD_MENTORSHIP_URL` (the mentorship channel or
+- [x] Optional `ORG_DISCORD_MENTORSHIP_URL` (the mentorship channel or
       ticket-bot link), shown on the attendee home page next to the Discord
-      invite.
+      invite. Served by `GET /api/meta/links` (login required; read from the
+      env per request; only plain http(s) URLs); shown in a "Community" card
+      on the home page.
 
 ### B32. RSVP / confirm attendance after acceptance
 The old dashboard had an RSVP step (plus custom RSVP questions, e.g. travel,

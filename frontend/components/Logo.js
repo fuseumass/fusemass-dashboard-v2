@@ -1,4 +1,5 @@
 import { config } from "@/lib/config";
+import { cn } from "@/lib/utils";
 
 // Renders the configured logo, falling back to the org name as text when no
 // logo file has been uploaded yet. `variant="v2"` uses the in-dashboard logo.
@@ -12,6 +13,7 @@ export default function Logo({ variant = "v1", height = 40, className = "" }) {
         src={src}
         alt={config.orgName}
         height={height}
+        // The height is a prop (a size, not a style choice), so it stays inline.
         style={{ height, width: "auto" }}
         className={className}
       />
@@ -20,12 +22,8 @@ export default function Logo({ variant = "v1", height = 40, className = "" }) {
 
   return (
     <span
-      className={className}
-      style={{
-        fontWeight: 700,
-        fontSize: height * 0.55,
-        letterSpacing: "-0.02em",
-      }}
+      className={cn("font-semibold tracking-tight", className)}
+      style={{ fontSize: height * 0.5 }}
     >
       {config.orgName}
     </span>

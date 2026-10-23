@@ -24,6 +24,24 @@ var DEFAULT_TEMPLATES = [
       "Hi {{name}},\n\nThank you for applying to {{orgName}}. After review, your application was not selected.\n\nStatus: {{status}}",
   },
   {
+    // Sent on sign-up (and on "resend") to confirm the address belongs to the
+    // person who registered. {{verifyUrl}} is the single-use link; it expires
+    // after 24 hours.
+    key: "verify_email",
+    subject: "Verify your email for {{orgName}}",
+    body:
+      "Hi {{name}},\n\nThanks for signing up for {{orgName}}. Please confirm your email address to finish setting up your account (you need to do this before you can apply):\n{{verifyUrl}}\n\nThis link works for 24 hours. If it has expired, log in to the dashboard and ask for a new one.\n\nIf you didn't create this account, you can ignore this email.",
+  },
+  {
+    // Sent when an application is waitlisted: by a reviewer, or automatically
+    // on submit once a round reaches its accepted limit (instead of the
+    // "received" email, which says the application is pending).
+    key: "application_waitlisted",
+    subject: "You're on the {{orgName}} waitlist",
+    body:
+      "Hi {{name}},\n\nThank you for applying to {{orgName}}. We can't offer you a spot right now, so your application is on our waitlist. If space opens up we'll email you right away. There's nothing more you need to do.\n\nStatus: {{status}}",
+  },
+  {
     // Sent with the acceptance email when the applicant applied without an
     // account (public applications, imports) and so has no password yet.
     // {{setupUrl}} sets one; it expires after 7 days.

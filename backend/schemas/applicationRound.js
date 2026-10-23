@@ -59,6 +59,15 @@ var applicationRoundSchema = new Schema(
         return {};
       },
     },
+    // Waitlist mode (see utils/waitlist). Once this many applications in the
+    // round are accepted, applications submitted from then on are waitlisted
+    // automatically. null = no limit. Staff-only: applicants never get it
+    // (the applicant routes send the round without it).
+    waitlistAfterAccepted: {
+      type: Number,
+      min: 1,
+      default: null,
+    },
   },
   { timestamps: true }
 );

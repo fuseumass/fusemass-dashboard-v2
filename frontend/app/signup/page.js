@@ -2,53 +2,57 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useForm } from "react-hook-form";
+import { z } from "zod";
 import AuthShell from "@/components/AuthShell";
 import GoogleButton from "@/components/GoogleButton";
+import PasswordInput from "@/components/PasswordInput";
+import { Button } from "@/components/ui/button";
+import {
+  Form,
+  FormControl,
+  FormDescription,
+  FormField,
+  FormItem,
+  FormLabel,
+  FormMessage,
+  FormRootError,
+} from "@/components/ui/form";
+import { Input } from "@/components/ui/input";
 import { apiFetch, saveToken } from "@/lib/api";
+import { applyServerError, zodResolver } from "@/lib/forms";
+
+const signupSchema = z.object({
+  name: z.string().trim().min(1, "Full name is required."),
+  email: z
+    .string()
+    .trim()
+    .refine(
+      (value) => value.includes("@") && value.includes("."),
+      "Enter a valid email address.",
+    ),
+  password: z.string().min(8, "Password must be at least 8 characters long."),
+});
 
 export default function SignupPage() {
   const router = useRouter();
-  const [name, setName] = useState("");
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
-  const [error, setError] = useState("");
-  const [submitting, setSubmitting] = useState(false);
 
-  async function handleSubmit(event) {
-    event.preventDefault();
-    setError("");
-    setSubmitting(true);
+  const form = useForm({
+    resolver: zodResolver(signupSchema),
+    defaultValues: { name: "", email: "", password: "" },
+  });
 
-    if (!name.trim()) {
-      setError("Full name is required.");
-      setSubmitting(false);
-      return;
-    }
-
-    if (!email.includes("@") || !email.includes(".")) {
-      setError("Please enter a valid email address.");
-      setSubmitting(false);
-      return;
-    }
-
-    if (password.length < 8) {
-      setError("Password must be at least 8 characters long.");
-      setSubmitting(false);
-      return;
-    }
-
+  async function onSubmit(values) {
+    form.clearErrors("root.server");
     try {
       const data = await apiFetch("/api/auth/register", {
         method: "POST",
-        body: JSON.stringify({ name, email, password }),
+        body: JSON.stringify(values),
       });
       saveToken(data.token);
       router.push("/dashboard");
     } catch (err) {
-      setError(err.message);
-    } finally {
-      setSubmitting(false);
+      applyServerError(form, err);
     }
   }
 
@@ -56,83 +60,79 @@ export default function SignupPage() {
     <AuthShell
       title="Create your account"
       subtitle="Sign up to start your application"
+      footer={
+        <>
+          Already have an account?{" "}
+          <Link href="/login" className="font-medium text-link hover:underline">
+            Log in
+          </Link>
+        </>
+      }
     >
       <GoogleButton label="Sign up with Google" withDivider />
 
-      <form
-        onSubmit={handleSubmit}
-        style={{ display: "flex", flexDirection: "column", gap: "0.9rem" }}
-      >
-        <div>
-          <label className="field-label" htmlFor="name">
-            Full name
-          </label>
-          <input
-            id="name"
-            type="text"
-            className="input"
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            required
+      <Form {...form}>
+        <form
+          onSubmit={form.handleSubmit(onSubmit)}
+          noValidate
+          className="space-y-4"
+        >
+          <FormField
+            control={form.control}
+            name="name"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>Full name</FormLabel>
+                <FormControl>
+                  <Input type="text" autoComplete="name" {...field} />
+                </FormControl>
+                <FormMessage />
+              </FormItem>
+            )}
           />
-        </div>
 
-        <div>
-          <label className="field-label" htmlFor="email">
-            Email
-          </label>
-          <input
-            id="email"
-            type="email"
-            className="input"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            required
+          <FormField
+            control={form.control}
+            name="email"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>Email</FormLabel>
+                <FormControl>
+                  <Input type="email" autoComplete="email" {...field} />
+                </FormControl>
+                <FormMessage />
+              </FormItem>
+            )}
           />
-        </div>
 
-        <div>
-          <label className="field-label" htmlFor="password">
-            Password
-          </label>
-          <input
-            id="password"
-            type="password"
-            className="input"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            minLength={8}
-            required
+          <FormField
+            control={form.control}
+            name="password"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>Password</FormLabel>
+                <FormControl>
+                  <PasswordInput autoComplete="new-password" {...field} />
+                </FormControl>
+                <FormDescription>At least 8 characters.</FormDescription>
+                <FormMessage />
+              </FormItem>
+            )}
           />
-          <p className="muted" style={{ fontSize: "0.78rem", marginTop: 4 }}>
-            At least 8 characters.
-          </p>
-        </div>
 
-        {error
-          ? <div className="alert-error" role="alert">
-              {error}
-            </div>
-          : null}
+          <FormRootError />
 
-        <button type="submit" className="btn btn-primary" disabled={submitting}>
-          {submitting ? "Creating account…" : "Sign up"}
-        </button>
-      </form>
-
-      <p
-        className="muted"
-        style={{
-          textAlign: "center",
-          marginTop: "1.25rem",
-          fontSize: "0.9rem",
-        }}
-      >
-        Already have an account?{" "}
-        <Link href="/login" className="link">
-          Log in
-        </Link>
-      </p>
+          <Button
+            type="submit"
+            className="w-full"
+            loading={form.formState.isSubmitting}
+          >
+            {form.formState.isSubmitting
+              ? "Creating account"
+              : "Create account"}
+          </Button>
+        </form>
+      </Form>
     </AuthShell>
   );
 }
