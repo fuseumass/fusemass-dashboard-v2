@@ -1,13 +1,13 @@
 "use client";
 
-import { Search, Users } from "lucide-react";
+import { Users } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import DataTable from "@/components/DataTable";
 import EmptyState from "@/components/EmptyState";
 import PageHeader from "@/components/PageHeader";
+import SearchInput from "@/components/SearchInput";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Input } from "@/components/ui/input";
 import {
   Select,
   SelectContent,
@@ -63,8 +63,23 @@ export default function UsersPage() {
   }
 
   const columns = [
-    { accessorKey: "name", header: "Name" },
-    { accessorKey: "email", header: "Email" },
+    {
+      accessorKey: "name",
+      header: "Name",
+      cell: ({ row }) => (
+        <div>
+          <div className="font-medium text-foreground">{row.original.name}</div>
+          <div className="text-xs text-muted-foreground md:hidden">
+            {row.original.email}
+          </div>
+        </div>
+      ),
+    },
+    {
+      accessorKey: "email",
+      header: "Email",
+      meta: { className: "hidden text-muted-foreground md:table-cell" },
+    },
     {
       accessorKey: "role",
       header: "Role",
@@ -81,7 +96,7 @@ export default function UsersPage() {
               <SelectTrigger
                 size="sm"
                 aria-label={`Role for ${u.name}`}
-                className="w-36 capitalize"
+                className="h-7 w-32 capitalize"
               >
                 <SelectValue />
               </SelectTrigger>
@@ -106,30 +121,32 @@ export default function UsersPage() {
     <div>
       <PageHeader
         title="Users"
-        description="Search by name or email, then assign a role."
+        description={
+          loading
+            ? undefined
+            : query.trim()
+              ? `${users.length} ${users.length === 1 ? "match" : "matches"}.`
+              : users.length === 25
+                ? "Showing the 25 most recent accounts. Search to find anyone."
+                : `${users.length} ${users.length === 1 ? "user" : "users"}.`
+        }
       />
 
       <DataTable
         columns={columns}
         data={users}
         loading={loading}
+        dense
         getRowId={(u) => u._id}
         toolbar={
           <div className="space-y-3">
-            <div className="relative max-w-sm">
-              <Search
-                className="pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-muted-foreground"
-                aria-hidden="true"
-              />
-              <Input
-                type="search"
-                className="pl-8"
-                placeholder="Search users…"
-                aria-label="Search users"
-                value={query}
-                onChange={(e) => setQuery(e.target.value)}
-              />
-            </div>
+            <SearchInput
+              label="Search users"
+              placeholder="Search name or email"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              className="sm:w-72"
+            />
             {error
               ? <Alert variant="destructive">
                   <AlertDescription>{error}</AlertDescription>
@@ -143,7 +160,7 @@ export default function UsersPage() {
             title="No users found"
             description={
               query
-                ? "No one matches that search. Try a different name or email."
+                ? "No one matches that search."
                 : "People appear here once they create an account."
             }
           />

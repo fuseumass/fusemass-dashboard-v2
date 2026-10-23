@@ -3,19 +3,49 @@
 import { Download, RefreshCw } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
+import PageHeader from "@/components/PageHeader";
+import StatusDot from "@/components/StatusDot";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Button } from "@/components/ui/button";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Skeleton } from "@/components/ui/skeleton";
+import { Switch } from "@/components/ui/switch";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
 import { API_URL, apiFetch, getToken } from "@/lib/api";
 import { useUser } from "@/lib/userContext";
+import { cn } from "@/lib/utils";
 
 // Admin Statistics (F26): headline numbers, applications over time, and
-// breakdowns of who applied. Self-contained on purpose: charts are plain
-// CSS/SVG, styled with local --st-* tokens that fall back to the app's own
-// theme variables, so nothing here depends on (or restyles) shared components.
+// breakdowns of who applied. Charts are plain CSS/SVG coloured with the theme
+// tokens (brand for the main series, neutral tints for the rest), so they
+// follow light, dark and the org's brand colour.
 
 const LIVE_REFRESH_MS = 30 * 1000;
 const LIVE_STORAGE_KEY = "hackdash_stats_live";
 
 const STATUS_FILTERS = [
-  ["", "All submitted"],
+  ["all", "All submitted"],
   ["pending", "Pending"],
   ["accepted", "Accepted"],
   ["waitlisted", "Waitlisted"],
@@ -23,52 +53,39 @@ const STATUS_FILTERS = [
   ["draft", "Drafts"],
 ];
 
-// Stack order, bottom to top. The order is what keeps neighbouring colours
-// distinguishable (checked for light and dark, including colour blindness);
-// every series is also named in the legend, tooltip and table view.
+// Stack order, bottom to top. Accepted carries the brand colour; the other
+// statuses use contrasting neutral tokens with light and dark values. Every
+// series is also named in the legend, tooltip and table view, so colour is
+// never the only cue. `bar` fills SVG shapes, `dot` fills legend swatches.
 const STATUS_SERIES = [
-  { key: "pending", label: "Pending", color: "var(--st-pending)" },
-  { key: "waitlisted", label: "Waitlisted", color: "var(--st-waitlisted)" },
-  { key: "accepted", label: "Accepted", color: "var(--st-accepted)" },
-  { key: "rejected", label: "Rejected", color: "var(--st-rejected)" },
+  {
+    key: "pending",
+    label: "Pending",
+    bar: "fill-chart-neutral-1",
+    dot: "bg-chart-neutral-1",
+  },
+  {
+    key: "waitlisted",
+    label: "Waitlisted",
+    bar: "fill-chart-neutral-2",
+    dot: "bg-chart-neutral-2",
+  },
+  { key: "accepted", label: "Accepted", bar: "fill-brand", dot: "bg-brand" },
+  {
+    key: "rejected",
+    label: "Rejected",
+    bar: "fill-chart-neutral-3",
+    dot: "bg-chart-neutral-3",
+  },
 ];
 const DRAFT_SERIES = [
-  { key: "draft", label: "Drafts", color: "var(--st-muted)" },
+  {
+    key: "draft",
+    label: "Drafts",
+    bar: "fill-foreground/35",
+    dot: "bg-foreground/35",
+  },
 ];
-
-const CSS = `
-.stats-root {
-  --st-ink: var(--foreground, #171821);
-  --st-muted: var(--muted, #6b7280);
-  --st-grid: var(--border, #e5e7eb);
-  --st-surface: var(--surface, #ffffff);
-  --st-bar: var(--brand, #4f46e5);
-  --st-pending: #2a78d6;
-  --st-waitlisted: #eda100;
-  --st-accepted: #1baf7a;
-  --st-rejected: #e34948;
-}
-@media (prefers-color-scheme: dark) {
-  .stats-root {
-    --st-pending: #3987e5;
-    --st-waitlisted: #c98500;
-    --st-accepted: #199e70;
-    --st-rejected: #e66767;
-  }
-}
-.stats-root .st-refreshing { opacity: 0.6; transition: opacity 0.15s; }
-.stats-root .st-axis text { fill: var(--st-muted); font-size: 11px; }
-.stats-root .st-grid line { stroke: var(--st-grid); stroke-width: 1; }
-.stats-root .st-bar-row { display: grid; grid-template-columns: minmax(90px, 36%) 1fr 2.6rem 2.6rem; gap: 0.6rem; align-items: center; font-size: 0.85rem; }
-.stats-root .st-bar-count, .stats-root .st-bar-share { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
-.stats-root .st-bar-track { height: 10px; }
-.stats-root .st-bar-fill { height: 10px; background: var(--st-bar); border-radius: 0 4px 4px 0; }
-.stats-root .st-live-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--st-accepted); margin-right: 0.4rem; }
-.stats-root table.st-table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
-.stats-root table.st-table th, .stats-root table.st-table td { padding: 0.45rem 0.6rem; text-align: right; border-bottom: 1px solid var(--st-grid); }
-.stats-root table.st-table th:first-child, .stats-root table.st-table td:first-child { text-align: left; }
-.stats-root table.st-table th { font-weight: 600; }
-`;
 
 const number = (n) => Number(n || 0).toLocaleString();
 
@@ -227,320 +244,284 @@ export default function StatsPage() {
   );
   const eventDay = stats?.eventDay;
 
+  // Headline numbers. Modules that aren't tracked (null) are left out.
+  const kpis = stats
+    ? [
+        { label: "Applications", value: submittedTotal, note: "All rounds" },
+        {
+          label: "Accepted",
+          value: acceptedTotal,
+          note: `${percent(acceptedTotal, submittedTotal)} of submitted`,
+        },
+        {
+          label: "Checked in",
+          value: eventDay.checkedIn,
+          note:
+            `of ${number(eventDay.acceptedAttendees)} accepted` +
+            (eventDay.forcedCheckIns
+              ? `, ${number(eventDay.forcedCheckIns)} walk-in${eventDay.forcedCheckIns === 1 ? "" : "s"}`
+              : ""),
+        },
+        {
+          label: "Meals served",
+          value: eventDay.mealsServed,
+          note: `${number(eventDay.meals.length)} meal${eventDay.meals.length === 1 ? "" : "s"}`,
+        },
+        ...(eventDay.workshopAttendance == null
+          ? []
+          : [
+              {
+                label: "Workshop attendance",
+                value: eventDay.workshopAttendance,
+              },
+            ]),
+        ...(eventDay.hardwareOut == null
+          ? []
+          : [{ label: "Hardware out", value: eventDay.hardwareOut }]),
+      ]
+    : [];
+
   return (
-    <div className="stats-root">
-      <style>{CSS}</style>
+    <div>
+      <PageHeader
+        title="Statistics"
+        actions={
+          <>
+            <div className="flex items-center gap-2 pr-1">
+              <Switch
+                id="event-day-mode"
+                size="sm"
+                checked={live}
+                onCheckedChange={toggleLive}
+              />
+              <Label
+                htmlFor="event-day-mode"
+                className="text-sm font-normal"
+                title="Refresh every 30 seconds, for a lobby screen"
+              >
+                Event-day mode
+              </Label>
+            </div>
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              disabled={refreshing}
+              onClick={load}
+            >
+              <RefreshCw
+                className={cn(refreshing && "animate-spin")}
+                aria-hidden="true"
+              />
+              Refresh
+            </Button>
+          </>
+        }
+      />
 
       <div
-        style={{
-          display: "flex",
-          justifyContent: "space-between",
-          alignItems: "flex-start",
-          gap: "1rem",
-          flexWrap: "wrap",
-          marginBottom: "1.25rem",
-        }}
-      >
-        <div>
-          <h1
-            style={{
-              fontSize: "1.5rem",
-              fontWeight: 700,
-              marginBottom: "0.25rem",
-            }}
-          >
-            Statistics
-          </h1>
-          <p className="muted">
-            Who applied, who showed up, and what was served.
-          </p>
-        </div>
-        <div
-          style={{
-            display: "flex",
-            gap: "0.75rem",
-            alignItems: "center",
-            flexWrap: "wrap",
-          }}
-        >
-          <label
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: "0.4rem",
-              fontSize: "0.9rem",
-            }}
-          >
-            <input
-              type="checkbox"
-              checked={live}
-              onChange={(e) => toggleLive(e.target.checked)}
-            />
-            Event-day mode
-          </label>
-          <button
-            type="button"
-            className="btn btn-ghost"
-            style={{ width: "auto", gap: "0.4rem" }}
-            disabled={refreshing}
-            onClick={load}
-          >
-            <RefreshCw
-              size={16}
-              aria-hidden="true"
-              style={
-                refreshing
-                  ? { animation: "spin 1s linear infinite" }
-                  : undefined
-              }
-            />
-            {refreshing ? "Refreshing…" : "Refresh"}
-          </button>
-        </div>
-      </div>
-
-      <p
-        className="muted"
-        style={{ fontSize: "0.82rem", marginBottom: "1rem" }}
+        className="-mt-3 mb-6 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground"
         aria-live="polite"
       >
         {live
-          ? <>
-              <span className="st-live-dot" aria-hidden="true" />
-              Live: refreshes every {LIVE_REFRESH_MS / 1000} seconds
-            </>
-          : "Event-day mode refreshes this page every 30 seconds, for a lobby screen."}
-        {updatedAt ? ` · Updated ${timeLabel(updatedAt)}` : ""}
-      </p>
+          ? <StatusDot tone="success" className="text-xs">
+              Live, refreshes every {LIVE_REFRESH_MS / 1000} seconds
+            </StatusDot>
+          : null}
+        {updatedAt
+          ? <span className="tabular-nums">Updated {timeLabel(updatedAt)}</span>
+          : null}
+      </div>
 
       {error
-        ? <div
-            className="alert-error"
-            role="alert"
-            style={{ marginBottom: "1rem" }}
-          >
-            {stats
-              ? `Couldn't refresh: ${error}. Showing the numbers from ${updatedAt ? timeLabel(updatedAt) : "earlier"}.`
-              : error}
-          </div>
+        ? <Alert variant="destructive" className="mb-4">
+            <AlertDescription>
+              {stats
+                ? `Couldn't refresh: ${error}. Showing the numbers from ${updatedAt ? timeLabel(updatedAt) : "earlier"}.`
+                : error}
+            </AlertDescription>
+          </Alert>
         : null}
 
       {loading
-        ? <p className="muted">Loading…</p>
+        ? <StatsSkeleton />
         : !stats
           ? null
-          : <div className={refreshing ? "st-refreshing" : undefined}>
-              <div
-                style={{
-                  display: "grid",
-                  gridTemplateColumns: "repeat(auto-fit, minmax(230px, 1fr))",
-                  gap: "0.85rem",
-                  marginBottom: "1.5rem",
-                }}
-              >
-                <Kpi
-                  label="Applications"
-                  value={submittedTotal}
-                  note="submitted, all rounds"
-                />
-                <Kpi
-                  label="Accepted"
-                  value={acceptedTotal}
-                  note={`${percent(acceptedTotal, submittedTotal)} of submitted`}
-                />
-                <Kpi
-                  label="Checked in"
-                  value={eventDay.checkedIn}
-                  note={
-                    `of ${number(eventDay.acceptedAttendees)} accepted` +
-                    (eventDay.forcedCheckIns
-                      ? ` · ${number(eventDay.forcedCheckIns)} walk-in${eventDay.forcedCheckIns === 1 ? "" : "s"}`
-                      : "")
-                  }
-                />
-                <Kpi
-                  label="Meals served"
-                  value={eventDay.mealsServed}
-                  note={`across ${number(eventDay.meals.length)} meal${eventDay.meals.length === 1 ? "" : "s"}`}
-                />
-                <Kpi
-                  label="Workshop attendance"
-                  value={eventDay.workshopAttendance}
-                  note="not tracked yet"
-                />
-                <Kpi
-                  label="Hardware out"
-                  value={eventDay.hardwareOut}
-                  note="not tracked yet"
-                />
-              </div>
-
-              <Section title="By round">
-                <RoundsTable rounds={apps.byRound} />
-              </Section>
-
-              <div
-                style={{
-                  display: "flex",
-                  gap: "0.75rem",
-                  alignItems: "center",
-                  flexWrap: "wrap",
-                  margin: "1.5rem 0 1rem",
-                }}
-              >
-                <h2 style={{ fontSize: "1.05rem", fontWeight: 600 }}>
-                  Who applied
-                </h2>
-                <select
-                  className="select"
-                  aria-label="Round"
-                  style={{ maxWidth: 200 }}
-                  value={round}
-                  onChange={(e) => setRound(e.target.value)}
-                >
-                  <option value="">All rounds</option>
-                  {rounds.map((r) => (
-                    <option key={r._id} value={r._id}>
-                      {r.name}
-                    </option>
-                  ))}
-                </select>
-                <select
-                  className="select"
-                  aria-label="Status"
-                  style={{ maxWidth: 180 }}
-                  value={status}
-                  onChange={(e) => setStatus(e.target.value)}
-                >
-                  {STATUS_FILTERS.map(([value, label]) => (
-                    <option key={value || "all"} value={value}>
-                      {label}
-                    </option>
-                  ))}
-                </select>
-                <span className="muted" style={{ fontSize: "0.85rem" }}>
-                  {number(apps.total)} application
-                  {apps.total === 1 ? "" : "s"} in this view
-                </span>
-              </div>
-
-              <Section title="Applications over time">
-                <TimeChart
-                  days={apps.submissionsPerDay}
-                  series={status === "draft" ? DRAFT_SERIES : STATUS_SERIES}
-                  timeZone={stats.timeZone}
-                />
-              </Section>
-
-              <div
-                style={{
-                  display: "grid",
-                  gridTemplateColumns: "repeat(auto-fit, minmax(380px, 1fr))",
-                  gap: "1rem",
-                  marginTop: "1rem",
-                }}
-              >
-                <Section title="School">
-                  <BarList chart={apps.bySchool} otherLabel="more schools" />
-                </Section>
-                <Section title="Education level">
-                  <BarList chart={apps.byEducation} otherLabel="more" />
-                </Section>
-                {apps.byGraduationYear
-                  ? <Section title="Graduation year">
-                      <BarList
-                        chart={apps.byGraduationYear}
-                        otherLabel="more"
-                      />
-                    </Section>
-                  : null}
-                <Section title="First-time hackers">
-                  <BarList chart={experienceChart(apps.experience)} />
-                  <p
-                    className="muted"
-                    style={{ fontSize: "0.8rem", marginTop: "0.6rem" }}
-                  >
-                    {number(apps.experience.attendedThisEvent)} have attended
-                    this event before.
-                  </p>
-                </Section>
-                <Section title="Gender">
-                  <BarList chart={apps.byGender} otherLabel="more" />
-                </Section>
-                <Section title="Major">
-                  <BarList chart={apps.byMajor} otherLabel="more majors" />
-                </Section>
-                <Section title="T-shirt size">
-                  <BarList chart={apps.byTshirtSize} otherLabel="more" />
-                </Section>
-                {apps.questions.map((q) => (
-                  <Section key={q.key} title={q.label}>
-                    <BarList chart={q} otherLabel="more" />
-                    {q.type === "multiselect"
-                      ? <p
-                          className="muted"
-                          style={{ fontSize: "0.8rem", marginTop: "0.6rem" }}
-                        >
-                          People can pick several, so the choices add up to more
-                          than the number of people.
-                        </p>
-                      : null}
-                  </Section>
+          : <div
+              className={cn(
+                "space-y-8 transition-opacity",
+                refreshing && "opacity-60",
+              )}
+            >
+              <div className="grid grid-cols-2 overflow-hidden rounded-xl bg-card ring-1 ring-foreground/10 sm:grid-cols-4 [&>*]:border-r [&>*]:border-b [&>*]:border-border">
+                {kpis.map((kpi) => (
+                  <Kpi key={kpi.label} {...kpi} />
                 ))}
               </div>
 
-              <div style={{ marginTop: "1.5rem" }}>
-                <Section title="Meals served">
-                  <MealsList meals={eventDay.meals} />
-                </Section>
-              </div>
+              <section className="space-y-3">
+                <h2 className="text-base font-semibold">By round</h2>
+                <RoundsTable rounds={apps.byRound} />
+              </section>
 
-              <div style={{ marginTop: "1.5rem" }}>
-                <ExportsCard round={round} status={status} />
-              </div>
+              <section className="space-y-4">
+                <div className="flex flex-wrap items-center gap-2">
+                  <h2 className="mr-2 text-base font-semibold">Applicants</h2>
+                  <Select
+                    value={round || "all"}
+                    onValueChange={(value) =>
+                      setRound(value === "all" ? "" : value)
+                    }
+                  >
+                    <SelectTrigger
+                      size="sm"
+                      aria-label="Round"
+                      className="w-36"
+                    >
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All rounds</SelectItem>
+                      {rounds.map((r) => (
+                        <SelectItem key={r._id} value={r._id}>
+                          {r.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <Select
+                    value={status || "all"}
+                    onValueChange={(value) =>
+                      setStatus(value === "all" ? "" : value)
+                    }
+                  >
+                    <SelectTrigger
+                      size="sm"
+                      aria-label="Status"
+                      className="w-36"
+                    >
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {STATUS_FILTERS.map(([value, label]) => (
+                        <SelectItem key={value} value={value}>
+                          {label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <span className="ml-auto text-xs text-muted-foreground tabular-nums">
+                    {number(apps.total)} application
+                    {apps.total === 1 ? "" : "s"} in this view
+                  </span>
+                </div>
+
+                <Panel
+                  title="Applications over time"
+                  description={`By the day the application was started, in ${stats.timeZone || "the event's time zone"}.`}
+                >
+                  <TimeChart
+                    days={apps.submissionsPerDay}
+                    series={status === "draft" ? DRAFT_SERIES : STATUS_SERIES}
+                  />
+                </Panel>
+
+                <div className="grid gap-4 md:grid-cols-2">
+                  <Panel title="School">
+                    <BarList chart={apps.bySchool} otherLabel="more schools" />
+                  </Panel>
+                  <Panel title="Education level">
+                    <BarList chart={apps.byEducation} otherLabel="more" />
+                  </Panel>
+                  {apps.byGraduationYear
+                    ? <Panel title="Graduation year">
+                        <BarList
+                          chart={apps.byGraduationYear}
+                          otherLabel="more"
+                        />
+                      </Panel>
+                    : null}
+                  <Panel title="First-time hackers">
+                    <BarList chart={experienceChart(apps.experience)} />
+                    <p className="mt-3 text-xs text-muted-foreground">
+                      {number(apps.experience.attendedThisEvent)} have attended
+                      this event before.
+                    </p>
+                  </Panel>
+                  <Panel title="Gender">
+                    <BarList chart={apps.byGender} otherLabel="more" />
+                  </Panel>
+                  <Panel title="Major">
+                    <BarList chart={apps.byMajor} otherLabel="more majors" />
+                  </Panel>
+                  <Panel title="T-shirt size">
+                    <BarList chart={apps.byTshirtSize} otherLabel="more" />
+                  </Panel>
+                  {apps.questions.map((q) => (
+                    <Panel key={q.key} title={q.label}>
+                      <BarList chart={q} otherLabel="more" />
+                      {q.type === "multiselect"
+                        ? <p className="mt-3 text-xs text-muted-foreground">
+                            People can pick several, so the choices add up to
+                            more than the number of people.
+                          </p>
+                        : null}
+                    </Panel>
+                  ))}
+                </div>
+              </section>
+
+              <section className="space-y-4">
+                <h2 className="text-base font-semibold">Event day</h2>
+                <div className="grid gap-4 md:grid-cols-2">
+                  <Panel title="Meals served">
+                    <MealsList meals={eventDay.meals} />
+                  </Panel>
+                </div>
+              </section>
+
+              <ExportsSection round={round} status={status} />
             </div>}
     </div>
   );
 }
 
-function Section({ title, children }) {
+function StatsSkeleton() {
   return (
-    <section className="card" style={{ padding: "1.25rem" }}>
-      <h3
-        style={{
-          fontSize: "0.95rem",
-          fontWeight: 600,
-          marginBottom: "0.85rem",
-        }}
-      >
-        {title}
-      </h3>
-      {children}
-    </section>
+    <div className="space-y-8" aria-busy="true">
+      <Skeleton className="h-20 w-full rounded-xl" />
+      <Skeleton className="h-40 w-full rounded-xl" />
+      <Skeleton className="h-64 w-full rounded-xl" />
+    </div>
   );
 }
 
-// Headline number. Whole numbers stay whole (1,284); a null value means the
-// module that feeds it doesn't exist yet and shows a dash.
+function Panel({ title, description, children }) {
+  return (
+    <Card size="sm">
+      <CardHeader>
+        <CardTitle>{title}</CardTitle>
+        {description
+          ? <CardDescription className="text-xs">{description}</CardDescription>
+          : null}
+      </CardHeader>
+      <CardContent>{children}</CardContent>
+    </Card>
+  );
+}
+
+// One headline number in the strip. Cells share the strip's border (the
+// wrapper draws the outer ring; each cell draws its own right/bottom rule).
 function Kpi({ label, value, note }) {
   return (
-    <div className="card" style={{ padding: "1rem 1.1rem" }}>
-      <div className="muted" style={{ fontSize: "0.82rem" }}>
-        {label}
+    <div className="px-4 py-3">
+      <div className="text-xs text-muted-foreground">{label}</div>
+      <div className="text-2xl font-semibold tracking-tight tabular-nums">
+        {number(value)}
       </div>
-      <div
-        style={{
-          fontSize: "1.9rem",
-          fontWeight: 650,
-          lineHeight: 1.2,
-          margin: "0.2rem 0",
-        }}
-      >
-        {value === null || value === undefined ? "—" : number(value)}
-      </div>
-      <div className="muted" style={{ fontSize: "0.78rem" }}>
-        {note}
-      </div>
+      {note
+        ? <div className="text-xs text-muted-foreground">{note}</div>
+        : null}
     </div>
   );
 }
@@ -562,48 +543,41 @@ function experienceChart(experience) {
 // because the rows are one measure (people); the label carries the identity.
 function BarList({ chart, otherLabel }) {
   if (!chart || !chart.total) {
-    return <p className="muted">No data yet.</p>;
+    return <p className="text-sm text-muted-foreground">No data yet.</p>;
   }
   const max = Math.max(1, ...chart.buckets.map((b) => b.count));
   return (
-    <div style={{ display: "grid", gap: "0.55rem" }}>
+    <div className="space-y-2">
       {chart.buckets.map((bucket) => (
         <div
           key={bucket.label}
-          className="st-bar-row"
+          className="grid grid-cols-[minmax(5rem,10rem)_1fr_5.5rem] items-center gap-3 text-sm"
           title={`${bucket.label}: ${number(bucket.count)} (${percent(bucket.count, chart.total)})`}
         >
-          <span
-            style={{
-              overflow: "hidden",
-              textOverflow: "ellipsis",
-              whiteSpace: "nowrap",
-            }}
-          >
-            {bucket.label}
-          </span>
-          <span className="st-bar-track">
+          <span className="truncate">{bucket.label}</span>
+          <span className="h-2 rounded-full bg-muted">
             <span
-              className="st-bar-fill"
+              className="block h-2 rounded-full bg-brand"
               style={{
-                display: "block",
                 width: `${(bucket.count / max) * 100}%`,
-                minWidth: bucket.count > 0 ? 2 : 0,
+                minWidth: bucket.count > 0 ? 3 : 0,
               }}
             />
           </span>
-          <span className="st-bar-count">{number(bucket.count)}</span>
-          <span className="st-bar-share muted">
-            {percent(bucket.count, chart.total)}
+          <span className="text-right whitespace-nowrap tabular-nums">
+            {number(bucket.count)}
+            <span className="ml-1.5 text-xs text-muted-foreground">
+              {percent(bucket.count, chart.total)}
+            </span>
           </span>
         </div>
       ))}
       {chart.other && chart.other.count > 0
-        ? <div className="muted" style={{ fontSize: "0.82rem" }}>
+        ? <p className="pt-1 text-xs text-muted-foreground tabular-nums">
             + {number(chart.other.distinct)} {otherLabel || "more"} (
-            {number(chart.other.count)} ·{" "}
+            {number(chart.other.count)},{" "}
             {percent(chart.other.count, chart.total)})
-          </div>
+          </p>
         : null}
     </div>
   );
@@ -611,7 +585,9 @@ function BarList({ chart, otherLabel }) {
 
 function MealsList({ meals }) {
   if (!meals.length) {
-    return <p className="muted">No meals set up yet.</p>;
+    return (
+      <p className="text-sm text-muted-foreground">No meals set up yet.</p>
+    );
   }
   const total = meals.reduce((sum, m) => sum + m.served, 0);
   return (
@@ -627,56 +603,100 @@ function MealsList({ meals }) {
 
 function RoundsTable({ rounds }) {
   if (!rounds.length) {
-    return <p className="muted">No application rounds yet.</p>;
+    return (
+      <p className="text-sm text-muted-foreground">
+        No application rounds yet.
+      </p>
+    );
   }
   return (
-    <div style={{ overflowX: "auto" }}>
-      <table className="st-table">
-        <thead>
-          <tr>
-            <th scope="col">Round</th>
-            <th scope="col">Submitted</th>
+    <div className="overflow-hidden rounded-xl bg-card ring-1 ring-foreground/10">
+      <Table>
+        <TableHeader>
+          <TableRow className="hover:bg-transparent">
+            <TableHead className="h-9 px-3 text-xs text-muted-foreground">
+              Round
+            </TableHead>
+            <TableHead className="h-9 px-3 text-right text-xs text-muted-foreground">
+              Submitted
+            </TableHead>
             {STATUS_SERIES.map((s) => (
-              <th key={s.key} scope="col">
+              <TableHead
+                key={s.key}
+                className="h-9 px-3 text-right text-xs text-muted-foreground"
+              >
                 {s.label}
-              </th>
+              </TableHead>
             ))}
-            <th scope="col">Drafts</th>
-          </tr>
-        </thead>
-        <tbody>
+            <TableHead className="h-9 px-3 text-right text-xs text-muted-foreground">
+              Drafts
+            </TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
           {rounds.map((r) => (
-            <tr key={r._id || "none"}>
-              <td>{r.name}</td>
-              <td>{number(r.total)}</td>
+            <TableRow key={r._id || "none"}>
+              <TableCell className="px-3 py-1.5 font-medium">
+                {r.name}
+              </TableCell>
+              <TableCell className="px-3 py-1.5 text-right tabular-nums">
+                {number(r.total)}
+              </TableCell>
               {STATUS_SERIES.map((s) => (
-                <td key={s.key}>{number(r.byStatus[s.key])}</td>
+                <TableCell
+                  key={s.key}
+                  className="px-3 py-1.5 text-right text-muted-foreground tabular-nums"
+                >
+                  {number(r.byStatus[s.key])}
+                </TableCell>
               ))}
-              <td>{number(r.byStatus.draft)}</td>
-            </tr>
+              <TableCell className="px-3 py-1.5 text-right text-muted-foreground tabular-nums">
+                {number(r.byStatus.draft)}
+              </TableCell>
+            </TableRow>
           ))}
-        </tbody>
-      </table>
+        </TableBody>
+      </Table>
     </div>
   );
 }
 
-// Stacked columns, one per day, split by status. Hover or focus a day for the
-// exact numbers; "View as table" has every value without hovering.
-function TimeChart({ days, series, timeZone }) {
+// Width of an element in pixels, kept current. The chart is drawn at its real
+// size, so axis labels stay a readable 12 px at any screen width.
+function useWidth(ref) {
+  const [width, setWidth] = useState(0);
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return undefined;
+    setWidth(el.clientWidth);
+    const observer = new ResizeObserver(([entry]) =>
+      setWidth(Math.round(entry.contentRect.width)),
+    );
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [ref]);
+  return width;
+}
+
+// Stacked columns, one per day, split by status. Hover a day for the exact
+// numbers; "View as table" has every value without hovering.
+function TimeChart({ days, series }) {
   const [hover, setHover] = useState(null);
+  const box = useRef(null);
+  const W = useWidth(box);
 
   if (!days.length) {
-    return <p className="muted">No applications yet.</p>;
+    return (
+      <p className="text-sm text-muted-foreground">No applications yet.</p>
+    );
   }
 
-  const W = 720;
   const H = 240;
-  const margin = { top: 12, right: 12, bottom: 28, left: 40 };
-  const innerW = W - margin.left - margin.right;
+  const margin = { top: 12, right: 8, bottom: 28, left: 36 };
+  const innerW = Math.max(1, W - margin.left - margin.right);
   const innerH = H - margin.top - margin.bottom;
   const band = innerW / days.length;
-  const barW = Math.max(2, Math.min(24, band - 4));
+  const barW = Math.max(2, Math.min(28, band - 4));
 
   const maxTotal = Math.max(1, ...days.map((d) => d.total));
   const step = niceStep(maxTotal);
@@ -685,9 +705,10 @@ function TimeChart({ days, series, timeZone }) {
   for (let v = 0; v <= yMax; v += step) ticks.push(v);
   const y = (v) => margin.top + innerH - (v / yMax) * innerH;
 
-  // Label about six days along the axis, and the last day too unless it would
-  // crowd the label before it.
-  const labelEvery = Math.max(1, Math.ceil(days.length / 6));
+  // One day label per ~64 px, and the last day too unless it would crowd the
+  // label before it.
+  const fit = Math.max(1, Math.floor(innerW / 64));
+  const labelEvery = Math.max(1, Math.ceil(days.length / fit));
   const labelled = new Set();
   for (let i = 0; i < days.length; i += labelEvery) labelled.add(i);
   if (days.length - 1 - Math.max(...labelled) >= Math.ceil(labelEvery * 0.6)) {
@@ -699,231 +720,209 @@ function TimeChart({ days, series, timeZone }) {
     total: days.reduce((sum, d) => sum + (d.byStatus[s.key] || 0), 0),
   }));
   const hovered = hover === null ? null : days[hover];
-  const hoverLeft =
-    hover === null ? 0 : ((margin.left + band * hover + band / 2) / W) * 100;
+  const hoverLeft = hover === null ? 0 : margin.left + band * hover + band / 2;
 
   return (
     <div>
-      <div
-        style={{
-          display: "flex",
-          gap: "1.1rem",
-          flexWrap: "wrap",
-          marginBottom: "0.75rem",
-          fontSize: "0.82rem",
-        }}
-      >
+      <ul className="mb-3 flex flex-wrap gap-x-4 gap-y-1 text-xs">
         {seriesTotals.map((s) => (
-          <span
-            key={s.key}
-            style={{
-              display: "inline-flex",
-              alignItems: "center",
-              gap: "0.4rem",
-            }}
-          >
+          <li key={s.key} className="inline-flex items-center gap-1.5">
             <span
               aria-hidden="true"
-              style={{
-                width: 10,
-                height: 10,
-                borderRadius: 3,
-                background: s.color,
-              }}
+              className={cn("size-2.5 rounded-[3px]", s.dot)}
             />
             {s.label}
-            <span className="muted">{number(s.total)}</span>
-          </span>
+            <span className="text-muted-foreground tabular-nums">
+              {number(s.total)}
+            </span>
+          </li>
         ))}
-      </div>
+      </ul>
 
-      <div style={{ position: "relative" }}>
-        <svg
-          viewBox={`0 0 ${W} ${H}`}
-          width="100%"
-          role="img"
-          aria-label={`Applications per day, ${dayLabel(days[0].date)} to ${dayLabel(days[days.length - 1].date)}, split by status. A table with the same numbers follows.`}
-        >
-          <g className="st-grid">
-            {ticks.map((v) => (
-              <line
-                key={v}
-                x1={margin.left}
-                x2={W - margin.right}
-                y1={y(v)}
-                y2={y(v)}
-              />
-            ))}
-          </g>
-          <g className="st-axis">
-            {ticks.map((v) => (
-              <text key={v} x={margin.left - 8} y={y(v) + 4} textAnchor="end">
-                {number(v)}
-              </text>
-            ))}
-            {days.map((d, i) =>
-              labelled.has(i)
-                ? <text
-                    key={d.date}
-                    x={margin.left + band * i + band / 2}
-                    y={H - 8}
-                    textAnchor="middle"
-                  >
-                    {dayLabel(d.date)}
-                  </text>
-                : null,
-            )}
-          </g>
-
-          {days.map((d, i) => {
-            const x = margin.left + band * i + (band - barW) / 2;
-            // A 2px surface-coloured gap separates stacked segments.
-            const parts = series
-              .map((s) => ({ ...s, value: d.byStatus[s.key] || 0 }))
-              .filter((p) => p.value > 0);
-            let running = 0;
-            return (
-              <g key={d.date}>
-                {hover === i
-                  ? <rect
-                      x={margin.left + band * i}
-                      y={margin.top}
-                      width={band}
-                      height={innerH}
-                      fill="var(--st-grid)"
-                      opacity="0.45"
-                    />
-                  : null}
-                {parts.map((p, index) => {
-                  const bottom = y(running);
-                  running += p.value;
-                  const top = y(running);
-                  const gap = index < parts.length - 1 ? 2 : 0;
-                  return (
-                    <rect
-                      key={p.key}
-                      x={x}
-                      y={top}
-                      width={barW}
-                      height={Math.max(1, bottom - top - gap)}
-                      rx={2}
-                      fill={p.color}
-                    />
-                  );
-                })}
+      <div ref={box} className="relative w-full">
+        {W > 0
+          ? <svg
+              width={W}
+              height={H}
+              role="img"
+              aria-label={`Applications per day, ${dayLabel(days[0].date)} to ${dayLabel(days[days.length - 1].date)}, split by status. A table with the same numbers follows.`}
+            >
+              <g className="stroke-border">
+                {ticks.map((v) => (
+                  <line
+                    key={v}
+                    x1={margin.left}
+                    x2={W - margin.right}
+                    y1={y(v)}
+                    y2={y(v)}
+                  />
+                ))}
               </g>
-            );
-          })}
+              <g className="fill-muted-foreground text-xs">
+                {ticks.map((v) => (
+                  <text
+                    key={v}
+                    x={margin.left - 8}
+                    y={y(v) + 4}
+                    textAnchor="end"
+                  >
+                    {number(v)}
+                  </text>
+                ))}
+                {days.map((d, i) =>
+                  labelled.has(i)
+                    ? <text
+                        key={d.date}
+                        x={margin.left + band * i + band / 2}
+                        y={H - 8}
+                        textAnchor="middle"
+                      >
+                        {dayLabel(d.date)}
+                      </text>
+                    : null,
+                )}
+              </g>
 
-          {days.map((d, i) => (
-            // biome-ignore lint/a11y/noStaticElementInteractions: hover layer for a chart whose every value is also in the table below
-            <rect
-              key={d.date}
-              x={margin.left + band * i}
-              y={margin.top}
-              width={band}
-              height={innerH}
-              fill="transparent"
-              onMouseEnter={() => setHover(i)}
-              onMouseMove={() => setHover(i)}
-              onMouseLeave={() => setHover(null)}
-            />
-          ))}
-        </svg>
+              {days.map((d, i) => {
+                const x = margin.left + band * i + (band - barW) / 2;
+                // A 2px gap separates stacked segments.
+                const parts = series
+                  .map((s) => ({ ...s, value: d.byStatus[s.key] || 0 }))
+                  .filter((p) => p.value > 0);
+                let running = 0;
+                return (
+                  <g key={d.date}>
+                    {hover === i
+                      ? <rect
+                          x={margin.left + band * i}
+                          y={margin.top}
+                          width={band}
+                          height={innerH}
+                          className="fill-muted"
+                          opacity="0.6"
+                        />
+                      : null}
+                    {parts.map((p, index) => {
+                      const bottom = y(running);
+                      running += p.value;
+                      const top = y(running);
+                      const gap = index < parts.length - 1 ? 2 : 0;
+                      return (
+                        <rect
+                          key={p.key}
+                          x={x}
+                          y={top}
+                          width={barW}
+                          height={Math.max(1, bottom - top - gap)}
+                          rx={2}
+                          className={p.bar}
+                        />
+                      );
+                    })}
+                  </g>
+                );
+              })}
+
+              {days.map((d, i) => (
+                // biome-ignore lint/a11y/noStaticElementInteractions: hover layer for a chart whose every value is also in the table below
+                <rect
+                  key={d.date}
+                  x={margin.left + band * i}
+                  y={margin.top}
+                  width={band}
+                  height={innerH}
+                  fill="transparent"
+                  onMouseEnter={() => setHover(i)}
+                  onMouseMove={() => setHover(i)}
+                  onMouseLeave={() => setHover(null)}
+                />
+              ))}
+            </svg>
+          : <div style={{ height: H }} />}
 
         {hovered
           ? <div
-              className="card"
+              className="pointer-events-none absolute top-0 min-w-36 -translate-x-1/2 rounded-lg border bg-popover p-2 text-xs text-popover-foreground shadow-md"
               style={{
-                position: "absolute",
-                top: 0,
-                left: `${Math.min(86, Math.max(14, hoverLeft))}%`,
-                transform: "translateX(-50%)",
-                padding: "0.5rem 0.7rem",
-                fontSize: "0.8rem",
-                pointerEvents: "none",
-                minWidth: 130,
+                left: Math.min(Math.max(hoverLeft, 80), Math.max(80, W - 80)),
               }}
             >
-              <div className="muted" style={{ marginBottom: 2 }}>
+              <div className="text-muted-foreground">
                 {dayLabel(hovered.date, true)}
               </div>
-              <div style={{ fontWeight: 650, marginBottom: 4 }}>
+              <div className="mb-1 font-medium tabular-nums">
                 {number(hovered.total)} total
               </div>
               {series.map((s) => (
-                <div
-                  key={s.key}
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: "0.4rem",
-                  }}
-                >
+                <div key={s.key} className="flex items-center gap-1.5">
                   <span
                     aria-hidden="true"
-                    style={{
-                      width: 10,
-                      height: 3,
-                      borderRadius: 2,
-                      background: s.color,
-                    }}
+                    className={cn("size-2 rounded-[2px]", s.dot)}
                   />
-                  <span style={{ fontWeight: 600 }}>
+                  <span className="font-medium tabular-nums">
                     {number(hovered.byStatus[s.key])}
                   </span>
-                  <span className="muted">{s.label}</span>
+                  <span className="text-muted-foreground">{s.label}</span>
                 </div>
               ))}
             </div>
           : null}
       </div>
-      <p
-        className="muted"
-        style={{ fontSize: "0.78rem", marginTop: "0.25rem" }}
-      >
-        By the day the application was started, in{" "}
-        {timeZone || "the event's time zone"}.
-      </p>
 
-      <details style={{ marginTop: "0.75rem" }}>
-        <summary style={{ cursor: "pointer", fontSize: "0.85rem" }}>
+      <details className="mt-3 text-sm">
+        <summary className="cursor-pointer text-xs text-muted-foreground hover:text-foreground">
           View as table
         </summary>
-        <div style={{ overflowX: "auto", marginTop: "0.5rem" }}>
-          <table className="st-table">
-            <thead>
-              <tr>
-                <th scope="col">Day</th>
-                <th scope="col">Total</th>
+        <div className="mt-2 overflow-hidden rounded-lg border">
+          <Table>
+            <TableHeader>
+              <TableRow className="hover:bg-transparent">
+                <TableHead className="h-8 px-3 text-xs text-muted-foreground">
+                  Day
+                </TableHead>
+                <TableHead className="h-8 px-3 text-right text-xs text-muted-foreground">
+                  Total
+                </TableHead>
                 {series.map((s) => (
-                  <th key={s.key} scope="col">
+                  <TableHead
+                    key={s.key}
+                    className="h-8 px-3 text-right text-xs text-muted-foreground"
+                  >
                     {s.label}
-                  </th>
+                  </TableHead>
                 ))}
-              </tr>
-            </thead>
-            <tbody>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
               {days.map((d) => (
-                <tr key={d.date}>
-                  <td>{dayLabel(d.date, true)}</td>
-                  <td>{number(d.total)}</td>
+                <TableRow key={d.date}>
+                  <TableCell className="px-3 py-1">
+                    {dayLabel(d.date, true)}
+                  </TableCell>
+                  <TableCell className="px-3 py-1 text-right tabular-nums">
+                    {number(d.total)}
+                  </TableCell>
                   {series.map((s) => (
-                    <td key={s.key}>{number(d.byStatus[s.key])}</td>
+                    <TableCell
+                      key={s.key}
+                      className="px-3 py-1 text-right text-muted-foreground tabular-nums"
+                    >
+                      {number(d.byStatus[s.key])}
+                    </TableCell>
                   ))}
-                </tr>
+                </TableRow>
               ))}
-            </tbody>
-          </table>
+            </TableBody>
+          </Table>
         </div>
       </details>
     </div>
   );
 }
 
-// Downloads (B29). Personal data, so the card says so; the file comes from an
-// authenticated request, since a plain link can't carry the login token.
-function ExportsCard({ round, status }) {
+// Downloads (B29). Personal data, so the section says so; the file comes from
+// an authenticated request, since a plain link can't carry the login token.
+function ExportsSection({ round, status }) {
   const [busy, setBusy] = useState("");
   const [error, setError] = useState("");
   const [consentQuestions, setConsentQuestions] = useState([]);
@@ -996,85 +995,66 @@ function ExportsCard({ round, status }) {
   ];
 
   return (
-    <Section title="Exports">
-      <p
-        className="muted"
-        style={{ fontSize: "0.85rem", marginBottom: "0.85rem" }}
-      >
-        These files contain personal information. Share them only with people
-        who need them. The applications file follows the round and status chosen
-        above.
-      </p>
-      <div style={{ display: "flex", gap: "0.6rem", flexWrap: "wrap" }}>
+    <section className="space-y-4">
+      <div className="space-y-1">
+        <h2 className="text-base font-semibold">Exports</h2>
+        <p className="text-sm text-muted-foreground">
+          These files contain personal information. Share them only with people
+          who need them. The applications file follows the round and status
+          chosen above.
+        </p>
+      </div>
+      <div className="flex flex-wrap gap-2">
         {buttons.map(([name, label, path, fallback]) => (
-          <button
+          <Button
             key={name}
             type="button"
-            className="btn btn-ghost"
-            style={{ width: "auto", gap: "0.4rem" }}
+            variant="outline"
+            size="sm"
             disabled={Boolean(busy)}
             onClick={() => run(name, path, fallback)}
           >
-            <Download size={16} aria-hidden="true" />
-            {busy === name ? "Preparing…" : label}
-          </button>
+            <Download aria-hidden="true" />
+            {busy === name ? "Preparing" : label}
+          </Button>
         ))}
       </div>
 
-      <div
-        style={{
-          marginTop: "1.1rem",
-          paddingTop: "1rem",
-          borderTop: "1px solid var(--st-grid)",
-        }}
-      >
-        <div
-          style={{
-            fontWeight: 600,
-            fontSize: "0.9rem",
-            marginBottom: "0.3rem",
-          }}
-        >
-          Resumes for sponsors (ZIP)
-        </div>
-        <p
-          className="muted"
-          style={{ fontSize: "0.82rem", marginBottom: "0.6rem" }}
-        >
+      <div className="space-y-2 border-t pt-4">
+        <h3 className="text-sm font-medium">Resumes for sponsors (ZIP)</h3>
+        <p className="text-sm text-muted-foreground">
           Accepted applicants who ticked the question below, and nobody else.
           The file can be large; keep this tab open until it finishes.
         </p>
         {consentQuestions.length === 0
-          ? <p className="muted" style={{ fontSize: "0.85rem" }}>
+          ? <p className="text-sm text-muted-foreground">
               Add a checkbox question to the application form (for example
               &ldquo;Share my resume with sponsors&rdquo;) to use this.
             </p>
-          : <div
-              style={{
-                display: "flex",
-                gap: "0.6rem",
-                flexWrap: "wrap",
-                alignItems: "center",
-              }}
-            >
-              <select
-                className="select"
-                aria-label="Question that says an applicant agreed to share their resume"
-                style={{ maxWidth: 320 }}
-                value={consentKey}
-                onChange={(e) => setConsentKey(e.target.value)}
+          : <div className="flex flex-wrap items-center gap-2">
+              <Select
+                value={consentKey || undefined}
+                onValueChange={setConsentKey}
               >
-                <option value="">Choose the consent question…</option>
-                {consentQuestions.map((q) => (
-                  <option key={q.key} value={q.key}>
-                    {q.label}
-                  </option>
-                ))}
-              </select>
-              <button
+                <SelectTrigger
+                  size="sm"
+                  aria-label="Question that says an applicant agreed to share their resume"
+                  className="w-72 max-w-full"
+                >
+                  <SelectValue placeholder="Choose the consent question" />
+                </SelectTrigger>
+                <SelectContent>
+                  {consentQuestions.map((q) => (
+                    <SelectItem key={q.key} value={q.key}>
+                      {q.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <Button
                 type="button"
-                className="btn btn-ghost"
-                style={{ width: "auto", gap: "0.4rem" }}
+                variant="outline"
+                size="sm"
                 disabled={Boolean(busy) || !consentKey}
                 onClick={() =>
                   run(
@@ -1084,21 +1064,17 @@ function ExportsCard({ round, status }) {
                   )
                 }
               >
-                <Download size={16} aria-hidden="true" />
-                {busy === "resumes" ? "Preparing…" : "Download ZIP"}
-              </button>
+                <Download aria-hidden="true" />
+                {busy === "resumes" ? "Preparing" : "Download ZIP"}
+              </Button>
             </div>}
       </div>
 
       {error
-        ? <div
-            className="alert-error"
-            role="alert"
-            style={{ marginTop: "0.85rem" }}
-          >
-            {error}
-          </div>
+        ? <Alert variant="destructive">
+            <AlertDescription>{error}</AlertDescription>
+          </Alert>
         : null}
-    </Section>
+    </section>
   );
 }
