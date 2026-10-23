@@ -41,6 +41,7 @@ import {
   Sheet,
   SheetContent,
   SheetDescription,
+  SheetFooter,
   SheetHeader,
   SheetTitle,
 } from "@/components/ui/sheet";
@@ -449,6 +450,8 @@ export default function AdminReviewPage() {
             cache={cache}
             onClose={() => setSelectedId(null)}
             onFlagChanged={flagChanged}
+            onDecide={decide}
+            deciding={deciding === selected._id}
           />
         : null}
     </div>
@@ -459,7 +462,14 @@ export default function AdminReviewPage() {
 // so the full application (answers, its round's form) is fetched on open and
 // cached; reopening it costs nothing. Escape, the scrim and the close button
 // all close it (Sheet).
-function ApplicationDrawer({ summary, cache, onClose, onFlagChanged }) {
+function ApplicationDrawer({
+  summary,
+  cache,
+  onClose,
+  onFlagChanged,
+  onDecide,
+  deciding,
+}) {
   const [app, setApp] = useState(() => cache.details.get(summary._id) || null);
   const [error, setError] = useState("");
 
@@ -486,8 +496,8 @@ function ApplicationDrawer({ summary, cache, onClose, onFlagChanged }) {
 
   return (
     <Sheet open onOpenChange={(open) => (open ? null : onClose())}>
-      <SheetContent className="w-full gap-0 overflow-y-auto sm:max-w-md">
-        <SheetHeader className="gap-1 border-b p-4 pr-12">
+      <SheetContent className="w-full gap-0 sm:max-w-md">
+        <SheetHeader className="shrink-0 gap-1 border-b p-4 pr-12">
           <SheetTitle className="text-base font-semibold">
             {summary.name || summary.applicant?.name}
           </SheetTitle>
@@ -496,7 +506,7 @@ function ApplicationDrawer({ summary, cache, onClose, onFlagChanged }) {
             <ApplicationStatusBadge status={summary.status} />
           </SheetDescription>
         </SheetHeader>
-        <div className="space-y-4 p-4">
+        <div className="min-h-0 flex-1 space-y-4 overflow-y-auto p-4">
           {error
             ? <Alert variant="destructive">
                 <AlertDescription>{error}</AlertDescription>
@@ -521,6 +531,20 @@ function ApplicationDrawer({ summary, cache, onClose, onFlagChanged }) {
                   <ApplicationDetails app={app} />
                 </>}
         </div>
+        <SheetFooter className="shrink-0 flex-row flex-wrap border-t">
+          {DECISIONS.map(([decision, label, Icon]) => (
+            <Button
+              key={decision}
+              type="button"
+              variant={decision === "accepted" ? "default" : "outline"}
+              disabled={deciding || summary.status === decision}
+              onClick={() => onDecide(summary._id, decision)}
+            >
+              <Icon aria-hidden="true" />
+              {label}
+            </Button>
+          ))}
+        </SheetFooter>
       </SheetContent>
     </Sheet>
   );

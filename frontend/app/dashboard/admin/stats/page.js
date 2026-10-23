@@ -54,28 +54,28 @@ const STATUS_FILTERS = [
 ];
 
 // Stack order, bottom to top. Accepted carries the brand colour; the other
-// statuses are neutral tints of the text colour, darkest to lightest. Every
+// statuses use contrasting neutral tokens with light and dark values. Every
 // series is also named in the legend, tooltip and table view, so colour is
 // never the only cue. `bar` fills SVG shapes, `dot` fills legend swatches.
 const STATUS_SERIES = [
   {
     key: "pending",
     label: "Pending",
-    bar: "fill-foreground/65",
-    dot: "bg-foreground/65",
+    bar: "fill-chart-neutral-1",
+    dot: "bg-chart-neutral-1",
   },
   {
     key: "waitlisted",
     label: "Waitlisted",
-    bar: "fill-foreground/35",
-    dot: "bg-foreground/35",
+    bar: "fill-chart-neutral-2",
+    dot: "bg-chart-neutral-2",
   },
   { key: "accepted", label: "Accepted", bar: "fill-brand", dot: "bg-brand" },
   {
     key: "rejected",
     label: "Rejected",
-    bar: "fill-foreground/15",
-    dot: "bg-foreground/15",
+    bar: "fill-chart-neutral-3",
+    dot: "bg-chart-neutral-3",
   },
 ];
 const DRAFT_SERIES = [

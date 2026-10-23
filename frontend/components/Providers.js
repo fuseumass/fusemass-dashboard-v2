@@ -20,7 +20,7 @@ export default function Providers({ children }) {
     >
       <BrandingApplier />
       <TooltipProvider delayDuration={300}>{children}</TooltipProvider>
-      <Toaster position="bottom-right" />
+      <Toaster position="top-center" />
     </ThemeProvider>
   );
 }

@@ -122,9 +122,13 @@ export default function UsersPage() {
       <PageHeader
         title="Users"
         description={
-          loading && !users.length
+          loading
             ? undefined
-            : `${users.length} ${query ? "matching " : ""}${users.length === 1 ? "user" : "users"}.`
+            : query.trim()
+              ? `${users.length} ${users.length === 1 ? "match" : "matches"}.`
+              : users.length === 25
+                ? "Showing the 25 most recent accounts. Search to find anyone."
+                : `${users.length} ${users.length === 1 ? "user" : "users"}.`
         }
       />
 
