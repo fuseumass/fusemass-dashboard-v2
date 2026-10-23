@@ -33,6 +33,10 @@ if (process.env.SETTINGS_CACHE_TTL_MS === undefined) {
 process.env.SMTP_HOST = process.env.SMTP_HOST || "smtp.test.local";
 process.env.SMTP_USER = process.env.SMTP_USER || "test@test.local";
 process.env.SMTP_PASS = process.env.SMTP_PASS || "test-password";
+// No pause between sends in tests (production paces them, see utils/mailer).
+if (process.env.EMAIL_MIN_INTERVAL_MS === undefined) {
+  process.env.EMAIL_MIN_INTERVAL_MS = "0";
+}
 process.env.MAIL_FROM = process.env.MAIL_FROM || "Test Org <no-reply@test.local>";
 
 module.exports = {};

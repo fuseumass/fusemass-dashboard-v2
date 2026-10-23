@@ -315,7 +315,7 @@ test("B26: admin outbox API", async function adminOutbox(t) {
     assert.equal((await request(app).post("/api/admin/outbox/" + waiting._id + "/cancel").set(as(admin))).status, 409);
   });
 
-  await t.test("retry all failed: requeues the worthwhile ones, skips permanent, interrupted and link emails", async function (t2) {
+  await t.test("retry all failed: requeues the worthwhile ones, skips permanent and interrupted, reissues setup links", async function (t2) {
     await resetFixtures();
     var mail = flaky.mockFlakyTransport(t2);
     var admin = await fixtures.createUser({ role: "admin" });
@@ -328,18 +328,47 @@ test("B26: admin outbox API", async function adminOutbox(t) {
     var dry = await request(app).post("/api/admin/outbox/retry-failed").set(as(admin)).send({ dryRun: true });
     assert.equal(dry.status, 200);
     assert.equal(dry.body.wouldRequeue, 2);
+    assert.equal(dry.body.wouldReissue, 1);
     assert.equal(mail.attempts, 0);
 
     var res = await request(app).post("/api/admin/outbox/retry-failed").set(as(admin));
     assert.equal(res.status, 200);
     assert.equal(res.body.requeued, 2);
+    // link@example.com has no account, so there's no link to reissue: the
+    // row leaves the failures list instead.
+    assert.equal(res.body.reissued, 0);
 
     await outbox.processDue({ force: true });
     assert.deepEqual(
       mail.calls.map(function (c) { return c.to; }).sort(),
       ["a@example.com", "b@example.com"]
     );
-    assert.equal(await EmailLog.countDocuments({ status: "failed" }), 3);
+    assert.equal(await EmailLog.countDocuments({ status: "failed" }), 2);
+  });
+
+  await t.test("retry all failed sends a fresh setup link for a setup email that failed for a temporary reason", async function (t2) {
+    await resetFixtures();
+    var mail = flaky.mockFlakyTransport(t2);
+    var admin = await fixtures.createUser({ role: "admin" });
+    var ada = await fixtures.createUser({ email: "ada@example.com", name: "Ada", passwordHash: undefined });
+    var row = await failedRow("ada@example.com", {
+      templateKey: "account_setup",
+      redacted: true,
+      values: undefined,
+      user: ada.user._id,
+      lastError: "452 4.3.1 Rate limit exceeded, retry after 2 seconds",
+    });
+    await failedRow("gone@example.com", { templateKey: "account_setup", redacted: true, values: undefined, permanent: true });
+
+    var res = await request(app).post("/api/admin/outbox/retry-failed").set(as(admin));
+
+    assert.equal(res.status, 200);
+    assert.equal(res.body.reissued, 1);
+    assert.equal(mail.calls.length, 1);
+    assert.equal(mail.calls[0].to, "ada@example.com");
+    assert.match(mail.calls[0].text, /reset-password\?token=[0-9a-f]+&setup=1/);
+    assert.equal((await EmailLog.findById(row._id)).status, "cancelled");
+    assert.equal(await EmailLog.countDocuments({ status: "failed", to: "gone@example.com" }), 1, "permanent failures stay");
   });
 
   await t.test("retry all failed refuses to blow through the daily sending limit unless told to", async function (t2) {
