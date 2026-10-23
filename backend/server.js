@@ -105,7 +105,12 @@ function createApp() {
   // --- Fallback error handler (Express 4 signature: err, req, res, next) ------
   app.use(function errorHandler(err, req, res, _next) {
     // req.path leaves out the query string, which can carry tokens.
-    console.error("Unhandled error in " + req.method + " " + req.path + ":", err);
+    // JSON parser and database errors may carry submitted configuration secrets.
+    if (/^\/api\/admin\/system-config(?:\/|$)/i.test(req.path)) {
+      console.error("Technical settings request failed.");
+    } else {
+      console.error("Unhandled error in " + req.method + " " + req.path + ":", err);
+    }
     res.status(500).json({ error: "Internal server error." });
   });
 
@@ -142,9 +147,9 @@ if (require.main !== module) {
             console.log("Applied " + count + " saved technical setting(s).");
           }
         },
-        function failed(err) {
+        function failed() {
           // Not fatal: the server can still run on its .env values.
-          console.warn("Could not load technical settings; using .env values:", err && err.message);
+          console.warn("Could not load technical settings; using .env values.");
         }
       );
     })

@@ -22,7 +22,14 @@ var systemSettingSchema = new Schema({
   value: { type: String, default: "" },
   encrypted: { type: Boolean, default: false },
   updatedBy: { type: Schema.Types.ObjectId, ref: "User" },
-  updatedAt: { type: Date, default: Date.now },
+}, {
+  timestamps: true,
+  toJSON: {
+    transform: function redact(_doc, ret) {
+      delete ret.value;
+      return ret;
+    },
+  },
 });
 
 module.exports = mongoose.model("SystemSetting", systemSettingSchema);

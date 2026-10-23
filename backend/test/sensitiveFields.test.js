@@ -290,6 +290,15 @@ test("T15: responses never carry secrets", async function sensitiveFields(t) {
     assert.ok(hadData >= 5, "expected several responses to carry real user data, saw " + hadData);
   });
 
+  await t.test("technical settings PATCH responses never carry secrets", async function () {
+    var world = await seed();
+    var res = await call("PATCH", "/api/admin/system-config", world.admin.token, {
+      values: { SMTP_PASS: "smtp-pass-0123456789abcdef" },
+    });
+    assert.equal(res.status, 200);
+    assertClean("PATCH /api/admin/system-config", res, world, String(world.admin.user._id));
+  });
+
   await t.test("a user's own check-in code is shown to them, and only on their QR route", async function () {
     var world = await seed();
     var aliceId = world.callers[1].id;

@@ -105,7 +105,7 @@ test("Technical settings", async function technicalSettings(t) {
   });
 
   await t.test("unknown and read-only keys are refused", async function () {
-    for (var key of ["JWT_SECRET", "MONGODB_URI", "PORT", "SETUP_ADMIN", "NODE_ENV", "NOT_A_SETTING"]) {
+    for (var key of ["JWT_SECRET", "MONGODB_URI", "PORT", "SETUP_ADMIN", "NODE_ENV", "CONFIG_ENCRYPTION_KEY", "ALLOW_SELF_RESTART", "JWT_EXPIRES_IN", "CLIENT_ORIGIN", "TRUST_PROXY", "NOT_A_SETTING"]) {
       var res = await call("patch", URL_PATH, admin).send({ values: { [key]: "x" } });
       assert.equal(res.status, 400, key);
       assert.ok(res.body.errors[key], key);
@@ -242,4 +242,117 @@ test("Technical settings", async function technicalSettings(t) {
     assert.equal(last.status, 429);
   });
 
+});
+
+// These checks run without MongoDB: node --test --test-name-pattern="config unit" test/systemConfig.test.js
+
+test("config unit: registry covers backend environment reads", function () {
+  var fs = require("node:fs");
+  var path = require("node:path");
+  function scan(dir) {
+    fs.readdirSync(dir, { withFileTypes: true }).forEach(function visit(entry) {
+      if (["test", "node_modules"].indexOf(entry.name) !== -1) return;
+      var name = path.join(dir, entry.name);
+      if (entry.isDirectory()) return scan(name);
+      if (!name.endsWith(".js")) return;
+      var source = fs.readFileSync(name, "utf8");
+      var matches = source.matchAll(/process\.env\.([A-Z][A-Z0-9_]*)/g);
+      for (var match of matches) assert.ok(systemConfig.getDef(match[1]), match[1]);
+    });
+  }
+  scan(require("node:path").join(__dirname, ".."));
+  systemConfig.REGISTRY.forEach(function check(item) {
+    assert.equal(typeof item.validate, "function", item.key);
+  });
+});
+
+test("config unit: invalid batches and prototype keys never write", async function (t) {
+  t.mock.method(SystemSetting, "updateOne", function unexpected() { assert.fail("unexpected write"); });
+  t.mock.method(SystemSetting, "deleteOne", function unexpected() { assert.fail("unexpected delete"); });
+  for (var key of ["CLIENT_ORIGIN", "TRUST_PROXY", "JWT_SECRET", "CONFIG_ENCRYPTION_KEY", "__proto__", "constructor"]) {
+    var values = JSON.parse('{"ORG_NAME":"Valid","' + key + '":null}');
+    var result = await systemConfig.applyChanges(values, null);
+    assert.ok(result.errors[key], key);
+  }
+  var invalid = await systemConfig.applyChanges({ ORG_NAME: "Valid", SMTP_PORT: false }, null);
+  assert.ok(invalid.errors.SMTP_PORT);
+});
+
+test("config unit: encryption failure happens before any write", async function (t) {
+  var jwt = process.env.JWT_SECRET;
+  var encryption = process.env.CONFIG_ENCRYPTION_KEY;
+  delete process.env.JWT_SECRET;
+  delete process.env.CONFIG_ENCRYPTION_KEY;
+  t.after(function restore() {
+    if (jwt !== undefined) process.env.JWT_SECRET = jwt;
+    if (encryption !== undefined) process.env.CONFIG_ENCRYPTION_KEY = encryption;
+  });
+  t.mock.method(SystemSetting, "findOne", function unexpected() { assert.fail("unexpected database access"); });
+  await assert.rejects(systemConfig.applyChanges({ ORG_NAME: "Valid", SMTP_PASS: "secret-value" }, null), /encrypt/);
+});
+
+test("config unit: secrets retain spaces and never serialize from the model", function () {
+  var checked = systemConfig.validateValue(systemConfig.getDef("SMTP_PASS"), "  secret  ");
+  assert.equal(checked.value, "  secret  ");
+  var doc = new SystemSetting({ key: "SMTP_PASS", value: "private-value", encrypted: true });
+  assert.equal(JSON.stringify(doc).includes("private-value"), false);
+});
+
+test("config unit: controller errors never forward driver secrets", async function () {
+  var controller = require("../controllers/systemConfigController");
+  var original = systemConfig.applyChanges;
+  systemConfig.applyChanges = function fail() { return Promise.reject(new Error("private-driver-value")); };
+  var body;
+  var res = {
+    set: function set() {},
+    status: function status(code) { assert.equal(code, 500); return res; },
+    json: function json(value) { body = value; },
+  };
+  try {
+    await controller.updateSystemConfig({ body: { values: { SMTP_PASS: "secret" } }, user: {}, get: function get() {} }, res,
+      function next() { assert.fail("must not forward driver error"); });
+    assert.equal(JSON.stringify(body).includes("private-driver-value"), false);
+  } finally { systemConfig.applyChanges = original; }
+});
+
+test("config unit: restart uses injected exit exactly once", async function () {
+  var exits = [];
+  systemConfig.setRestartHooks({ exit: function fake(code) { exits.push(code); }, delayMs: 1, forceAfterMs: 10 });
+  systemConfig.scheduleRestart();
+  await new Promise(function wait(resolve) { setTimeout(resolve, 30); });
+  assert.deepEqual(exits, [0]);
+});
+
+
+test("config unit: authenticated encryption binds secrets to their setting", function () {
+  var plain = "regression-secret-with-spaces ";
+  var stored = systemConfig.encrypt("SMTP_PASS", plain);
+  assert.equal(stored.includes(plain), false);
+  assert.equal(systemConfig.decrypt("SMTP_PASS", stored), plain);
+  assert.throws(function moved() { systemConfig.decrypt("GOOGLE_CLIENT_SECRET", stored); });
+  var parts = stored.split(":");
+  var cipher = Buffer.from(parts[3], "base64");
+  cipher[0] ^= 1;
+  parts[3] = cipher.toString("base64");
+  assert.throws(function tampered() { systemConfig.decrypt("SMTP_PASS", parts.join(":")); });
+});
+
+test("config unit: page model redacts secrets and preserves empty overrides", async function (t) {
+  var original = process.env.SMTP_PASS;
+  var org = process.env.ORG_NAME;
+  process.env.SMTP_PASS = "regression-secret-123456789";
+  process.env.ORG_NAME = "";
+  t.after(function restore() {
+    if (original === undefined) delete process.env.SMTP_PASS; else process.env.SMTP_PASS = original;
+    if (org === undefined) delete process.env.ORG_NAME; else process.env.ORG_NAME = org;
+  });
+  t.mock.method(SystemSetting, "find", function fake() {
+    return { select: function select() { return { lean: function lean() { return Promise.resolve([{ key: "SMTP_PASS" }, { key: "ORG_NAME" }]); } }; } };
+  });
+  var model = await systemConfig.describeAll();
+  assert.equal(JSON.stringify(model).includes(process.env.SMTP_PASS), false);
+  assert.equal(find(model, "SMTP_PASS").value, undefined);
+  assert.equal(find(model, "SMTP_PASS").hint, "6789");
+  assert.equal(find(model, "ORG_NAME").value, "");
+  assert.equal(find(model, "ORG_NAME").source, "dashboard");
 });

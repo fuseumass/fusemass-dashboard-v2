@@ -11,12 +11,16 @@ var systemConfig = require("../utils/systemConfig");
  * @returns {Promise<void>}
  */
 function getSystemConfig(_req, res, next) {
+  res.set("Cache-Control", "no-store");
   return systemConfig
     .describeAll()
     .then(function send(model) {
       res.status(200).json(model);
     })
-    .catch(next);
+    .catch(function failed() {
+      // Driver errors can contain stored values. Do not forward them to logging.
+      res.status(500).json({ error: "Could not access technical settings. Check the server configuration and database." });
+    });
 }
 
 /**
@@ -35,6 +39,7 @@ function updateSystemConfig(req, res, next) {
     return undefined;
   }
 
+  res.set("Cache-Control", "no-store");
   return systemConfig
     .applyChanges(values, req.user && req.user.id, { requestOrigin: req.get("origin") })
     .then(function respond(result) {
@@ -51,7 +56,10 @@ function updateSystemConfig(req, res, next) {
         });
       });
     })
-    .catch(next);
+    .catch(function failed() {
+      // Driver errors can contain stored values. Do not forward them to logging.
+      res.status(500).json({ error: "Could not access technical settings. Check the server configuration and database." });
+    });
 }
 
 /**

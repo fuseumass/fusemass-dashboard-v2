@@ -43,7 +43,10 @@ export default function SystemSettingRow({
 }) {
   const id = `sys-${setting.key}`;
   const tag = SOURCE_TAGS[setting.source] || SOURCE_TAGS.unset;
-  const changed = draft !== undefined || resetPending;
+  const changed =
+    resetPending ||
+    (draft !== undefined &&
+      (setting.secret ? draft !== "" : draft !== (setting.value ?? "")));
 
   return (
     <div className="grid gap-3 py-4 first:pt-0 last:pb-0 md:grid-cols-[minmax(0,1fr)_minmax(0,24rem)] md:gap-6">
@@ -73,9 +76,10 @@ export default function SystemSettingRow({
           : <ReadOnly id={id} setting={setting} />}
 
         <div className="flex flex-wrap items-center gap-2">
-          {setting.editable
-            ? <Badge variant={tag.variant}>{tag.label}</Badge>
-            : <Badge variant="outline">Read only</Badge>}
+          <Badge variant={tag.variant}>{tag.label}</Badge>
+          {!setting.editable
+            ? <Badge variant="outline">Read only</Badge>
+            : null}
           {changed ? <Badge variant="warning">Unsaved</Badge> : null}
           {setting.editable && setting.source === "dashboard" && !resetPending
             ? <Button
@@ -101,7 +105,9 @@ export default function SystemSettingRow({
             : null}
         </div>
         {error
-          ? <p className="text-sm text-destructive" role="alert">{error}</p>
+          ? <p className="text-sm text-destructive" role="alert">
+              {error}
+            </p>
           : null}
       </div>
     </div>

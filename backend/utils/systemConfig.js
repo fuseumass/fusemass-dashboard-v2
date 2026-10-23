@@ -235,7 +235,7 @@ function nonEmptyText(value) {
  */
 function def(key, label, group, help, o) {
   return Object.assign(
-    { key: key, label: label, group: group, help: help, secret: false, editable: true, restartRequired: false, type: "text" },
+    { key: key, label: label, group: group, help: help, secret: false, editable: true, restartRequired: false, type: "text", validate: text(8192) },
     o || {}
   );
 }
@@ -265,8 +265,9 @@ var RATE_KEYS = [
 
 var REGISTRY = [
   // Server
-  def("CLIENT_ORIGIN", "Frontend address", "Server", "The dashboard website address (or several, separated by commas) that may call this server and that emailed links point to.", {
+  def("CLIENT_ORIGIN", "Frontend address", "Server", "The frontend addresses allowed to call this server. Change this on the server because a wrong address locks the dashboard out.", {
     validate: originList,
+    editable: false,
     defaultValue: "http://localhost:3000",
   }),
   def("API_PUBLIC_URL", "Public API address", "Server", "The public address of this server, used to build links to uploaded logos. Leave empty for relative links.", {
@@ -274,8 +275,9 @@ var REGISTRY = [
     type: "url",
     allowEmpty: true,
   }),
-  def("TRUST_PROXY", "Proxies in front of the server", "Server", "How many reverse proxies sit in front of the server, so rate limits see each visitor's real address.", {
+  def("TRUST_PROXY", "Proxies in front of the server", "Server", "The trusted reverse proxies. Change this on the server because a wrong value can block every visitor or bypass rate limits.", {
     validate: trustProxy,
+    editable: false,
     restartRequired: true,
   }),
   def("SETTINGS_CACHE_TTL_MS", "Settings cache time (ms)", "Server", "How long each server keeps the organization settings in memory. 0 turns the cache off.", {
@@ -337,6 +339,13 @@ var REGISTRY = [
   def("MAIL_FROM", "Sender address", "Email", "The From line on outgoing email. Falls back to the SMTP user.", {
     validate: mailFrom,
     allowEmpty: true,
+  }),
+
+  def("EMAIL_MIN_INTERVAL_MS", "Time between emails (ms)", "Email", "The minimum time between outgoing emails. 0 turns pacing off.", {
+    validate: integer(0, 3600000), type: "number", defaultValue: "1000",
+  }),
+  def("AUTO_ACCEPT_INTERVAL_MS", "Automatic acceptance interval (ms)", "Server", "How often the automatic acceptance worker checks for applications.", {
+    validate: integer(1000, 3600000), type: "number", defaultValue: "60000", restartRequired: true,
   }),
 
   // Email outbox
@@ -441,7 +450,7 @@ var REGISTRY = [
     fixed("ALLOW_SELF_RESTART", "Allow restart from the dashboard", "Lets the Restart button stop the server so the service manager starts it again. Only set it when the server runs under one.", {}),
   ]);
 
-var BY_KEY = {};
+var BY_KEY = Object.create(null);
 REGISTRY.forEach(function index(item) {
   BY_KEY[item.key] = item;
 });
@@ -519,13 +528,13 @@ function decrypt(key, stored) {
  * @returns {{value: string}|{error: string}}
  */
 function validateValue(item, raw, ctx) {
-  if (typeof raw === "number" || typeof raw === "boolean") {
-    raw = String(raw);
-  }
   if (typeof raw !== "string") {
     return { error: "Send the value as text, or null to reset it." };
   }
-  var value = raw.trim();
+  var value = item.secret ? raw : raw.trim();
+  if (value.length > 8192 || /[\u0000-\u001f\u007f]/.test(value)) {
+    return { error: "Remove control characters and use at most 8192 characters." };
+  }
   if (value === "") {
     if (!item.allowEmpty) {
       return { error: "Enter a value, or reset to use the .env value." };
@@ -582,7 +591,13 @@ function loadOverrides() {
           return;
         }
         try {
-          setEnv(doc.key, doc.encrypted ? decrypt(doc.key, doc.value) : doc.value);
+          if (item.secret && !doc.encrypted) {
+            throw new Error("Secret override must be encrypted.");
+          }
+          var loaded = doc.encrypted ? decrypt(doc.key, doc.value) : doc.value;
+          var checked = validateValue(item, loaded);
+          if (checked.error) throw new Error("Invalid saved setting.");
+          setEnv(doc.key, checked.value);
           applied += 1;
         } catch (_err) {
           console.warn("Technical settings: could not read the saved value for " + doc.key + "; using the .env value.");
@@ -643,7 +658,7 @@ function describeAll() {
             out.hint = current.slice(-4);
           }
         } else {
-          out.value = isSet ? current : item.defaultValue !== undefined ? item.defaultValue : "";
+          out.value = overrides[item.key] && item.editable && current !== undefined ? current : isSet ? current : item.defaultValue !== undefined ? item.defaultValue : "";
         }
         return out;
       });
@@ -659,7 +674,7 @@ function describeAll() {
  * @returns {Promise<{errors: object}|{changed: Array<string>, restartRequired: Array<string>}>}
  */
 function applyChanges(values, userId, ctx) {
-  var errors = {};
+  var errors = Object.create(null);
   var plan = [];
   Object.keys(values).forEach(function check(key) {
     var item = BY_KEY[key];
@@ -686,6 +701,15 @@ function applyChanges(values, userId, ctx) {
     return Promise.resolve({ errors: errors });
   }
 
+  // Prepare every ciphertext before the first write, so encryption failures
+  // cannot leave earlier settings saved.
+  try {
+    plan.forEach(function prepare(entry) {
+      if (!entry.reset) entry.stored = entry.item.secret ? encrypt(entry.item.key, entry.value) : entry.value;
+    });
+  } catch (_err) {
+    return Promise.reject(new Error("Could not encrypt technical settings. Check the server encryption key."));
+  }
   var changed = [];
   var chain = Promise.resolve();
   plan.forEach(function step(entry) {
@@ -709,7 +733,7 @@ function applyChanges(values, userId, ctx) {
             // Same as the .env value: nothing to override.
             return undefined;
           }
-          var stored = entry.item.secret ? encrypt(key, entry.value) : entry.value;
+          var stored = entry.stored;
           return SystemSetting.updateOne(
             { key: key },
             { $set: { value: stored, encrypted: entry.item.secret, updatedBy: userId || undefined, updatedAt: new Date() } },
@@ -740,7 +764,8 @@ function applyChanges(values, userId, ctx) {
 
 var restartHooks = {
   exit: function realExit(code) {
-    process.exit(code);
+    // Tests require the app without registering a listening production server.
+    if (httpServer) process.exit(code);
   },
   delayMs: 500,
   forceAfterMs: 5000,
@@ -779,13 +804,16 @@ function setRestartHooks(hooks) {
  */
 function scheduleRestart() {
   var exited = false;
+  var forceTimer;
   function finish() {
     if (!exited) {
       exited = true;
+      clearTimeout(forceTimer);
       restartHooks.exit(0);
     }
   }
   setTimeout(function stop() {
+    forceTimer = setTimeout(finish, restartHooks.forceAfterMs);
     if (httpServer) {
       httpServer.close(finish);
       if (httpServer.closeIdleConnections) {
@@ -794,16 +822,21 @@ function scheduleRestart() {
     } else {
       finish();
     }
-    setTimeout(finish, restartHooks.forceAfterMs);
   }, restartHooks.delayMs);
+}
+
+/**
+ * @param {string} key - Environment variable name.
+ * @returns {object|null} Registry definition, when known.
+ */
+function getDef(key) {
+  return BY_KEY[key] || null;
 }
 
 module.exports = {
   GROUPS: GROUPS,
   REGISTRY: REGISTRY,
-  getDef: function getDef(key) {
-    return BY_KEY[key] || null;
-  },
+  getDef: getDef,
   encrypt: encrypt,
   decrypt: decrypt,
   validateValue: validateValue,

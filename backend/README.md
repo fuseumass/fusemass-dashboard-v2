@@ -160,18 +160,21 @@ validator) is `utils/systemConfig.js`.
   of long values.
 - **Read-only** (shown, but only changeable on the server): `MONGODB_URI`, `PORT`,
   `NODE_ENV`, `JWT_SECRET`, `JWT_EXPIRES_IN`, `SETUP_ADMIN`,
-  `CONFIG_ENCRYPTION_KEY`, `ALLOW_SELF_RESTART`. A bad value in any of them could
-  lock everyone out with no way back from the dashboard.
+  `CONFIG_ENCRYPTION_KEY`, `ALLOW_SELF_RESTART`, `CLIENT_ORIGIN`, `TRUST_PROXY`.
+  A bad value in any of them could lock everyone out with no way back from the
+  dashboard.
 - **Restart:** settings read only at startup (rate limits, Google credentials,
-  `TRUST_PROXY`, `EMAIL_RETRY_INTERVAL_MS`) are marked `restartRequired`. With
+  `EMAIL_RETRY_INTERVAL_MS`, `AUTO_ACCEPT_INTERVAL_MS`) are marked
+  `restartRequired`. With
   `ALLOW_SELF_RESTART=true` the Restart button closes the HTTP server and exits
   with code 0 so the service manager starts it again; this needs
   `Restart=always` in the systemd unit. Without it the API answers `409` and
   the change waits for a manual restart.
 - With more than one server instance, each instance picks up a saved value when
   it restarts.
-- `CLIENT_ORIGIN` must keep the address the admin is browsing from, so a save
-  cannot lock the dashboard out of its own API.
+- `CLIENT_ORIGIN` and `TRUST_PROXY` are read-only to prevent dashboard lockouts.
+  Email pacing (`EMAIL_MIN_INTERVAL_MS`) takes effect immediately; automatic
+  acceptance timing (`AUTO_ACCEPT_INTERVAL_MS`) needs a restart.
 
 ## Scripts
 

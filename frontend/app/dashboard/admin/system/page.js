@@ -5,13 +5,9 @@ import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import ErrorState from "@/components/ErrorState";
 import PageHeader from "@/components/PageHeader";
-import { CardSkeleton, HeaderSkeleton } from "@/components/skeletons";
 import SystemSettingRow from "@/components/SystemSettingRow";
-import {
-  Alert,
-  AlertDescription,
-  AlertTitle,
-} from "@/components/ui/alert";
+import { CardSkeleton, HeaderSkeleton } from "@/components/skeletons";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -193,10 +189,16 @@ export default function SystemSettingsPage() {
         method: "PATCH",
         body: JSON.stringify({ values: changes }),
       });
-      setData((d) => ({ ...d, settings: res.settings, selfRestart: res.selfRestart }));
+      setData((d) => ({
+        ...d,
+        settings: res.settings,
+        selfRestart: res.selfRestart,
+      }));
       discard();
       notifySuccess(
-        res.changed.length ? "Technical settings saved" : "Nothing needed saving",
+        res.changed.length
+          ? "Technical settings saved"
+          : "Nothing needed saving",
       );
       if (res.restartRequired.length) {
         setNeedsRestart((prev) => [
@@ -218,9 +220,11 @@ export default function SystemSettingsPage() {
 
   async function restart() {
     setRestartPrompt(false);
+    setPhase("restarting");
     try {
       await apiFetch("/api/admin/system-config/restart", { method: "POST" });
     } catch (err) {
+      setPhase("idle");
       if (err.status === 409) {
         setData((d) => ({ ...d, selfRestart: false }));
         return;
@@ -401,9 +405,7 @@ export default function SystemSettingsPage() {
                   <p className="font-mono text-xs text-muted-foreground md:text-sm">
                     {name}
                   </p>
-                  <p className="break-all text-sm">
-                    {value || "Not set"}
-                  </p>
+                  <p className="break-all text-sm">{value || "Not set"}</p>
                 </div>
               ))}
             </CardContent>
@@ -411,14 +413,13 @@ export default function SystemSettingsPage() {
         : null}
 
       {changeCount > 0
-        ? <div
+        ? <section
             className="sticky bottom-0 z-10 -mx-4 flex flex-wrap items-center justify-between gap-3 border-t border-border bg-background px-4 py-3 md:-mx-6 md:px-6"
-            role="region"
             aria-label="Unsaved changes"
           >
             <p className="text-sm" aria-live="polite">
-              <span className="tabular-nums">{changeCount}</span>{" "}
-              unsaved {changeCount === 1 ? "change" : "changes"}
+              <span className="tabular-nums">{changeCount}</span> unsaved{" "}
+              {changeCount === 1 ? "change" : "changes"}
             </p>
             <div className="flex items-center gap-2">
               <Button variant="ghost" disabled={locked} onClick={discard}>
@@ -428,7 +429,7 @@ export default function SystemSettingsPage() {
                 Save changes
               </Button>
             </div>
-          </div>
+          </section>
         : null}
 
       <AlertDialog open={restartPrompt} onOpenChange={setRestartPrompt}>

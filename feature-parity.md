@@ -138,6 +138,8 @@ were presumably tracked in spreadsheets, so B33–B37 are a new design.
 
 ## Platform
 
+Technical settings is a new platform feature under review on `feature/tech-settings-2`: admin-only environment overrides, encrypted secrets, validation, reset, and an opt-in restart flow.
+
 | Old feature | Status | Task |
 | ----------- | ------ | ---- |
 | Feature flags per module | 🟡 backend ✅ (`OrgSettings.features`, `requireFeature`, gates meals; each new module must mount it); nav hides meals items; full nav config is F13 | B25, F13 |
