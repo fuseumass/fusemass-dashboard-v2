@@ -3,6 +3,7 @@
 import { ArrowDown, ArrowUp } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
+import AutoAcceptSettings from "@/components/AutoAcceptSettings";
 import BrandingFeaturesSettings from "@/components/BrandingFeaturesSettings";
 import ReviewSettings from "@/components/ReviewSettings";
 import WaitlistLimit from "@/components/WaitlistLimit";
@@ -35,6 +36,7 @@ export default function SettingsPage() {
       <CheckInPopupSettings />
       <TeamSettings />
       <ReviewSettings />
+      <AutoAcceptSettings />
       <EmailTemplateEditor />
       <RoundsManager />
     </div>

@@ -7,12 +7,12 @@ var MealService = require("../schemas/mealService");
 var MealCheckIn = require("../schemas/mealCheckin");
 var User = require("../schemas/user");
 var mailer = require("../utils/mailer");
-var passwordToken = require("../utils/passwordToken");
 var primaryClientOrigin = require("../utils/clientOrigin").primaryClientOrigin;
 var formConfigUtil = require("../utils/formConfig");
 var applicationStatus = require("../utils/applicationStatus");
 var applicationFlags = require("../utils/applicationFlags");
 var waitlist = require("../utils/waitlist");
+var decisions = require("../utils/decisions");
 var validator = require("validator");
 var mongoose = require("mongoose");
 
@@ -24,11 +24,6 @@ var LIST_FIELDS = "name university status round applicant resumeBlobName flagged
 // never see (see the Application schema's toJSON).
 var WITH_FLAGS = { includeFlags: true };
 
-var DECISION_TEMPLATE_KEYS = {
-  accepted: "application_accepted",
-  rejected: "application_rejected",
-  waitlisted: "application_waitlisted",
-};
 
 /**
  * GET /api/admin/applications
@@ -216,46 +211,13 @@ function decideApplication(req, res) {
 
   var decision = req.body.decision;
 
-  // The status change is its own guard: the filter only matches an
-  // application that is not already at `decision`, so of two concurrent
-  // requests (a double-clicked button) exactly one can perform the
-  // transition and therefore exactly one can send the email. Reading the
-  // previous status separately and comparing afterwards let both requests
-  // observe the same "before" value and both send.
-  return Application.findOneAndUpdate(
-    { _id: req.params.id, status: { $ne: decision } },
-    {
-      status: decision,
-      reviewedBy: admin.id,
-      reviewedAt: new Date(),
-    },
-    { new: true }
-  )
-    .populate("applicant", "name email role")
+  // decisions.decide makes the status change and sends the email; of two
+  // concurrent requests (a double-clicked button) only one changes anything.
+  return decisions
+    .decide(req.params.id, decision, admin.id)
     .then(function afterUpdate(application) {
       if (application) {
         res.status(200).json({ application: application.toJSON(WITH_FLAGS) });
-
-        var templateKey = DECISION_TEMPLATE_KEYS[decision];
-        var recipient = application.applicant && application.applicant.email;
-        if (templateKey && recipient) {
-          // If the template contains {{qrcode}} (the accepted one does by
-          // default), the mailer issues the applicant's check-in code
-          // (SHA-256 of their email) and embeds it as a QR image.
-          mailer
-            .sendTemplateEmail(recipient, templateKey, {
-              name: application.name,
-              status: application.status,
-            })
-            .catch(function onMailError(err) {
-              console.error("Failed to send decision email:", err);
-            });
-        }
-        if (decision === "accepted" && application.applicant) {
-          sendAccountSetupIfNeeded(application).catch(function onSetupError(err) {
-            console.error("Failed to send account setup email:", err);
-          });
-        }
         return undefined;
       }
 
@@ -275,28 +237,6 @@ function decideApplication(req, res) {
       console.error("decideApplication failed:", err);
       res.status(500).json({ error: "Could not update application." });
     });
-}
-
-/**
- * When an accepted applicant applied without an account (so has no password
- * and no Google link), email them a 7-day link to set a password, so they can
- * sign in to see their status and check-in QR code.
- *
- * @param {object} application - The accepted Application, applicant populated.
- * @returns {Promise<void>}
- */
-function sendAccountSetupIfNeeded(application) {
-  return User.findById(application.applicant._id).then(function afterFind(user) {
-    if (!passwordToken.needsPasswordSetup(user)) {
-      return undefined;
-    }
-    return passwordToken.issuePasswordToken(user, passwordToken.SETUP_TTL_MS).then(function afterIssue(rawToken) {
-      return mailer.sendTemplateEmail(user.email, "account_setup", {
-        name: application.name || user.name,
-        setupUrl: passwordToken.passwordLink(rawToken, { setup: true }),
-      });
-    });
-  });
 }
 
 /**

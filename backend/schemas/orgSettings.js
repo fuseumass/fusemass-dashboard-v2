@@ -63,6 +63,21 @@ var orgSettingsSchema = new Schema(
       type: Boolean,
       default: false,
     },
+    // Domain auto-accept (utils/autoAccept): while enabled, pending
+    // applications from these email domains are accepted a few at a time,
+    // at most `emailsPerDay` in any 24 hours, spread evenly over the day so
+    // the acceptance emails stay under the sending account's limit.
+    autoAccept: {
+      enabled: { type: Boolean, default: false },
+      domains: {
+        type: [String],
+        default: function () {
+          return [];
+        },
+      },
+      includeSubdomains: { type: Boolean, default: true },
+      emailsPerDay: { type: Number, default: 200, min: 1, max: 10000 },
+    },
     // Check-in popup (see utils/checkInPopup): shown to staff after each
     // successful check-in, with these fields from the attendee's application.
     checkInPopupEnabled: {

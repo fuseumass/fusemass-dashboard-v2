@@ -127,6 +127,11 @@ var applicationSchema = new Schema(
     flaggedBy: { type: Schema.Types.ObjectId, ref: "User" },
     flaggedAt: { type: Date },
 
+    // True when domain auto-accept (utils/autoAccept, the admin setting)
+    // accepted this application rather than a reviewer, so the worker can
+    // count its own acceptances against the per-day number.
+    autoAccepted: { type: Boolean },
+
     // Fingerprints for spotting the same phone number / resume file on two
     // accounts: the phone's last 10 digits and the resume's SHA-256. Kept
     // whether or not automatic flagging is on, so turning it on later can
@@ -139,6 +144,8 @@ var applicationSchema = new Schema(
 
 // One application per applicant per round.
 applicationSchema.index({ applicant: 1, round: 1 }, { unique: true });
+// "How many did auto-accept accept in the last 24 hours?"
+applicationSchema.index({ autoAccepted: 1, reviewedAt: 1 }, { sparse: true });
 
 // Clients only need to know whether a resume exists; opening it goes through
 // an access-checked signed link. `resumeUrl` is the permanent blob URL older
@@ -160,6 +167,7 @@ applicationSchema.set("toJSON", {
       delete ret.flagReasons;
       delete ret.flaggedBy;
       delete ret.flaggedAt;
+      delete ret.autoAccepted;
     }
     return ret;
   },

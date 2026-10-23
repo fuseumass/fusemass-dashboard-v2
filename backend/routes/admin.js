@@ -126,6 +126,10 @@ router.post("/outbox/:id/cancel", isAdmin, outboxController.cancelEmail);
 // Org settings (e.g. Google OAuth toggle).
 router.get("/settings", isAdmin, settingsController.getSettings);
 router.patch("/settings", isAdmin, settingsController.updateSettings);
+// Domain auto-accept is switched on with PATCH /settings { autoAccept }; these
+// show where it stands and preview a domain list before saving.
+router.get("/auto-accept", isAdmin, settingsController.getAutoAcceptStatus);
+router.post("/auto-accept/preview", isAdmin, settingsController.previewAutoAccept);
 
 // Logo / dark logo / favicon (slot = logo | logo-dark | favicon). Multipart
 // field "file"; isAdmin runs first so only admins can make us buffer an upload.
