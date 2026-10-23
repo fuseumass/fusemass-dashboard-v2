@@ -21,6 +21,7 @@ var applicationStatus = require("../utils/applicationStatus");
 
 var workshopController = require("../controllers/workshopController");
 var router = express.Router();
+router.use("/judges", require("./judges"));
 router.use("/workshops", requireFeature("workshops"));
 router.get("/workshops", isAdmin, workshopController.listAdmin);
 router.post("/workshops", isAdmin, workshopController.create);
@@ -87,7 +88,7 @@ router.patch(
   "/users/:id/role",
   isAdmin,
   validateBody({
-    role: { required: true, type: "string", enum: ["applicant", "moderator", "admin"] },
+    role: { required: true, type: "string", enum: ["applicant", "moderator", "judge", "admin"] },
   }),
   adminController.setRole
 );

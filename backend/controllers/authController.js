@@ -176,6 +176,13 @@ function me(req, res) {
         res.status(404).json({ error: "User not found." });
         return;
       }
+      if (user.role === "judge") {
+        return require("../schemas/judgeProfile").findOne({ user: user._id }).lean().then(function afterProfile(profile) {
+          var safeUser = user.toJSON();
+          safeUser.judgeProfile = profile ? { hardware: profile.hardware, calibrationDone: profile.calibrationDone, active: profile.active } : null;
+          res.status(200).json({ user: safeUser });
+        });
+      }
       res.status(200).json({ user: user.toJSON() });
     })
     .catch(function onError(err) {
@@ -335,30 +342,21 @@ function resetPassword(req, res) {
 
   var hashed = crypto.createHash("sha256").update(String(token)).digest("hex");
 
-  return User.findOne({
-    resetPasswordToken: hashed,
-    resetPasswordExpires: { $gt: new Date() },
+  return User.hashPassword(String(password)).then(function afterHash(hash) {
+    return User.findOneAndUpdate({
+      resetPasswordToken: hashed,
+      resetPasswordExpires: { $gt: new Date() },
+    }, {
+      $set: { passwordHash: hash, emailVerified: true, emailVerifiedAt: new Date(), judgeInvitePending: false },
+      $unset: { resetPasswordToken: "", resetPasswordExpires: "", emailVerificationToken: "", emailVerificationExpires: "", emailVerificationSentAt: "" },
+    }, { new: true });
   })
-    .then(function afterLookup(user) {
+    .then(function afterConsume(user) {
       if (!user) {
         res.status(400).json({ error: "Reset link is invalid or has expired." });
-        return null;
+        return;
       }
-
-      return User.hashPassword(String(password)).then(function afterHash(hash) {
-        user.passwordHash = hash;
-        user.resetPasswordToken = undefined;
-        user.resetPasswordExpires = undefined;
-        // The link only reached the inbox that owns this address, so using it
-        // also proves ownership (this is how someone who applied without an
-        // account becomes a verified user).
-        if (user.emailVerified === false) {
-          emailVerification.markVerified(user);
-        }
-        return user.save().then(function afterSave() {
-          res.status(200).json({ token: issueToken(user), user: user.toJSON() });
-        });
-      });
+      res.status(200).json({ token: issueToken(user), user: user.toJSON() });
     })
     .catch(function onError(err) {
       console.error("resetPassword failed:", err);

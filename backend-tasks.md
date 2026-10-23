@@ -193,37 +193,40 @@ see **only** judging: no application form, QR card, workshops, meals or
 staff screens.
 
 **Steps (one PR; coordinate with B17, which also edits the role enum):**
-1. **Schema:** add `"judge"` to the `role` enum in `backend/schemas/user.js`
+1. [x] **Schema:** add `"judge"` to the `role` enum in `backend/schemas/user.js`
    and update the roles comment at the top of that file.
-2. **Role validation:** add `"judge"` to the `validateBody` enum on
+2. [x] **Role validation:** add `"judge"` to the `validateBody` enum on
    `PATCH /users/:id/role` in `backend/routes/admin.js`.
-3. **Guard:** new `backend/utils/isJudge.js`, in the same shape as
+3. [x] **Guard:** new `backend/utils/isJudge.js`, in the same shape as
    `isModerator.js`: 401 without a user, 403 unless `role` is `judge` or
    `admin` (admins can test the flow). JSDoc like the other guards.
-4. **Keep judges out of everything else:** check that `isModerator`/`isAdmin`
+4. [x] **Keep judges out of everything else:** check that `isModerator`/`isAdmin`
    reject `judge` (they test exact roles, so they should). Also make
    `POST /api/applications` and `/api/applications/me/qr` return 403 for
    judges, so a judge account can't apply or get an attendee QR.
-5. **Invite flow** (`POST /api/admin/judges { name, email, hardware }`,
+5. [x] **Invite flow** (`POST /api/admin/judges { name, email, hardware }`,
    isAdmin): create the user with `role: "judge"` (or promote an existing
    account), create their `JudgeProfile` (B24d), and email an invite whose link
    sets their password. Reuse the password-reset token code in
    `authController` (hashed token, expiry), with a longer expiry (e.g. 7
    days) and an "invite" email template. Re-sending an invite rotates the
    token. Google sign-in also works if their Google email matches.
-6. **Bulk invite:** CSV upload of name, email, hardware → the same flow per
+6. [x] **Bulk invite:** CSV upload of name, email, hardware → the same flow per
    row, with a preview. This replaces `judges_auth.csv`.
-7. **List/remove:** `GET /api/admin/judges` (with calibration and progress
-   status); removing a judge demotes them to `applicant` and removes them
-   from the active assignment version (B24e).
-8. **`/api/auth/me`:** include the judge's profile summary (hardware flag,
+7. [x] **List/remove:** `GET /api/admin/judges` with calibration and invite
+   status; removing a judge demotes them to `applicant` and deactivates their
+   profile. Progress awaits B24g; active assignment removal awaits B24e.
+8. [x] **`/api/auth/me`:** include the judge's profile summary (hardware flag,
    calibration done) so the frontend can route them.
-9. **Docs:** update the roles line in `AGENTS.md` and the README role table.
-10. **Tests (T12, T11):** every guard with a judge token; judges get 403 on
+9. [x] **Docs:** update the roles line in `AGENTS.md` and the README role table.
+10. [x] **Tests (T12, T11):** every guard with a judge token; judges get 403 on
     `/api/admin/*`, `/api/staff/*`, applications and the QR endpoint; the
     invite token can be used once and expires; a demoted judge loses access
     immediately (JWT role is re-checked against the database for judging
     routes, or tokens are short-lived; decide which in the PR).
+
+Implemented B47. Assignment removal is deferred to B24e (TODO in role changes);
+progress awaits B24g. Minimal JudgeProfile is ready for B24d.
 - **Depends on:** none. **Related:** B24a–B24i, F27, T11, T12.
 
 ### B25. Feature flags per module

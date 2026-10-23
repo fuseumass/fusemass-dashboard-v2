@@ -9,6 +9,7 @@ var Schema = mongoose.Schema;
 /**
  * Roles in the system:
  *   - "applicant": default on register; can only apply.
+ *   - "judge": judging only, invited by admins.
  *   - "moderator": can review applications (approve/reject) and (later) see
  *     hardware data and judging progress. Cannot change org setup.
  *   - "admin": full access, including organization setup (settings, rounds,
@@ -46,9 +47,10 @@ var userSchema = new Schema(
     },
     role: {
       type: String,
-      enum: ["applicant", "moderator", "admin"],
+      enum: ["applicant", "moderator", "judge", "admin"],
       default: "applicant",
     },
+    judgeInvitePending: { type: Boolean, default: false },
     // Password-reset flow (nodemailer). The token stored here is a SHA-256 hash
     // of the value emailed to the user, so a database leak can't be used to
     // reset passwords.
@@ -221,6 +223,7 @@ userSchema.statics.backfillQrIds = function backfillQrIds() {
 userSchema.set("toJSON", {
   transform: function transform(_doc, ret) {
     delete ret.passwordHash;
+    delete ret.judgeInvitePending;
     delete ret.resetPasswordToken;
     delete ret.resetPasswordExpires;
     delete ret.emailVerificationToken;

@@ -42,6 +42,7 @@ test("B1: email template CRUD", async function emailTemplateCrud(t) {
       keys.sort(),
       [
         "account_setup",
+      "judge_invite",
         "application_accepted",
         "application_received",
         "application_rejected",

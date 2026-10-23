@@ -272,7 +272,7 @@ function searchUsers(req, res) {
  * PATCH /api/admin/users/:id/role
  * Set a user's role. Admin only (mounted behind isAdmin).
  *
- * Body: { role: "applicant" | "moderator" | "admin" }
+ * Body: { role: "applicant" | "moderator" | "judge" | "admin" }
  *
  * @param {object} req - Express request.
  * @param {object} res - Express response.
@@ -281,11 +281,26 @@ function searchUsers(req, res) {
 function setRole(req, res) {
   var role = req.body.role;
 
+  if (String(req.params.id) === String(req.user.id) && role !== "admin") {
+    res.status(400).json({ error: "You cannot demote yourself." });
+    return Promise.resolve();
+  }
   return User.findByIdAndUpdate(req.params.id, { role: role }, { new: true })
-    .then(function afterUpdate(user) {
+    .then(async function afterUpdate(user) {
       if (!user) {
         res.status(404).json({ error: "User not found." });
         return;
+      }
+      var JudgeProfile = require("../schemas/judgeProfile");
+      if (role === "judge") {
+        await JudgeProfile.findOneAndUpdate({ user: user._id }, { $set: { active: true } }, { upsert: true });
+      } else {
+        await JudgeProfile.updateOne({ user: user._id }, { $set: { active: false } });
+        await User.updateOne({ _id: user._id, judgeInvitePending: true }, {
+          $set: { judgeInvitePending: false },
+          $unset: { resetPasswordToken: "", resetPasswordExpires: "" },
+        });
+        // TODO B24e: remove demoted judges from the active assignment version.
       }
       res.status(200).json({ user: user.toJSON() });
     })

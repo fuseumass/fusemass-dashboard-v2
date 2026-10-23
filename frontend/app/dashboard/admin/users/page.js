@@ -18,7 +18,7 @@ import {
 import { apiFetch } from "@/lib/api";
 import { useUser } from "@/lib/userContext";
 
-const ROLES = ["applicant", "moderator", "admin"];
+const ROLES = ["applicant", "moderator", "judge", "admin"];
 
 // Admin-only: search users by name/email and set their role (promote to
 // moderator or admin, or demote back to applicant).

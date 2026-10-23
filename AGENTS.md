@@ -53,7 +53,7 @@ platform — no hackathon-specific names in code; branding comes from env vars.
   [`feature-parity.md`](./feature-parity.md) tracks every feature of the old
   platforms (old dashboard, judging app) against this one;
   update its row when you land or drop a feature.
-- **Roles:** `applicant` (default) → can only apply; `moderator` → reviews
+- **Roles:** `judge` → judging only, invited by admins; `applicant` (default) → can only apply; `moderator` → reviews
   applications (approve/reject) and later hardware/judging views; `admin` →
   everything, including org setup (settings, rounds, promoting users, editing
   the application form). Admin-only screens must also guard on the client.

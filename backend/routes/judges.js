@@ -1,0 +1,12 @@
+"use strict";
+var router = require("express").Router();
+var controller = require("../controllers/judgeController");
+router.use(require("../utils/requireFeature")("judging"));
+router.use(require("../utils/isAdmin"));
+router.get("/", controller.list);
+router.post("/", controller.invite);
+router.post("/preview", controller.preview);
+router.post("/bulk", controller.bulk);
+router.post("/:id/resend", controller.resend);
+router.delete("/:id", controller.remove);
+module.exports = router;

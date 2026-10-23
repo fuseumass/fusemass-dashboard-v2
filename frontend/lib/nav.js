@@ -38,6 +38,7 @@ import {
 
 const STAFF = ["moderator", "admin"];
 const ADMIN = ["admin"];
+const PARTICIPANTS = ["applicant", "moderator", "admin"];
 
 export const NAV_GROUPS = [
   { id: "me", label: null },
@@ -47,18 +48,48 @@ export const NAV_GROUPS = [
 ];
 
 export const NAV_ITEMS = [
-  { href: "/dashboard", label: "Home", icon: House, group: "me", exact: true },
+  {
+    href: "/dashboard/judging",
+    label: "Judging",
+    icon: ClipboardList,
+    group: "me",
+    roles: ["judge", "admin"],
+  },
+  {
+    href: "/dashboard/admin/judges",
+    label: "Judges",
+    icon: Users,
+    group: "admin",
+    roles: ADMIN,
+    feature: "judging",
+  },
+  {
+    href: "/dashboard",
+    label: "Home",
+    icon: House,
+    roles: PARTICIPANTS,
+    group: "me",
+    exact: true,
+  },
   {
     href: "/dashboard/application",
     label: "Application",
     icon: FileText,
+    roles: PARTICIPANTS,
     group: "me",
   },
-  { href: "/dashboard/team", label: "Team", icon: UsersRound, group: "me" },
+  {
+    href: "/dashboard/team",
+    label: "Team",
+    icon: UsersRound,
+    roles: PARTICIPANTS,
+    group: "me",
+  },
   {
     href: "/dashboard/workshops",
     label: "Workshops",
     icon: CalendarDays,
+    roles: PARTICIPANTS,
     group: "me",
     feature: "workshops",
   },

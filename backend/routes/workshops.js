@@ -4,7 +4,7 @@ var controller = require("../controllers/workshopController");
 var isAuthenticated = require("../utils/isAuthenticated");
 var requireFeature = require("../utils/requireFeature");
 router.use(requireFeature("workshops"));
-router.use(isAuthenticated, controller.accepted);
+router.use(isAuthenticated, require("../utils/currentRole").requireRole(["applicant", "moderator", "admin"], "Judges cannot access attendee workshops."), controller.accepted);
 router.get("/", controller.list);
 router.get("/mine", controller.list);
 router.post("/:id/signup", controller.signup);

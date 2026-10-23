@@ -126,6 +126,8 @@ router.post(
   authController.unsubscribe
 );
 
+router.post("/judge/accept", require("../controllers/judgeController").accept);
+
 // Requires a valid token.
 router.get("/me", isAuthenticated, authController.me);
 // Own preferences: whether to get announcement emails.

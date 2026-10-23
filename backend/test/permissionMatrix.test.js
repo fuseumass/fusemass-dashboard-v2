@@ -45,17 +45,19 @@ var Team = require("../schemas/team");
 var User = require("../schemas/user");
 
 // "none" is a request with no token at all.
-var ROLES = ["none", "applicant", "moderator", "admin"];
+var ROLES = ["none", "applicant", "moderator", "judge", "admin"];
 
 // What each access level must answer per role: a status code, or "ok" for
 // "the guard lets it through" (any answer except 401, 403 or a crash; what the
 // handler does with an empty request is tested elsewhere).
 var LEVELS = {
-  accepted: { none: 401, applicant: 403, moderator: 403, admin: 403 },
-  public: { none: "ok", applicant: "ok", moderator: "ok", admin: "ok" },
-  authenticated: { none: 401, applicant: "ok", moderator: "ok", admin: "ok" },
-  moderator: { none: 401, applicant: 403, moderator: "ok", admin: "ok" },
-  admin: { none: 401, applicant: 403, moderator: 403, admin: "ok" },
+  participant: { none: 401, applicant: "ok", moderator: "ok", judge: 403, admin: "ok" },
+  judge: { none: 401, applicant: 403, moderator: 403, judge: "ok", admin: "ok" },
+  accepted: { judge: 403, none: 401, applicant: 403, moderator: 403, admin: 403 },
+  public: { judge: "ok", none: "ok", applicant: "ok", moderator: "ok", admin: "ok" },
+  authenticated: { judge: "ok", none: 401, applicant: "ok", moderator: "ok", admin: "ok" },
+  moderator: { judge: 403, none: 401, applicant: 403, moderator: "ok", admin: "ok" },
+  admin: { judge: 403, none: 401, applicant: 403, moderator: 403, admin: "ok" },
 };
 
 /**
@@ -76,6 +78,14 @@ function row(method, path, level, options) {
 }
 
 var MATRIX = [
+  row("GET", "/api/judging", "judge"),
+  row("POST", "/api/auth/judge/accept", "public"),
+  row("GET", "/api/admin/judges", "admin"),
+  row("POST", "/api/admin/judges", "admin"),
+  row("POST", "/api/admin/judges/preview", "admin"),
+  row("POST", "/api/admin/judges/bulk", "admin"),
+  row("POST", "/api/admin/judges/:id/resend", "admin"),
+  row("DELETE", "/api/admin/judges/:id", "admin"),
   row("GET", "/api/workshops", "accepted"),
   row("GET", "/api/workshops/mine", "accepted"),
   row("POST", "/api/workshops/:id/signup", "accepted"),
@@ -112,9 +122,9 @@ var MATRIX = [
   row("PATCH", "/api/auth/me", "authenticated"),
   row("GET", "/api/meta/links", "authenticated"),
   row("POST", "/api/auth/resend-verification", "authenticated"),
-  row("POST", "/api/applications", "authenticated", { body: { name: "Sneaky" } }),
+  row("POST", "/api/applications", "participant", { body: { name: "Sneaky" } }),
   row("GET", "/api/applications/me", "authenticated"),
-  row("GET", "/api/applications/me/qr", "authenticated"),
+  row("GET", "/api/applications/me/qr", "participant"),
   row("GET", "/api/applications/me/resume", "authenticated"),
   row("GET", "/api/teams/me", "authenticated"),
   row("POST", "/api/teams", "authenticated", { body: { name: "Sneaky Team" } }),
@@ -231,6 +241,7 @@ async function seed() {
   await EmailTemplate.seedDefaults();
 
   var users = {
+    judge: await fixtures.createUser({ role: "judge" }),
     applicant: await fixtures.createUser({ role: "applicant" }),
     moderator: await fixtures.createUser({ role: "moderator" }),
     admin: await fixtures.createUser({ role: "admin" }),

@@ -46,7 +46,7 @@ var MAX_PER_RUN = 2000;
 
 // Anything that looks like a single-use link. Rows holding one are redacted.
 var SECRET_PATTERN = /[?&]token=|\/reset-password/i;
-var SENSITIVE_TEMPLATE_KEYS = ["account_setup", "password_reset", "verify_email"];
+var SENSITIVE_TEMPLATE_KEYS = ["judge_invite", "account_setup", "password_reset", "verify_email"];
 // A 5xx reply is normally permanent, but these mean "try later" or "fix the
 // configuration", so retrying (or an admin's resend) can still help.
 var QUOTA_PATTERN = /quota|limit|exceed|too many|rate|try again|temporar/i;

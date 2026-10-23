@@ -2,6 +2,7 @@
 
 import { ArrowRight, CircleCheck } from "lucide-react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import ApplicationStatusBadge from "@/components/ApplicationStatusBadge";
 import ClosedRoundStatus from "@/components/ClosedRoundStatus";
@@ -30,6 +31,7 @@ const STATUS_LABELS = {
 
 export default function DashboardHome() {
   const user = useUser();
+  const router = useRouter();
   const [state, setState] = useState({
     loading: true,
     round: null,
@@ -40,6 +42,10 @@ export default function DashboardHome() {
   const [links, setLinks] = useState(null);
 
   useEffect(() => {
+    if (user.role === "judge") {
+      router.replace("/dashboard/judging");
+      return;
+    }
     // Discord invite and the optional mentorship link (tickets live on Discord).
     apiFetch("/api/meta/links")
       .then((data) => setLinks(data.links))
@@ -66,7 +72,7 @@ export default function DashboardHome() {
     apiFetch("/api/applications/me/qr")
       .then((data) => setQr(data))
       .catch(() => setQr(null));
-  }, []);
+  }, [user.role, router]);
 
   // What the application card shows. With no open round, your standing from
   // any round. With a round open, your application in it; but if you have
@@ -82,6 +88,8 @@ export default function DashboardHome() {
 
   const shownApplication = standing?.application || state.application;
   const shownRound = standing?.round || state.round;
+
+  if (user.role === "judge") return null;
 
   return (
     <div>
