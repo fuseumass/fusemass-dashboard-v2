@@ -18,6 +18,10 @@ jobs:
         working-directory: frontend
       - run: npm run lint
         working-directory: frontend
+      # Fail on known high/critical vulnerabilities in what ships (B30).
+      - name: npm audit (production dependencies)
+        run: npm audit --omit=dev --audit-level=high
+        working-directory: frontend
 
   # T15: nothing secret and no data exports in the repo. The old judging repo
   # shipped judge passwords and participant emails in committed CSVs (B16).
@@ -81,6 +85,10 @@ jobs:
           cache: npm
           cache-dependency-path: backend/package-lock.json
       - run: npm ci
+        working-directory: backend
+      # Fail on known high/critical vulnerabilities in what ships (B30).
+      - name: npm audit (production dependencies)
+        run: npm audit --omit=dev --audit-level=high
         working-directory: backend
       # No type-checking in this repo (plain, dynamically-typed JS — see
       # README.md §3): node --check is the syntax gate, run over every

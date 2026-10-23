@@ -1049,10 +1049,15 @@ sponsors, catering and insurance.
 `npm audit` in `backend/` (Oct 2026): **critical** `proxy-addr` and
 **moderate** `body-parser`/`qs` (via `express`), **high** `nodemailer`,
 moderate `ip-address`, moderate `csv-parse` (fix is a major bump to v7).
-- [ ] `npm audit fix` (non-breaking ones), run the test suite.
-- [ ] `csv-parse` v7 upgrade: check `metaController`'s colleges loader still
-      works.
-- [ ] Add `npm audit --audit-level=high` to CI (T15).
+- [x] `npm audit fix` (non-breaking ones), run the test suite.
+      *Done:* `proxy-addr`, `qs`, `ip-address` fixed; `nodemailer` 9 → 10
+      (checked against the real Bird SMTP login); `multer` 1 → 2 (1.x was
+      deprecated for vulnerabilities). Frontend: `next` 16.2.12 → 16.4.3
+      (critical RCE advisories), `nanoid` fixed. Both `npm audit` report 0.
+- [x] `csv-parse` v7 upgrade: check `metaController`'s colleges loader still
+      works. *Done:* colleges.csv parses the same; tests pass.
+- [x] Add `npm audit --audit-level=high` to CI (T15). *Done:* production
+      dependencies, frontend and backend jobs.
 - **Depends on:** none.
 
 ---
