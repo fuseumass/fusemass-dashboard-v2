@@ -147,7 +147,7 @@ export default function AutoAcceptSettings() {
   const lastRun = status.enabled ? status.lastRun : null;
 
   return (
-    <Card className="mb-6 [--card-spacing:--spacing(6)]">
+    <Card>
       <CardHeader>
         <CardTitle>Auto-accept by email domain</CardTitle>
         <CardDescription>
@@ -276,7 +276,9 @@ export default function AutoAcceptSettings() {
       </CardContent>
       <CardFooter className="justify-between gap-4 border-t">
         <p className="text-xs text-muted-foreground">
-          Free Gmail sends about 500 emails per 24 hours in total.
+          {serverLimit > 0
+            ? `The server sends at most ${serverLimit} emails per 24 hours, all emails together (${status.serverEmailsLast24h} so far).`
+            : "The server has no daily email limit set."}
         </p>
         <Button onClick={handleSave} loading={saving}>
           Save

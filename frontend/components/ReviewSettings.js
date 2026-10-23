@@ -1,6 +1,11 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import {
+  CardLoading,
+  SettingRow,
+  SettingsCard,
+} from "@/components/SettingsParts";
 import { apiFetch } from "@/lib/api";
 
 // Admin setting for the review queue: automatic flagging of suspicious
@@ -36,51 +41,17 @@ export default function ReviewSettings() {
   }
 
   return (
-    <div className="card" style={{ padding: "1.5rem", marginBottom: "1.5rem" }}>
-      <h2
-        style={{
-          fontSize: "1.05rem",
-          fontWeight: 600,
-          marginBottom: "0.75rem",
-        }}
-      >
-        Application review
-      </h2>
-      {error
-        ? <div className="alert-error" style={{ marginBottom: "0.75rem" }}>
-            {error}
-          </div>
-        : null}
+    <SettingsCard title="Application review" error={error}>
       {!settings
-        ? <p className="muted">Loading…</p>
-        : <div
-            style={{
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "space-between",
-              gap: "1rem",
-            }}
-          >
-            <div>
-              <div style={{ fontWeight: 500 }}>
-                Flag suspicious applications automatically
-              </div>
-              <div className="muted" style={{ fontSize: "0.85rem" }}>
-                {settings.autoFlagApplications
-                  ? "On — new applications are flagged for reviewers when the resume is nearly empty or doesn't mention the applicant, or the phone number or resume is on another account."
-                  : "Off — only reviewers flag applications."}
-              </div>
-            </div>
-            <button
-              type="button"
-              className="btn btn-ghost"
-              style={{ width: "auto", flexShrink: 0 }}
-              disabled={saving}
-              onClick={toggle}
-            >
-              {settings.autoFlagApplications ? "Turn off" : "Turn on"}
-            </button>
-          </div>}
-    </div>
+        ? <CardLoading rows={1} />
+        : <SettingRow
+            id="auto-flag"
+            title="Flag suspicious applications automatically"
+            description="New applications are flagged for reviewers when the resume is nearly empty or doesn't mention the applicant, or when the phone number or resume is already on another account. When this is off, only reviewers flag applications."
+            checked={settings.autoFlagApplications}
+            disabled={saving}
+            onCheckedChange={toggle}
+          />}
+    </SettingsCard>
   );
 }

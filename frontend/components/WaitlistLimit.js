@@ -1,7 +1,12 @@
 "use client";
 
 import { useState } from "react";
+import { ErrorAlert } from "@/components/SettingsParts";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { apiFetch } from "@/lib/api";
+import { notifySuccess } from "@/lib/notify";
 
 // Waitlist mode for one application round: once this many applications in
 // the round are accepted, new submissions are waitlisted automatically (and
@@ -21,6 +26,7 @@ export default function WaitlistLimit({ round, onChanged }) {
         method: "PATCH",
         body: JSON.stringify({ waitlistAfterAccepted: value.trim() || null }),
       });
+      notifySuccess("Waitlist limit saved");
       onChanged();
     } catch (err) {
       setError(err.message);
@@ -30,36 +36,27 @@ export default function WaitlistLimit({ round, onChanged }) {
   }
 
   return (
-    <div style={{ marginTop: "0.75rem" }}>
-      <label className="field-label" htmlFor={`waitlist-${round._id}`}>
-        Waitlist new applications after this many are accepted (empty = no
-        limit)
-      </label>
-      <div style={{ display: "flex", gap: "0.75rem", alignItems: "center" }}>
-        <input
+    <div className="grid gap-2">
+      <Label htmlFor={`waitlist-${round._id}`}>Waitlist limit</Label>
+      <div className="flex flex-wrap items-center gap-2">
+        <Input
           id={`waitlist-${round._id}`}
-          className="input"
           type="number"
           min={1}
           value={value}
+          placeholder="No limit"
           onChange={(e) => setValue(e.target.value)}
-          style={{ maxWidth: 120 }}
+          className="w-32"
         />
-        <button
-          type="button"
-          className="btn btn-ghost"
-          style={{ width: "auto" }}
-          disabled={saving}
-          onClick={save}
-        >
+        <Button type="button" variant="outline" loading={saving} onClick={save}>
           Save limit
-        </button>
+        </Button>
       </div>
-      {error
-        ? <div className="alert-error" style={{ marginTop: "0.5rem" }}>
-            {error}
-          </div>
-        : null}
+      <p className="text-xs text-muted-foreground">
+        After this many applications are accepted, new ones are waitlisted and
+        the applicant is emailed. Leave empty for no limit.
+      </p>
+      <ErrorAlert message={error} />
     </div>
   );
 }
