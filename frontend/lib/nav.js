@@ -47,6 +47,14 @@ export const NAV_GROUPS = [
 ];
 
 export const NAV_ITEMS = [
+  {
+    href: "/dashboard/admin/judging",
+    label: "Judging",
+    icon: ClipboardList,
+    group: "admin",
+    roles: ADMIN,
+    feature: "judging",
+  },
   { href: "/dashboard", label: "Home", icon: House, group: "me", exact: true },
   {
     href: "/dashboard/application",

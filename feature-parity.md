@@ -110,9 +110,10 @@ were presumably tracked in spreadsheets, so B33–B37 are a new design.
 
 | Old feature | Status | Task |
 | ----------- | ------ | ---- |
-| Project submission with team members | 🟡 teams + their Devpost link live on the dashboard (B15); projects are imported from Devpost | B24b |
+| Project submission with team members | ✅ dashboard teams (B15), Devpost CSV preview/confirm, URL and email matching, admin project overrides | B24b |
+| Judging rooms and capacities | ✅ admin CRUD, hardware rooms, deletion protection | B24b |
 | Public project gallery | ✖ Devpost hosts it | — |
-| Power-outlet needs per project | 📋 | B24b |
+| Power-outlet needs per project | ✅ admin override preserved on import | B24b |
 | Prizes / tracks, participants pick prizes, assign winners | 📋 | B24h |
 | Judge assignments (old Rails: tags, mass assign) | ✖ replaced by the 2025 judging platform's slotted generator | B24a, B24e |
 | Printed judging forms (`paper_judging`) | 🟡 printable table signs only | B24c |

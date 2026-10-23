@@ -1,0 +1,38 @@
+"use strict";
+var router = require("express").Router();
+var multer = require("multer");
+var controller = require("../controllers/adminJudgingController");
+var isAdmin = require("../utils/isAdmin");
+var requireFeature = require("../utils/requireFeature");
+var upload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 2 * 1024 * 1024, files: 1, fields: 0 },
+});
+router.use(requireFeature("judging"));
+router.get("/rooms", isAdmin, controller.listRooms);
+router.post("/rooms", isAdmin, controller.saveRoom);
+router.patch("/rooms/:id", isAdmin, controller.saveRoom);
+router.delete("/rooms/:id", isAdmin, controller.deleteRoom);
+router.get("/projects", isAdmin, controller.listProjects);
+router.patch("/projects/:id", isAdmin, controller.updateProject);
+router.post(
+  "/import",
+  isAdmin,
+  upload.single("file"),
+  controller.previewImport,
+);
+router.post("/import/:id/confirm", isAdmin, controller.confirmImport);
+/** @param {Error} err - Upload error. @param {object} req - Request. @param {object} res - Response. @param {function} next - Next middleware. @returns {void} */
+function uploadError(err, req, res, next) {
+  if (!(err instanceof multer.MulterError)) {
+    next(err);
+    return;
+  }
+  res
+    .status(400)
+    .json({
+      error: "Upload one CSV file, at most 2 MB, using the file field.",
+    });
+}
+router.use(uploadError);
+module.exports = router;

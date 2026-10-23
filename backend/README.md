@@ -467,3 +467,45 @@ an admin. Capacity 0 means unlimited. Signups always use the caller's account.
 
 Calendar emails use stable workshop UIDs and increasing sequences. Organizer
 assignment, waitlists and subscription feeds are deferred.
+
+## Judging rooms and projects
+
+These routes require an admin and return 404 while `judging` is disabled.
+
+| Method | Route | Purpose |
+| --- | --- | --- |
+| GET | `/api/admin/judging/rooms` | List rooms in fill order |
+| POST | `/api/admin/judging/rooms` | Create a room (name, order, capacity, hardware) |
+| PATCH | `/api/admin/judging/rooms/:id` | Edit room configuration |
+| DELETE | `/api/admin/judging/rooms/:id` | Delete a room; 409 if projects have tables in it |
+| GET | `/api/admin/judging/projects` | List projects; filters: room id, hardware=true/false, category, unmatchedMembers=true/false |
+| PATCH | `/api/admin/judging/projects/:id` | Override category, hardware, needsPower, withdrawn |
+| POST | `/api/admin/judging/import` | Multipart `file`: UTF-8 CSV, max 2 MB / 2000 rows; create preview |
+| POST | `/api/admin/judging/import/:id/confirm` | Apply the stored preview once, uploader only |
+
+A preview contains `counts` (new, updated, unchanged, errors), valid `rows`,
+row-numbered `errors`, unmatched names/emails and `unrecognizedColumns`.
+It expires after 30 minutes. Confirmation ignores request body data and does
+not rematch users or reparse a client-provided CSV. Valid rows are applied;
+error rows are skipped. The preview is claimed atomically before applying it.
+If an application fails partway through, upload again to preview remaining
+changes; a consumed preview cannot be retried.
+
+Both the cleaned export (including four identically named `TeamMem1*` triples)
+and raw headers are read by position. Known raw aliases include Project Title /
+Project Name, Submission Url / Submission Link / Project Url, Submitter First
+Name / Last Name / Email, Opt-In Prizes / Opt In Prizes, Team Member N First
+Name / Last Name / Email, Category / Judging Category, MLH Tracks, Hardware /
+Hardware Judging and Needs Power. Matching is case-insensitive. Unknown columns
+are reported instead of guessed. Raw prize selections populate `optInPrizes`;
+without a recognized category column the judged category is empty and can be
+set by an admin. Prize/track lists accept semicolon, comma or pipe separators.
+
+Project URLs must use HTTPS, then follow team-link normalization (lowercase
+slug, strip www, trailing slash, query and fragment). Dashboard Team membership
+by URL is matched first, then remaining emails case-insensitively. Re-imports
+upsert by URL and preserve room/table/check-in data and all marked overrides,
+including overrides saved between preview and confirmation. No judging CSV
+export is introduced here; any future project export must use `utils/csv`
+(`formatCell` / `formatRow`), which neutralizes spreadsheet formulas. Imported
+text remains plain text in JSON and React renders it as escaped text.

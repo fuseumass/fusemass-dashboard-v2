@@ -581,10 +581,10 @@ Each is one PR, behind the `judging` feature flag (B25) until B24i.
 - **Depends on:** none. **Related:** T11.
 
 ### B24b. Rooms, projects and the Devpost import
-- [ ] `schemas/judgingRoom.js`: `name` (e.g. "S131"), `order`, `capacity`
+- [x] `schemas/judgingRoom.js`: `name` (e.g. "S131"), `order`, `capacity`
       (tables), `hardware: Boolean`. Admin CRUD. This replaces `ROOM_CONFIG`
       and `roomNumberToName`.
-- [ ] `schemas/project.js`: `name`, `devpostUrl`, `submitterEmail`,
+- [x] `schemas/project.js`: `name`, `devpostUrl`, `submitterEmail`,
       `members: [User]`, `unmatchedMembers: [{ name, email }]`,
       `category` (the judged track), `optInPrizes: [String]`, `mlhTracks`,
       `hardware: Boolean`, `needsPower: Boolean`, `room`, `tableNumber`,
@@ -592,7 +592,7 @@ Each is one PR, behind the `judging` feature flag (B25) until B24i.
       (`room`, `tableNumber`) for projects that have a table. Name it
       `Project`, not `Team`: the unused `schemas/team.js` (B15) is a different
       thing.
-- [ ] **Devpost import (decided: projects come from Devpost; no in-dashboard
+- [x] **Devpost import (decided: projects come from Devpost; no in-dashboard
       submission):** `POST /api/admin/judging/import` (multipart CSV) → parse
       by **column position + header**, because Devpost repeats member column
       names → validate each row → return a **preview** (new / updated /
@@ -601,9 +601,13 @@ Each is one PR, behind the `judging` feature flag (B25) until B24i.
       Match each project to a dashboard **team by its Devpost URL** first (B15:
       teams save their link on the Team tab), then members to users by email
       (case-insensitive); report the rest.
-- [ ] The hardware flag and category come from Devpost columns; admins can
+- [x] The hardware flag and category come from Devpost columns; admins can
       override per project.
-- **Depends on:** B47 (for the admin screens' guards). **Related:** F21c.
+- Admin routes and screen use the existing admin guard. Judge roles, table check-in, assignments and scoring remain outside B24b.
+- Import previews expire after 30 minutes. Confirmation is uploader-only and single-use.
+- Raw Devpost aliases are conservative; unknown columns are shown for review.
+- Verification: syntax, frontend lint and database-free CSV/preview tests pass. Mongo integration checks, production font fetching and UI screenshots need an environment with local ports/network access.
+- **Related:** F21c.
 
 ### B24c. Two-step team check-in (desk → table)
 Keep the 2025 flow: it makes sure teams are physically at the table judges

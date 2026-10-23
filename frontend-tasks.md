@@ -438,10 +438,12 @@ floor: build the judge screens mobile-first, in the kiosk layout (F13).**
 
 ### F21c. Admin judging console
 `/dashboard/admin/judging`, with tabs:
-- [ ] **Import:** upload the Devpost CSV → preview table (new / updated /
+- [x] **Import:** upload the Devpost CSV → preview table (new / updated / unchanged /
       errors, unmatched member emails) → confirm.
-- [ ] **Rooms & tables:** room list (name, order, capacity, hardware) with
+- [x] **Rooms & tables:** room list (name, order, capacity, hardware) with
       totals vs project count, so admins see shortages before the event.
+- [x] **Projects:** filtered table, matched/unmatched member counts, room/table display,
+      and admin overrides for category, hardware, power and withdrawal (B24b).
 - [ ] **Rubric:** criteria editor (label, guiding questions, min/max, weight,
       general/category), locked once scores exist; calibration projects.
 - [ ] **Judges:** list with hardware flag, invite status, calibration done,
