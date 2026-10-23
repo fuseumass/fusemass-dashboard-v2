@@ -39,6 +39,7 @@ var CheckIn = require("../schemas/checkin");
 var EmailTemplate = require("../schemas/emailTemplate");
 var MealService = require("../schemas/mealService");
 var Team = require("../schemas/team");
+var systemConfig = require("../utils/systemConfig");
 var User = require("../schemas/user");
 
 var FORBIDDEN_KEYS = [
@@ -92,6 +93,9 @@ function findLeaks(res, secrets, callerId) {
   });
   secrets.resetTokens.forEach(function check(token) {
     if (text.indexOf(token) !== -1) leaks.push("a password-reset token");
+  });
+  (secrets.configSecrets || []).forEach(function check(secret) {
+    if (text.indexOf(secret) !== -1) leaks.push("a technical-settings secret");
   });
   secrets.qrIds.forEach(function check(entry) {
     if (entry.userId !== callerId && text.indexOf(entry.qrId) !== -1) {
@@ -160,8 +164,22 @@ async function seed() {
   });
   await CheckIn.create({ user: alice.user._id, checkedInBy: moderator.user._id });
 
+  // Technical settings: secrets saved from the dashboard (encrypted in the
+  // database) and ones that only live in the environment. None may ever show.
+  var savedSecrets = {
+    GOOGLE_CLIENT_SECRET: "google-secret-0123456789abcdef",
+    SMTP_PASS: "smtp-pass-0123456789abcdef",
+  };
+  var saved = await systemConfig.applyChanges(savedSecrets, String(admin.user._id), {});
+  assert.deepEqual(saved.errors, undefined);
+
   var everyone = await User.find({}).lean();
   var secrets = {
+    configSecrets: Object.keys(savedSecrets)
+      .map(function pick(key) {
+        return savedSecrets[key];
+      })
+      .concat([process.env.JWT_SECRET]),
     passwordHashes: everyone
       .map(function pick(u) {
         return u.passwordHash;

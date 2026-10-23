@@ -140,6 +140,39 @@ Optional environment variables:
 | `EMAIL_RETRY_INTERVAL_MS` | `30000` | How often the retry worker looks for due emails |
 | `EMAIL_LOG_RETENTION_DAYS`| `90`    | How long outbox rows are kept                 |
 
+## Technical settings
+
+Admins can see and change the server's environment variables from
+Dashboard > Technical settings (`/dashboard/admin/system`). The registry of
+every variable (label, group, help, secret, editable, restart needed,
+validator) is `utils/systemConfig.js`.
+
+- **Precedence:** dashboard value > `.env` value > built-in default. Dashboard
+  values live in the `SystemSetting` collection. On startup `server.js`
+  connects to the database, loads them into `process.env`, and only then builds
+  the app, so rate limiters, Google sign-in and `TRUST_PROXY` see them. The
+  original `.env` values are remembered, so "reset" restores them.
+- **Secrets** (passwords, keys, connection strings, webhook URLs) are encrypted
+  at rest with AES-256-GCM. The key is derived (HKDF) from `CONFIG_ENCRYPTION_KEY`
+  when set, otherwise from `JWT_SECRET`. Changing that key makes saved secrets
+  unreadable (they are skipped on startup with a warning). Secret values are
+  never returned or logged; the API gives only "is set" and the last 4 characters
+  of long values.
+- **Read-only** (shown, but only changeable on the server): `MONGODB_URI`, `PORT`,
+  `NODE_ENV`, `JWT_SECRET`, `JWT_EXPIRES_IN`, `SETUP_ADMIN`,
+  `CONFIG_ENCRYPTION_KEY`, `ALLOW_SELF_RESTART`. A bad value in any of them could
+  lock everyone out with no way back from the dashboard.
+- **Restart:** settings read only at startup (rate limits, Google credentials,
+  `TRUST_PROXY`, `EMAIL_RETRY_INTERVAL_MS`) are marked `restartRequired`. With
+  `ALLOW_SELF_RESTART=true` the Restart button closes the HTTP server and exits
+  with code 0 so the service manager starts it again; this needs
+  `Restart=always` in the systemd unit. Without it the API answers `409` and
+  the change waits for a manual restart.
+- With more than one server instance, each instance picks up a saved value when
+  it restarts.
+- `CLIENT_ORIGIN` must keep the address the admin is browsing from, so a save
+  cannot lock the dashboard out of its own API.
+
 ## Scripts
 
 | Command               | What it does                                  |
@@ -237,6 +270,9 @@ emailed on acceptance (or via "Forgot password").
 | POST   | `/api/admin/outbox/:id/cancel`  | admin     | Cancel a queued email                  |
 | GET    | `/api/admin/settings`           | admin     | Org settings (+ Google env status)     |
 | PATCH  | `/api/admin/settings`           | admin     | Update settings (Google toggle, `autoFlagApplications`, `features`, `branding`) |
+| GET    | `/api/admin/system-config`      | admin     | Technical settings: every env var with its source; secret values are never returned |
+| PATCH  | `/api/admin/system-config`      | admin     | Save `{ values: { KEY: "value" | null } }` (all validated first; `null` resets to `.env`) |
+| POST   | `/api/admin/system-config/restart` | admin  | Restart the service (`202`), only when `ALLOW_SELF_RESTART=true`, else `409`; 3 per minute |
 | PUT    | `/api/admin/branding/:slot`     | admin     | Upload `logo` / `logo-dark` / `favicon` (multipart `file`) |
 | DELETE | `/api/admin/branding/:slot`     | admin     | Remove that image (back to the server default) |
 | GET    | `/api/admin/stats`              | admin     | Application + event-day statistics (`?round=&status=`) |

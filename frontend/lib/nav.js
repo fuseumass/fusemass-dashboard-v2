@@ -13,6 +13,7 @@ import {
   Users,
   UsersRound,
   UtensilsCrossed,
+  Wrench,
 } from "lucide-react";
 
 // The single source of truth for dashboard navigation. The sidebar, the
@@ -135,6 +136,13 @@ export const NAV_ITEMS = [
     href: "/dashboard/admin/settings",
     label: "Settings",
     icon: Settings,
+    group: "admin",
+    roles: ADMIN,
+  },
+  {
+    href: "/dashboard/admin/system",
+    label: "Technical settings",
+    icon: Wrench,
     group: "admin",
     roles: ADMIN,
   },
