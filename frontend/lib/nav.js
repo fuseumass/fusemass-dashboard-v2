@@ -55,6 +55,13 @@ export const NAV_ITEMS = [
     group: "me",
   },
   { href: "/dashboard/team", label: "Team", icon: UsersRound, group: "me" },
+  {
+    href: "/dashboard/workshops",
+    label: "Workshops",
+    icon: CalendarDays,
+    group: "me",
+    feature: "workshops",
+  },
 
   {
     href: "/dashboard/admin",
@@ -116,6 +123,14 @@ export const NAV_ITEMS = [
     icon: Mail,
     group: "admin",
     roles: ADMIN,
+  },
+  {
+    href: "/dashboard/admin/workshops",
+    label: "Workshops",
+    icon: CalendarDays,
+    group: "admin",
+    roles: ADMIN,
+    feature: "workshops",
   },
   {
     href: "/dashboard/admin/meals",

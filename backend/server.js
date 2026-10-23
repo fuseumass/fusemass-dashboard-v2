@@ -34,6 +34,7 @@ function createApp() {
   var staffRoutes = require("./routes/staff");
   var teamRoutes = require("./routes/teams");
   var publicRoutes = require("./routes/public");
+  var workshopRoutes = require("./routes/workshops");
 
   var app = express();
 
@@ -101,6 +102,7 @@ function createApp() {
   app.use("/api/meta", metaRoutes);
   app.use("/api/staff", staffRoutes);
   app.use("/api/teams", teamRoutes);
+  app.use("/api/workshops", workshopRoutes);
 
   // --- Fallback error handler (Express 4 signature: err, req, res, next) ------
   app.use(function errorHandler(err, req, res, _next) {

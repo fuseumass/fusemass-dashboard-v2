@@ -447,3 +447,23 @@ Who counts as verified:
   `utils/applicationFlags.js` (rules) and `utils/resumeText.js` (reading).
 
 See [`../backend-tasks.md`](../backend-tasks.md) for the backlog.
+
+## Workshops
+
+All workshop routes return 404 when the workshops module is off. Attendee
+routes require authentication and an accepted application; admin routes require
+an admin. Capacity 0 means unlimited. Signups always use the caller's account.
+
+| Method | Route | Purpose |
+| --- | --- | --- |
+| GET | `/api/admin/workshops` | List all workshops, including drafts and cancellations |
+| POST | `/api/admin/workshops` | Create a workshop |
+| PATCH | `/api/admin/workshops/:id` | Edit; time or location changes email updated invites |
+| DELETE | `/api/admin/workshops/:id` | Delete if empty, otherwise soft-cancel and email cancellations |
+| GET | `/api/workshops` | Published, active workshops with spotsLeft (null = unlimited) and signedUp |
+| GET | `/api/workshops/mine` | Caller's published, active workshops in time order |
+| POST | `/api/workshops/:id/signup` | Reserve a seat; overlapping signups include a warning |
+| DELETE | `/api/workshops/:id/signup` | Cancel caller's signup, free the seat and email a cancellation |
+
+Calendar emails use stable workshop UIDs and increasing sequences. Organizer
+assignment, waitlists and subscription feeds are deferred.
