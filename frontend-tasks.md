@@ -363,19 +363,26 @@ Visible only to `workshop_organizer`s for **their** workshops (plus admins).
 ## Hardware (replaces F5)
 
 ### F20. Hardware checkout and inventory
-- [ ] **Checkout station** `/dashboard/staff/hardware` (kiosk layout): scan the
+- [x] **Checkout station** `/dashboard/staff/hardware` (kiosk layout): scan the
       attendee QR (reuse `CheckInStation`) → their open items appear → scan or
       search an item → confirm. Returns from the same screen: scan the
       attendee, tap "Return" per item. Clear errors for "not checked in", "out
       of stock" and "limit reached".
-- [ ] **Inventory admin** `/dashboard/admin/hardware`: `DataTable` (name,
+- [x] **Inventory admin** `/dashboard/admin/hardware`: `DataTable` (name,
       category, location, available/total), create/edit `Dialog`, CSV import
       with a preview, printable QR label sheet.
-- [ ] **Outstanding** view: who has what, overdue first, "email everyone still
+- [x] **Outstanding** view: who has what, overdue first, "email everyone still
       holding hardware" (B26).
-- [ ] **Participant** `/dashboard/hardware`: browse what's available (search,
+- [x] **Participant** `/dashboard/hardware`: browse what's available (search,
       category chips, availability badge) and "My hardware" with due times.
 - **Depends on:** B22, B23. **Related:** T10.
+
+Implemented in the hardware working tree. Optional individual unit tracking and
+the reserve/request queue are deferred. Printable labels identify item types.
+
+Verification: lint and an offline-font Webpack build pass. Standard Turbopack
+build and light/dark/375 px screenshots are blocked by sandbox network and
+local port restrictions. MongoDB integration tests require the reviewer environment.
 
 ---
 

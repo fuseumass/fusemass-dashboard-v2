@@ -395,3 +395,26 @@
     transform: rotate(360deg);
   }
 }
+
+@media print {
+  [data-slot="dialog-content"]:has(.hardware-label-sheet) {
+    position: static;
+    transform: none;
+    translate: none;
+    width: 100%;
+    max-width: none;
+    border: 0;
+  }
+  .hardware-label-sheet {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+  }
+  body:has(.hardware-label-sheet) * {
+    visibility: hidden;
+  }
+  body:has(.hardware-label-sheet) .hardware-label-sheet,
+  body:has(.hardware-label-sheet) .hardware-label-sheet * {
+    visibility: visible;
+  }
+}
