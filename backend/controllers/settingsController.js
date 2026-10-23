@@ -7,6 +7,7 @@ var branding = require("../utils/branding");
 var features = require("../utils/features");
 var azureBlob = require("../utils/azureBlob");
 var orgSettingsCache = require("../utils/orgSettingsCache");
+var autoAccept = require("../utils/autoAccept");
 var brandingController = require("./brandingController");
 var ApplicationRound = require("../schemas/applicationRound");
 
@@ -51,6 +52,8 @@ function getSettings(_req, res) {
  * Body: { googleAuthEnabled?, publicApplications?, autoFlagApplications?,
  *         checkInPopupEnabled?: boolean, checkInPopupFields?: string[],
  *         teamMaxSize?: number,
+ *         autoAccept?: { enabled?, includeSubdomains?: boolean, domains?: string[],
+ *                        emailsPerDay?: number },
  *         features?: { meals?, hardware?, workshops?, judging?, raffle?: boolean },
  *         branding?: { orgName?, primaryColor?, secondaryColor?, accentColor?
  *                      (#RRGGBB), logoUrl?, logoDarkUrl?, faviconUrl? (https URL) } }
@@ -88,6 +91,14 @@ function updateSettings(req, res) {
   }
   if (req.body && req.body.autoFlagApplications !== undefined) {
     update.autoFlagApplications = Boolean(req.body.autoFlagApplications);
+  }
+  if (req.body && req.body.autoAccept !== undefined) {
+    var autoAcceptCheck = autoAccept.validateSettingsPatch(req.body.autoAccept);
+    if (autoAcceptCheck.errors.length) {
+      res.status(400).json({ error: autoAcceptCheck.errors.join(" ") });
+      return Promise.resolve();
+    }
+    Object.assign(update, autoAcceptCheck.update);
   }
   if (req.body && req.body.teamMaxSize !== undefined) {
     var size = Number(req.body.teamMaxSize);
@@ -138,7 +149,68 @@ function updateSettings(req, res) {
     });
 }
 
+/**
+ * GET /api/admin/auto-accept — where domain auto-accept stands (admin only):
+ * the saved setting, how many pending applications match, the first few in
+ * line, how many were accepted in the last 24 hours, the pace, and what the
+ * last run did.
+ * @param {object} _req
+ * @param {object} res
+ * @returns {Promise<void>}
+ */
+function getAutoAcceptStatus(_req, res) {
+  return autoAccept
+    .status()
+    .then(function respond(result) {
+      res.status(200).json(result);
+    })
+    .catch(function onError(err) {
+      console.error("getAutoAcceptStatus failed:", err);
+      res.status(500).json({ error: "Could not load auto-accept." });
+    });
+}
+
+/**
+ * POST /api/admin/auto-accept/preview — what auto-accept would do with these
+ * domains, before saving or switching it on (admin only). Changes nothing.
+ * Body: { domains: string[] | "umass.edu, smith.edu", includeSubdomains?, emailsPerDay? }
+ * @param {object} req
+ * @param {object} res
+ * @returns {Promise<void>}
+ */
+function previewAutoAccept(req, res) {
+  var body = req.body || {};
+  var check = autoAccept.validateSettingsPatch({
+    domains: body.domains === undefined ? [] : body.domains,
+    includeSubdomains: body.includeSubdomains === undefined ? true : body.includeSubdomains,
+    emailsPerDay: body.emailsPerDay === undefined ? 200 : body.emailsPerDay,
+  });
+  if (check.errors.length) {
+    res.status(400).json({ error: check.errors.join(" ") });
+    return Promise.resolve();
+  }
+  var config = {
+    domains: check.update["autoAccept.domains"],
+    includeSubdomains: check.update["autoAccept.includeSubdomains"],
+  };
+  var pace = autoAccept.pacing(check.update["autoAccept.emailsPerDay"]);
+  return autoAccept
+    .preview(config)
+    .then(function respond(result) {
+      result.domains = config.domains;
+      result.perHour = pace.perHour;
+      result.hoursToFinish = result.pending ? Math.ceil(result.pending / pace.perHour) : 0;
+      res.status(200).json(result);
+    })
+    .catch(function onError(err) {
+      console.error("previewAutoAccept failed:", err);
+      res.status(500).json({ error: "Could not preview auto-accept." });
+    });
+}
+
 module.exports = {
   getSettings: getSettings,
   updateSettings: updateSettings,
+  getAutoAcceptStatus: getAutoAcceptStatus,
+  previewAutoAccept: previewAutoAccept,
 };

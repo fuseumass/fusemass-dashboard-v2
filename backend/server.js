@@ -12,6 +12,7 @@ var passportUtil = require("./utils/passport");
 var EmailTemplate = require("./schemas/emailTemplate");
 var discord = require("./utils/discord");
 var outbox = require("./utils/outbox");
+var autoAccept = require("./utils/autoAccept");
 var clientOrigin = require("./utils/clientOrigin");
 var healthController = require("./controllers/healthController");
 
@@ -122,6 +123,8 @@ if (require.main === module) {
         // Retries emails that failed to send (see utils/outbox). Started only
         // here, so requiring this module in tests never starts a timer.
         outbox.startWorker();
+        // Domain auto-accept, when an admin switched it on in Settings.
+        autoAccept.startWorker();
       });
     })
     .catch(function onError(err) {
