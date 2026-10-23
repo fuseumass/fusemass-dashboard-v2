@@ -9,6 +9,19 @@ import CheckInStation, {
   resultFromError,
   useStationLog,
 } from "@/components/CheckInStation";
+import PageHeader from "@/components/PageHeader";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Button } from "@/components/ui/button";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import { apiFetch } from "@/lib/api";
 import { useUser } from "@/lib/userContext";
 
@@ -67,7 +80,7 @@ export default function StaffCheckInPage() {
         kind: "success",
         attendee: data.attendee,
         message: data.forced ? "Checked in (forced)" : "Checked in",
-        warning: "Welcome email with Discord, website and schedule sent.",
+        warning: "Email with the Discord link, website and schedule sent.",
         popup: data.popup,
       });
       loadStats();
@@ -77,7 +90,7 @@ export default function StaffCheckInPage() {
       // Not accepted: offer a forced check-in for exactly this person.
       if (err.data?.code === "not_accepted" && err.data.attendee) {
         result.action = {
-          label: "Force check-in instead…",
+          label: "Force check-in instead",
           onClick: () => setForce({ attendee: err.data.attendee }),
         };
       }
@@ -98,38 +111,21 @@ export default function StaffCheckInPage() {
       : 0;
 
   return (
-    <div>
-      <div
-        style={{
-          display: "flex",
-          justifyContent: "space-between",
-          alignItems: "flex-start",
-          gap: "1rem",
-          flexWrap: "wrap",
-          marginBottom: "1.5rem",
-        }}
-      >
-        <div>
-          <h1
-            style={{
-              fontSize: "1.5rem",
-              fontWeight: 700,
-              marginBottom: "0.25rem",
-            }}
+    <div className="mx-auto w-full max-w-2xl space-y-4">
+      <PageHeader
+        className="mb-2"
+        title="Check-in"
+        description="Scan attendees' QR codes as they arrive."
+        actions={
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => setForce(force ? null : {})}
           >
-            Check-in
-          </h1>
-          <p className="muted">Scan attendees&apos; QR codes as they arrive.</p>
-        </div>
-        <button
-          type="button"
-          className="btn btn-ghost"
-          style={{ width: "auto" }}
-          onClick={() => setForce(force ? null : {})}
-        >
-          {force ? "Close forced check-in" : "Force check-in"}
-        </button>
-      </div>
+            {force ? "Close forced check-in" : "Force check-in"}
+          </Button>
+        }
+      />
 
       {force
         ? <ForceCheckInPanel
@@ -140,37 +136,33 @@ export default function StaffCheckInPage() {
         : null}
 
       {stats
-        ? <div
-            className="card"
-            style={{ padding: "1.25rem 1.5rem", marginBottom: "1rem" }}
-          >
-            <div style={{ fontSize: "1.6rem", fontWeight: 700 }}>
-              {stats.checkedIn}
-              <span className="muted" style={{ fontSize: "1rem" }}>
-                {" "}
-                / {stats.accepted} checked in
-                {stats.forced ? ` · ${stats.forced} forced` : ""}
-              </span>
-            </div>
-            <div
-              aria-hidden="true"
-              style={{
-                height: 8,
-                borderRadius: 999,
-                background: "var(--border)",
-                marginTop: "0.6rem",
-                overflow: "hidden",
-              }}
-            >
+        ? <Card>
+            <CardContent className="space-y-3">
+              <p className="flex flex-wrap items-baseline gap-x-2 tabular-nums">
+                <span className="text-3xl font-semibold tracking-tight">
+                  {stats.checkedIn}
+                </span>
+                <span className="text-sm text-muted-foreground">
+                  of {stats.accepted} checked in
+                  {stats.forced ? `, ${stats.forced} forced` : ""}
+                </span>
+              </p>
               <div
-                style={{
-                  width: `${percent}%`,
-                  height: "100%",
-                  background: "var(--brand)",
-                }}
-              />
-            </div>
-          </div>
+                role="progressbar"
+                aria-label="Checked in"
+                aria-valuemin={0}
+                aria-valuemax={100}
+                aria-valuenow={percent}
+                className="h-2 overflow-hidden rounded-full bg-muted"
+              >
+                {/* The width is the one computed value on this screen. */}
+                <div
+                  className="h-full rounded-full bg-brand transition-[width]"
+                  style={{ width: `${percent}%` }}
+                />
+              </div>
+            </CardContent>
+          </Card>
         : null}
 
       <CheckInStation
@@ -222,148 +214,112 @@ function ForceCheckInPanel({ initial, onSubmit, onClose }) {
     setError("");
     const ok = await onSubmit(target, reason.trim());
     setSubmitting(false);
-    if (!ok) setError("The check-in didn't go through. See the result below.");
+    if (!ok) setError("The check-in did not go through. See the result below.");
   }
 
   return (
-    <form
-      className="card"
-      onSubmit={handleSubmit}
-      style={{
-        padding: "1.5rem",
-        marginBottom: "1rem",
-        borderColor: "var(--warning)",
-      }}
-    >
-      <h2
-        style={{
-          fontSize: "1.05rem",
-          fontWeight: 600,
-          marginBottom: "0.25rem",
-        }}
-      >
-        Force check-in
-      </h2>
-      <p
-        className="muted"
-        style={{ fontSize: "0.85rem", marginBottom: "1rem" }}
-      >
-        Checks in someone whose application isn&apos;t accepted. Your name and
-        the reason are recorded with the check-in.
-      </p>
+    <Card className="ring-warning/40">
+      <CardHeader>
+        <CardTitle>Force check-in</CardTitle>
+        <CardDescription>
+          Checks in someone whose application is not accepted. Your name and the
+          reason are recorded with the check-in.
+        </CardDescription>
+      </CardHeader>
+      <CardContent>
+        <form onSubmit={handleSubmit} className="space-y-4">
+          {error
+            ? <Alert variant="destructive">
+                <AlertDescription>{error}</AlertDescription>
+              </Alert>
+            : null}
 
-      {error
-        ? <div className="alert-error" style={{ marginBottom: "0.75rem" }}>
-            {error}
-          </div>
-        : null}
-
-      {target
-        ? <div
-            style={{
-              display: "flex",
-              justifyContent: "space-between",
-              alignItems: "center",
-              gap: "0.75rem",
-              padding: "0.75rem",
-              border: "1px solid var(--border)",
-              borderRadius: 10,
-              marginBottom: "0.75rem",
-            }}
-          >
-            <div>
-              <div style={{ fontWeight: 600 }}>{target.name}</div>
-              <div className="muted" style={{ fontSize: "0.85rem" }}>
-                {target.email} ·{" "}
-                {STATUS_LABELS[target.applicationStatus] ||
-                  target.applicationStatus}
+          {target
+            ? <div className="flex items-center justify-between gap-3 rounded-lg border p-3">
+                <div className="min-w-0">
+                  <p className="truncate text-sm font-medium">{target.name}</p>
+                  <p className="truncate text-xs text-muted-foreground">
+                    {target.email},{" "}
+                    {STATUS_LABELS[target.applicationStatus] ||
+                      target.applicationStatus}
+                  </p>
+                </div>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setTarget(null)}
+                >
+                  Change
+                </Button>
               </div>
-            </div>
-            <button
-              type="button"
-              className="btn btn-ghost"
-              style={{ width: "auto" }}
-              onClick={() => setTarget(null)}
-            >
-              Change
-            </button>
-          </div>
-        : <div style={{ marginBottom: "0.75rem" }}>
-            <input
-              className="input"
-              aria-label="Search everyone by name or email"
-              placeholder="Search everyone by name or email"
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
+            : <div className="space-y-1">
+                <Input
+                  aria-label="Search everyone by name or email"
+                  placeholder="Search everyone by name or email"
+                  value={query}
+                  onChange={(e) => setQuery(e.target.value)}
+                />
+                {people.length > 0
+                  ? <ul className="divide-y rounded-lg border">
+                      {people.map((p) => (
+                        <li key={p.id}>
+                          <button
+                            type="button"
+                            onClick={() => setTarget(p)}
+                            disabled={p.checkedIn}
+                            className="flex w-full items-center justify-between gap-3 px-3 py-2 text-left text-sm outline-none first:rounded-t-lg last:rounded-b-lg hover:bg-muted focus-visible:bg-muted disabled:opacity-60"
+                          >
+                            <span className="min-w-0 truncate">
+                              <span className="font-medium">{p.name}</span>
+                              <span className="text-muted-foreground">
+                                {" "}
+                                {p.email}
+                              </span>
+                            </span>
+                            <span className="shrink-0 text-xs text-muted-foreground">
+                              {p.checkedIn
+                                ? "Already checked in"
+                                : STATUS_LABELS[p.applicationStatus] ||
+                                  p.applicationStatus}
+                            </span>
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                  : null}
+              </div>}
+
+          <div className="space-y-1.5">
+            <Label htmlFor="force-reason">Reason (required)</Label>
+            <Textarea
+              id="force-reason"
+              rows={2}
+              placeholder="e.g. Walk-in approved by the lead organizer"
+              value={reason}
+              onChange={(e) => setReason(e.target.value)}
             />
-            {people.map((p) => (
-              <button
-                type="button"
-                key={p.id}
-                onClick={() => setTarget(p)}
-                disabled={p.checkedIn}
-                style={{
-                  display: "flex",
-                  justifyContent: "space-between",
-                  width: "100%",
-                  textAlign: "left",
-                  gap: "0.75rem",
-                  padding: "0.6rem 0.25rem",
-                  background: "none",
-                  border: "none",
-                  borderBottom: "1px solid var(--border)",
-                  color: "inherit",
-                  cursor: p.checkedIn ? "default" : "pointer",
-                }}
-              >
-                <span>
-                  <strong>{p.name}</strong>
-                  <span className="muted"> · {p.email}</span>
-                </span>
-                <span className="muted" style={{ fontSize: "0.82rem" }}>
-                  {p.checkedIn
-                    ? "Already checked in"
-                    : STATUS_LABELS[p.applicationStatus] || p.applicationStatus}
-                </span>
-              </button>
-            ))}
-          </div>}
+          </div>
 
-      <label className="field-label" htmlFor="force-reason">
-        Reason (required)
-      </label>
-      <textarea
-        id="force-reason"
-        className="textarea"
-        rows={2}
-        placeholder="e.g. Walk-in approved by the lead organizer"
-        value={reason}
-        onChange={(e) => setReason(e.target.value)}
-      />
-
-      <div style={{ display: "flex", gap: "0.5rem", marginTop: "0.75rem" }}>
-        <button
-          type="submit"
-          className="btn btn-primary"
-          style={{ width: "auto" }}
-          disabled={!target || reason.trim().length < 3 || submitting}
-        >
-          {submitting
-            ? "Checking in…"
-            : target
-              ? `Force check-in ${target.name}`
-              : "Pick someone first"}
-        </button>
-        <button
-          type="button"
-          className="btn btn-ghost"
-          style={{ width: "auto" }}
-          onClick={onClose}
-        >
-          Cancel
-        </button>
-      </div>
-    </form>
+          <div className="flex flex-wrap gap-2">
+            <Button
+              type="submit"
+              loading={submitting}
+              disabled={!target || reason.trim().length < 3}
+            >
+              {submitting
+                ? "Checking in"
+                : target
+                  ? `Force check-in ${target.name}`
+                  : "Pick someone first"}
+            </Button>
+            <Button type="button" variant="outline" onClick={onClose}>
+              Cancel
+            </Button>
+          </div>
+        </form>
+      </CardContent>
+    </Card>
   );
 }
 
@@ -410,85 +366,65 @@ function AttendeeSearch({ onCheckIn }) {
   }
 
   return (
-    <div className="card" style={{ padding: "1.5rem", marginBottom: "1rem" }}>
-      <h2
-        style={{
-          fontSize: "1.05rem",
-          fontWeight: 600,
-          marginBottom: "0.25rem",
-        }}
-      >
-        No QR code?
-      </h2>
-      <p
-        className="muted"
-        style={{ fontSize: "0.85rem", marginBottom: "1rem" }}
-      >
-        Search accepted attendees by name or email. Check their ID first.
-      </p>
+    <Card>
+      <CardHeader>
+        <CardTitle>No QR code</CardTitle>
+        <CardDescription>
+          Search accepted attendees by name or email. Check their ID first.
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        <Input
+          aria-label="Search attendees by name or email"
+          placeholder="Search by name or email"
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          className="h-10"
+        />
 
-      <input
-        className="input"
-        aria-label="Search attendees by name or email"
-        placeholder="Search by name or email"
-        value={query}
-        onChange={(e) => setQuery(e.target.value)}
-        style={{ marginBottom: "0.75rem" }}
-      />
+        {error
+          ? <Alert variant="destructive">
+              <AlertDescription>{error}</AlertDescription>
+            </Alert>
+          : null}
 
-      {error
-        ? <div className="alert-error" style={{ marginBottom: "0.75rem" }}>
-            {error}
-          </div>
-        : null}
-
-      {loading && attendees.length === 0
-        ? <p className="muted">Searching…</p>
-        : query.trim() && attendees.length === 0
-          ? <p className="muted">No accepted attendees match.</p>
-          : attendees.map((a) => (
-              <div
-                key={a.id}
-                style={{
-                  display: "flex",
-                  justifyContent: "space-between",
-                  alignItems: "center",
-                  gap: "0.75rem",
-                  flexWrap: "wrap",
-                  padding: "0.65rem 0",
-                  borderBottom: "1px solid var(--border)",
-                }}
-              >
-                <div>
-                  <div style={{ fontWeight: 600 }}>{a.name}</div>
-                  <div className="muted" style={{ fontSize: "0.85rem" }}>
-                    {a.email}
-                  </div>
-                </div>
-                {a.checkedIn
-                  ? <div
-                      className="muted"
-                      style={{ fontSize: "0.82rem", textAlign: "right" }}
+        {loading && attendees.length === 0
+          ? <p className="text-sm text-muted-foreground">Searching</p>
+          : query.trim() && attendees.length === 0
+            ? <p className="text-sm text-muted-foreground">
+                No accepted attendees match.
+              </p>
+            : attendees.length > 0
+              ? <ul className="divide-y rounded-lg border">
+                  {attendees.map((a) => (
+                    <li
+                      key={a.id}
+                      className="flex flex-wrap items-center justify-between gap-2 px-3 py-2"
                     >
-                      <Check
-                        size={14}
-                        aria-hidden="true"
-                        style={{ verticalAlign: "-2px" }}
-                      />{" "}
-                      Checked in {formatTime(a.checkedInAt)}
-                      {a.checkedInBy ? ` by ${a.checkedInBy}` : ""}
-                    </div>
-                  : <button
-                      type="button"
-                      className="btn btn-primary"
-                      style={{ width: "auto", whiteSpace: "nowrap" }}
-                      disabled={pendingId === a.id}
-                      onClick={() => handleCheckIn(a)}
-                    >
-                      {pendingId === a.id ? "Checking in…" : "Check in"}
-                    </button>}
-              </div>
-            ))}
-    </div>
+                      <div className="min-w-0">
+                        <p className="truncate text-sm font-medium">{a.name}</p>
+                        <p className="truncate text-xs text-muted-foreground">
+                          {a.email}
+                        </p>
+                      </div>
+                      {a.checkedIn
+                        ? <p className="flex items-center gap-1 text-xs text-muted-foreground tabular-nums">
+                            <Check className="size-3.5" aria-hidden="true" />
+                            Checked in {formatTime(a.checkedInAt)}
+                            {a.checkedInBy ? ` by ${a.checkedInBy}` : ""}
+                          </p>
+                        : <Button
+                            type="button"
+                            loading={pendingId === a.id}
+                            onClick={() => handleCheckIn(a)}
+                          >
+                            {pendingId === a.id ? "Checking in" : "Check in"}
+                          </Button>}
+                    </li>
+                  ))}
+                </ul>
+              : null}
+      </CardContent>
+    </Card>
   );
 }

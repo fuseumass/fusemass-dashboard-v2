@@ -2,20 +2,29 @@
 
 import { X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
+import { SuggestionList } from "@/components/Autocomplete";
+import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
 import { apiFetch } from "@/lib/api";
 
-// Multi-select async autocomplete rendered as chips (e.g. programming skills,
-// hardware skills). Suggestions come from a backend meta endpoint returning
-// { results: string[] }. Applicants can also add free-text entries with Enter.
+/**
+ * Multi-select async autocomplete shown as tags (e.g. programming skills,
+ * hardware skills). Suggestions come from a backend meta endpoint returning
+ * `{ results: string[] }`. Applicants can also add free text with Enter.
+ * @param {object} props - `{ values, onChange, endpoint, placeholder, id }`.
+ * @returns {JSX.Element}
+ */
 export default function TagAutocomplete({
   values = [],
   onChange,
   endpoint,
   placeholder = "",
+  id,
 }) {
   const [query, setQuery] = useState("");
   const [options, setOptions] = useState([]);
   const [open, setOpen] = useState(false);
+  const [active, setActive] = useState(-1);
   const boxRef = useRef(null);
 
   useEffect(() => {
@@ -45,6 +54,7 @@ export default function TagAutocomplete({
     }
     setQuery("");
     setOpen(false);
+    setActive(-1);
   }
 
   function remove(tag) {
@@ -53,67 +63,69 @@ export default function TagAutocomplete({
 
   const suggestions = options.filter((o) => !values.includes(o));
 
+  function onKeyDown(e) {
+    if (e.key === "ArrowDown" && suggestions.length > 0) {
+      e.preventDefault();
+      setActive((i) => (i + 1) % suggestions.length);
+    } else if (e.key === "ArrowUp" && suggestions.length > 0) {
+      e.preventDefault();
+      setActive((i) => (i <= 0 ? suggestions.length - 1 : i - 1));
+    } else if (e.key === "Enter") {
+      e.preventDefault();
+      if (open && active >= 0 && suggestions[active]) {
+        add(suggestions[active]);
+      } else if (query.trim()) {
+        add(query);
+      }
+    } else if (e.key === "Escape") {
+      setOpen(false);
+    }
+  }
+
   return (
-    <div ref={boxRef} style={{ position: "relative" }}>
+    <div ref={boxRef} className="space-y-2">
       {values.length > 0
-        ? <div
-            style={{
-              display: "flex",
-              flexWrap: "wrap",
-              gap: 6,
-              marginBottom: 6,
-            }}
-          >
+        ? <ul className="flex flex-wrap gap-1.5">
             {values.map((tag) => (
-              <span key={tag} className="chip">
-                {tag}
-                <button
-                  type="button"
-                  onClick={() => remove(tag)}
-                  aria-label={`Remove ${tag}`}
-                >
-                  <X size={12} aria-hidden="true" />
-                </button>
-              </span>
+              <li key={tag}>
+                <Badge variant="secondary" className="h-6 gap-1 pr-1">
+                  {tag}
+                  <button
+                    type="button"
+                    onClick={() => remove(tag)}
+                    aria-label={`Remove ${tag}`}
+                    className="rounded-sm p-0.5 text-muted-foreground outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
+                  >
+                    <X aria-hidden="true" />
+                  </button>
+                </Badge>
+              </li>
             ))}
-          </div>
+          </ul>
         : null}
 
-      <input
-        className="input"
-        value={query}
-        placeholder={placeholder}
-        autoComplete="off"
-        onChange={(e) => {
-          setQuery(e.target.value);
-          setOpen(true);
-        }}
-        onFocus={() => setOpen(true)}
-        onKeyDown={(e) => {
-          if (e.key === "Enter") {
-            e.preventDefault();
-            if (query.trim()) add(query);
-          }
-        }}
-      />
-
-      {open && suggestions.length > 0
-        ? <div className="ac-menu">
-            {suggestions.map((option) => (
-              <button
-                type="button"
-                key={option}
-                className="ac-option"
-                onMouseDown={(e) => {
-                  e.preventDefault();
-                  add(option);
-                }}
-              >
-                {option}
-              </button>
-            ))}
-          </div>
-        : null}
+      <div className="relative">
+        <Input
+          id={id}
+          value={query}
+          placeholder={placeholder}
+          autoComplete="off"
+          onChange={(e) => {
+            setQuery(e.target.value);
+            setOpen(true);
+            setActive(-1);
+          }}
+          onFocus={() => setOpen(true)}
+          onKeyDown={onKeyDown}
+        />
+        {open && suggestions.length > 0
+          ? <SuggestionList
+              options={suggestions}
+              activeIndex={active}
+              onPick={add}
+            />
+          : null}
+      </div>
     </div>
   );
 }

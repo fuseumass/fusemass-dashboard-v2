@@ -1,6 +1,7 @@
 "use strict";
 
 var express = require("express");
+var rateLimit = require("express-rate-limit");
 var multer = require("multer");
 var adminController = require("../controllers/adminController");
 var outboxController = require("../controllers/outboxController");
@@ -10,6 +11,7 @@ var settingsController = require("../controllers/settingsController");
 var scheduleController = require("../controllers/scheduleController");
 var brandingController = require("../controllers/brandingController");
 var statsController = require("../controllers/statsController");
+var systemConfigController = require("../controllers/systemConfigController");
 var exportRoutes = require("./exports");
 var isAdmin = require("../utils/isAdmin");
 var isModerator = require("../utils/isModerator");
@@ -136,6 +138,20 @@ router.patch("/settings", isAdmin, settingsController.updateSettings);
 // show where it stands and preview a domain list before saving.
 router.get("/auto-accept", isAdmin, settingsController.getAutoAcceptStatus);
 router.post("/auto-accept/preview", isAdmin, settingsController.previewAutoAccept);
+
+// Technical settings: server environment variables, editable by admins. Values
+// of secrets are never returned. Restart is rate limited and only works when
+// ALLOW_SELF_RESTART=true (see utils/systemConfig).
+var restartLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 3,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: "Too many restart requests. Please wait a minute." },
+});
+router.get("/system-config", isAdmin, systemConfigController.getSystemConfig);
+router.patch("/system-config", isAdmin, systemConfigController.updateSystemConfig);
+router.post("/system-config/restart", isAdmin, restartLimiter, systemConfigController.restartServer);
 
 // Logo / dark logo / favicon (slot = logo | logo-dark | favicon). Multipart
 // field "file"; isAdmin runs first so only admins can make us buffer an upload.

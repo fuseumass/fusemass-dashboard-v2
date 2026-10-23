@@ -38,7 +38,7 @@ var DEFAULT_TEMPLATES = [
     key: "application_accepted",
     subject: "Your application to {{orgName}} was accepted",
     body:
-      "Hi {{name}},\n\nCongratulations! Your application to {{orgName}} has been accepted.\n\nStatus: {{status}}\n\nThis QR code is your pass for event check-in and meals. Keep this email handy (it is also on your dashboard):\n\n{{qrcode}}",
+      "Hi {{name}},\n\nYour application to {{orgName}} has been accepted.\n\nStatus: {{status}}\n\nThis QR code is your pass for event check-in and meals. Keep this email handy (it is also on your dashboard):\n\n{{qrcode}}",
   },
   {
     key: "application_rejected",
@@ -85,18 +85,25 @@ var DEFAULT_TEMPLATES = [
     // Sent when staff check an attendee in on arrival. The run of show is
     // also attached as a calendar invite.
     key: "checked_in",
-    subject: "You're checked in to {{orgName}}!",
+    subject: "You're checked in to {{orgName}}",
     body:
-      "Hi {{name}},\n\nYou're checked in to {{orgName}}. Welcome!\n\nIf you haven't joined our Discord yet, join now. It's where announcements, mentors and team-finding happen: {{discordUrl}}\n\n{{runOfShow}}\n\nSchedule updates, FAQs, maps and prizes are on our website: {{websiteUrl}}\n\nHappy hacking!",
+      "Hi {{name}},\n\nYou're checked in to {{orgName}}.\n\nIf you haven't joined our Discord yet, join now. It's where announcements, mentors and team-finding happen: {{discordUrl}}\n\n{{runOfShow}}\n\nSchedule updates, FAQs, maps and prizes are on our website: {{websiteUrl}}",
   },
 ];
 
-// Earlier default bodies of built-in templates. A stored template whose body
-// is still exactly one of these was never edited by an admin, so seeding
-// upgrades it to the current default (this is how existing databases get
-// {{qrcode}} in the acceptance email). Edited templates are never touched.
+// Earlier defaults of built-in templates. Seeding upgrades subjects and
+// bodies independently when they still exactly match an older default.
+// Customized text is preserved, including when only the other field changes.
+var LEGACY_DEFAULT_SUBJECTS = {
+  checked_in: ["You're checked in to {{orgName}}!"],
+};
+
 var LEGACY_DEFAULT_BODIES = {
+  checked_in: [
+    "Hi {{name}},\n\nYou're checked in to {{orgName}}. Welcome!\n\nIf you haven't joined our Discord yet, join now. It's where announcements, mentors and team-finding happen: {{discordUrl}}\n\n{{runOfShow}}\n\nSchedule updates, FAQs, maps and prizes are on our website: {{websiteUrl}}\n\nHappy hacking!",
+  ],
   application_accepted: [
+    "Hi {{name}},\n\nCongratulations! Your application to {{orgName}} has been accepted.\n\nStatus: {{status}}\n\nThis QR code is your pass for event check-in and meals. Keep this email handy (it is also on your dashboard):\n\n{{qrcode}}",
     "Hi {{name}},\n\nCongratulations! Your application to {{orgName}} has been accepted.\n\nStatus: {{status}}",
   ],
 };
@@ -149,7 +156,7 @@ emailTemplateSchema.statics.seedDefaults = function seedDefaults() {
   var EmailTemplate = this;
 
   return EmailTemplate.find({})
-    .select("key body")
+    .select("key body subject")
     .lean()
     .then(function afterFind(existingTemplates) {
       var existingKeys = existingTemplates.map(function mapKey(template) {
@@ -161,7 +168,8 @@ emailTemplateSchema.statics.seedDefaults = function seedDefaults() {
 
       var upgrades = existingTemplates.filter(function isUneditedLegacy(template) {
         var legacy = LEGACY_DEFAULT_BODIES[template.key] || [];
-        return legacy.indexOf(template.body) !== -1;
+        var subjects = LEGACY_DEFAULT_SUBJECTS[template.key] || [];
+        return legacy.indexOf(template.body) !== -1 || subjects.indexOf(template.subject) !== -1;
       });
 
       return Promise.all(
@@ -169,7 +177,17 @@ emailTemplateSchema.statics.seedDefaults = function seedDefaults() {
           var current = DEFAULT_TEMPLATES.find(function byKey(def) {
             return def.key === template.key;
           });
-          return EmailTemplate.updateOne({ _id: template._id, body: template.body }, { $set: { body: current.body } });
+          var filter = { _id: template._id };
+          var updates = {};
+          if ((LEGACY_DEFAULT_BODIES[template.key] || []).indexOf(template.body) !== -1) {
+            filter.body = template.body;
+            updates.body = current.body;
+          }
+          if ((LEGACY_DEFAULT_SUBJECTS[template.key] || []).indexOf(template.subject) !== -1) {
+            filter.subject = template.subject;
+            updates.subject = current.subject;
+          }
+          return EmailTemplate.updateOne(filter, { $set: updates });
         })
       ).then(function afterUpgrade() {
         return Promise.all(

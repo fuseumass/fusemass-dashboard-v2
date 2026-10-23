@@ -1,9 +1,12 @@
 "use client";
 
+import { Loader2 } from "lucide-react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useRef, useState } from "react";
 import AuthShell from "@/components/AuthShell";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Button } from "@/components/ui/button";
 import { apiFetch, getToken } from "@/lib/api";
 
 export default function VerifyEmailPage() {
@@ -47,45 +50,39 @@ function VerifyInner() {
   const loggedIn = status !== "working" && Boolean(getToken());
   let linkLabel = "Log in to request a new link";
   if (status === "done") {
-    linkLabel = loggedIn ? "Go to your dashboard" : "Log in";
+    linkLabel = loggedIn ? "Open your dashboard" : "Log in";
   } else if (loggedIn) {
-    linkLabel = "Back to your dashboard to request a new link";
+    linkLabel = "Open your dashboard to request a new link";
   }
 
   return (
     <AuthShell title="Verify your email">
       {status === "working"
-        ? <p className="muted" style={{ textAlign: "center" }}>
-            Verifying your email…
-          </p>
+        ? <output className="flex items-center justify-center gap-2 text-sm text-muted-foreground">
+            <Loader2 className="size-4 animate-spin" aria-hidden="true" />
+            Checking your link
+          </output>
         : null}
 
       {status === "done"
-        ? <div className="alert-success" aria-live="polite">
-            Your email address is verified. You can now apply.
-          </div>
+        ? <Alert variant="success" aria-live="polite">
+            <AlertDescription>
+              Your email address is verified. You can now apply.
+            </AlertDescription>
+          </Alert>
         : null}
 
       {status === "failed"
-        ? <div className="alert-error" role="alert">
-            {error}
-          </div>
+        ? <Alert variant="destructive">
+            <AlertDescription>{error}</AlertDescription>
+          </Alert>
         : null}
 
       {status === "working"
         ? null
-        : <p
-            className="muted"
-            style={{
-              textAlign: "center",
-              marginTop: "1.25rem",
-              fontSize: "0.9rem",
-            }}
-          >
-            <Link href={loggedIn ? "/dashboard" : "/login"} className="link">
-              {linkLabel}
-            </Link>
-          </p>}
+        : <Button asChild className="w-full">
+            <Link href={loggedIn ? "/dashboard" : "/login"}>{linkLabel}</Link>
+          </Button>}
     </AuthShell>
   );
 }

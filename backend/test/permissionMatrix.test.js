@@ -194,6 +194,9 @@ var MATRIX = [
   row("PATCH", "/api/admin/settings", "admin", { body: { publicApplications: true } }),
   row("GET", "/api/admin/auto-accept", "admin"),
   row("POST", "/api/admin/auto-accept/preview", "admin", { body: { domains: ["example.com"] } }),
+  row("GET", "/api/admin/system-config", "admin"),
+  row("PATCH", "/api/admin/system-config", "admin", { body: { values: { ORG_NAME: "Hacked" } } }),
+  row("POST", "/api/admin/system-config/restart", "admin"),
   row("GET", "/api/admin/meals", "admin"),
   row("POST", "/api/admin/meals", "admin", {
     body: { name: "Sneaky lunch", startsAt: "2026-10-24T12:00:00Z", endsAt: "2026-10-24T13:00:00Z" },
