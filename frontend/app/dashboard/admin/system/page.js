@@ -87,13 +87,14 @@ export default function SystemSettingsPage() {
   const [data, setData] = useState(null);
   const [loadError, setLoadError] = useState("");
   const [drafts, setDrafts] = useState({});
-  const [resets, setResets] = useState({});
+  const [removals, setRemovals] = useState({});
   const [replacing, setReplacing] = useState({});
   const [errors, setErrors] = useState({});
   const [formError, setFormError] = useState("");
   const [saving, setSaving] = useState(false);
   // Keys saved but not yet applied, and whether the server can restart itself.
   const [needsRestart, setNeedsRestart] = useState([]);
+  const [savePrompt, setSavePrompt] = useState(false);
   const [restartPrompt, setRestartPrompt] = useState(false);
   // "idle" | "restarting" | "timeout"
   const [phase, setPhase] = useState("idle");
@@ -132,7 +133,7 @@ export default function SystemSettingsPage() {
     const out = {};
     for (const s of data?.settings || []) {
       if (!s.editable) continue;
-      if (resets[s.key]) {
+      if (removals[s.key]) {
         out[s.key] = null;
       } else if (drafts[s.key] !== undefined) {
         const draft = drafts[s.key];
@@ -142,7 +143,7 @@ export default function SystemSettingsPage() {
       }
     }
     return out;
-  }, [data, drafts, resets]);
+  }, [data, drafts, removals]);
   const changeCount = Object.keys(changes).length;
   const locked = saving || phase !== "idle";
 
@@ -152,12 +153,14 @@ export default function SystemSettingsPage() {
         setErrors((e) => ({ ...e, [key]: undefined }));
         setDrafts((d) => ({ ...d, [key]: text }));
       },
-      reset(key) {
+      remove(key) {
+        setReplacing((r) => ({ ...r, [key]: undefined }));
+        setErrors((e) => ({ ...e, [key]: undefined }));
         setDrafts((d) => ({ ...d, [key]: undefined }));
-        setResets((r) => ({ ...r, [key]: true }));
+        setRemovals((r) => ({ ...r, [key]: true }));
       },
-      undoReset(key) {
-        setResets((r) => ({ ...r, [key]: undefined }));
+      cancelRemove(key) {
+        setRemovals((r) => ({ ...r, [key]: undefined }));
       },
       startReplace(key) {
         setReplacing((r) => ({ ...r, [key]: true }));
@@ -174,7 +177,7 @@ export default function SystemSettingsPage() {
 
   function discard() {
     setDrafts({});
-    setResets({});
+    setRemovals({});
     setReplacing({});
     setErrors({});
     setFormError("");
@@ -271,7 +274,7 @@ export default function SystemSettingsPage() {
     <div className="space-y-6 pb-4">
       <PageHeader
         title="Technical settings"
-        description="The server's environment variables, for admins who run the deployment."
+        description="Changes are written to the server’s .env file. A .env.previous backup is kept. Values are never shown here."
       />
 
       <Alert variant="destructive">
@@ -376,7 +379,7 @@ export default function SystemSettingsPage() {
                 key={setting.key}
                 setting={setting}
                 draft={drafts[setting.key]}
-                resetPending={Boolean(resets[setting.key])}
+                removePending={Boolean(removals[setting.key])}
                 replacing={Boolean(replacing[setting.key])}
                 error={errors[setting.key]}
                 disabled={locked}
@@ -425,12 +428,34 @@ export default function SystemSettingsPage() {
               <Button variant="ghost" disabled={locked} onClick={discard}>
                 Discard
               </Button>
-              <Button loading={saving} disabled={locked} onClick={save}>
+              <Button
+                loading={saving}
+                disabled={locked}
+                onClick={() => setSavePrompt(true)}
+              >
                 Save changes
               </Button>
             </div>
           </section>
         : null}
+
+      <AlertDialog open={savePrompt} onOpenChange={setSavePrompt}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Save technical settings?</AlertDialogTitle>
+            <AlertDialogDescription>
+              These changes update the server’s .env file. A .env.previous
+              backup keeps the file before this save. Settings marked for
+              removal will be deleted from .env and use their built-in default,
+              if any.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={save}>Save changes</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       <AlertDialog open={restartPrompt} onOpenChange={setRestartPrompt}>
         <AlertDialogContent>

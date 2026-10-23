@@ -13,7 +13,6 @@ import {
 } from "@/components/ui/select";
 
 const SOURCE_TAGS = {
-  dashboard: { label: "Set here", variant: "info" },
   env: { label: "From .env", variant: "secondary" },
   default: { label: "Default", variant: "outline" },
   unset: { label: "Not set", variant: "outline" },
@@ -25,17 +24,17 @@ const SOURCE_TAGS = {
  * @param {object} props
  * @param {object} props.setting - One entry of GET /api/admin/system-config.
  * @param {string|undefined} props.draft - Unsaved text, if the field was touched.
- * @param {boolean} props.resetPending - Marked to go back to the .env value on save.
+ * @param {boolean} props.removePending - Marked for removal from .env on save.
  * @param {boolean} props.replacing - The field for a new value is open.
  * @param {string} props.error - Server validation message for this key.
  * @param {boolean} props.disabled - Locked while saving or restarting.
- * @param {object} props.on - { change(key, text), reset(key), undoReset(key), startReplace(key), cancelReplace(key) }.
+ * @param {object} props.on - { change(key, text), remove(key), cancelRemove(key), startReplace(key), cancelReplace(key) }.
  * @returns {JSX.Element}
  */
 export default function SystemSettingRow({
   setting,
   draft,
-  resetPending,
+  removePending,
   replacing,
   error,
   disabled,
@@ -43,7 +42,7 @@ export default function SystemSettingRow({
 }) {
   const id = `sys-${setting.key}`;
   const tag = SOURCE_TAGS[setting.source] || SOURCE_TAGS.unset;
-  const changed = resetPending || (draft !== undefined && draft !== "");
+  const changed = removePending || (draft !== undefined && draft !== "");
 
   return (
     <div className="grid gap-3 py-4 first:pt-0 last:pb-0 md:grid-cols-[minmax(0,1fr)_minmax(0,24rem)] md:gap-6">
@@ -64,7 +63,7 @@ export default function SystemSettingRow({
               id={id}
               setting={setting}
               draft={draft}
-              resetPending={resetPending}
+              removePending={removePending}
               replacing={replacing}
               error={error}
               disabled={disabled}
@@ -78,26 +77,26 @@ export default function SystemSettingRow({
             ? <Badge variant="outline">Read only</Badge>
             : null}
           {changed ? <Badge variant="warning">Unsaved</Badge> : null}
-          {setting.editable && setting.source === "dashboard" && !resetPending
+          {setting.editable && setting.isSet && !removePending
             ? <Button
                 type="button"
                 variant="ghost"
                 size="xs"
                 disabled={disabled}
-                onClick={() => on.reset(setting.key)}
+                onClick={() => on.remove(setting.key)}
               >
-                Reset to .env value
+                Remove
               </Button>
             : null}
-          {resetPending
+          {removePending
             ? <Button
                 type="button"
                 variant="ghost"
                 size="xs"
                 disabled={disabled}
-                onClick={() => on.undoReset(setting.key)}
+                onClick={() => on.cancelRemove(setting.key)}
               >
-                Undo reset
+                Cancel removal
               </Button>
             : null}
         </div>
@@ -124,7 +123,7 @@ function Control({
   id,
   setting,
   draft,
-  resetPending,
+  removePending,
   replacing,
   error,
   disabled,
@@ -134,8 +133,8 @@ function Control({
     return (
       <div className="flex flex-wrap items-center gap-2">
         <span id={id} className="text-sm">
-          {resetPending
-            ? "Goes back to the .env value on save"
+          {removePending
+            ? "Removed from .env on save"
             : setting.isSet
               ? "Set"
               : "Not set"}
@@ -144,7 +143,7 @@ function Control({
           type="button"
           variant="outline"
           size="sm"
-          disabled={disabled || resetPending}
+          disabled={disabled || removePending}
           onClick={() => on.startReplace(setting.key)}
         >
           {setting.isSet ? "Replace" : "Set value"}

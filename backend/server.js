@@ -1,6 +1,6 @@
 "use strict";
 
-require("dotenv").config();
+require("dotenv").config({ path: process.env.ENV_FILE_PATH || require("path").resolve(process.cwd(), ".env") });
 
 var express = require("express");
 var cors = require("cors");
@@ -122,9 +122,7 @@ function createApp() {
 // disposable database connection and never want a real port bound) doesn't
 // also connect to MongoDB and start listening. Only runs for `node server.js`.
 //
-// Order matters: connect, load the dashboard's saved settings into process.env
-// (utils/systemConfig), and only then build the app, so everything that reads
-// env at startup (rate limiters, Google sign-in, trust proxy) sees them.
+// Build the app after the database connects. dotenv is loaded above.
 var app = null;
 if (require.main !== module) {
   app = createApp();
@@ -139,19 +137,6 @@ if (require.main !== module) {
   connectDatabase(MONGODB_URI)
     .then(function afterConnect() {
       console.log("Connected to MongoDB.");
-    })
-    .then(function loadSettings() {
-      return systemConfig.loadOverrides().then(
-        function applied(count) {
-          if (count) {
-            console.log("Applied " + count + " saved technical setting(s).");
-          }
-        },
-        function failed() {
-          // Not fatal: the server can still run on its .env values.
-          console.warn("Could not load technical settings; using .env values.");
-        }
-      );
     })
     .then(function seedTemplates() {
       return EmailTemplate.seedDefaults().then(function afterSeed() {

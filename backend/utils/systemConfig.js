@@ -1,20 +1,11 @@
 "use strict";
 
-// Technical settings: every environment variable the backend reads, with how
-// it is shown, validated and applied, and the storage of dashboard overrides.
-//
-// Precedence: dashboard value (SystemSetting collection) > .env value > the
-// built-in default in the code that reads it. Overrides are loaded into
-// process.env right after the database connects (see server.js), before
-// anything that reads env at startup is set up. The original .env values are
-// remembered so "reset" can put them back.
-//
-// Secrets are encrypted at rest with AES-256-GCM. The key is derived (HKDF)
-// from CONFIG_ENCRYPTION_KEY when set, otherwise from JWT_SECRET. Values are
-// never logged and never returned by the API.
-
-var crypto = require("crypto");
-var SystemSetting = require("../schemas/systemSetting");
+// Technical settings are stored only in the dotenv file. Values are never
+// returned by the API or logged.
+var fs = require("fs");
+var path = require("path");
+var dotenv = require("dotenv");
+var randomUUID = require("crypto").randomUUID;
 
 var GROUPS = [
   "Server",
@@ -29,7 +20,7 @@ var GROUPS = [
   "Database and security",
 ];
 
-var SET_ON_SERVER = "Set in the server's .env file or service settings.";
+var SET_ON_SERVER = "Set in the server's .env file.";
 
 // ---- Validators ------------------------------------------------------------
 // Each takes the trimmed string and returns an error message, or null.
@@ -204,7 +195,7 @@ function containerName(value) {
  * @returns {string|null}
  */
 function nonEmptyText(value) {
-  return value === "" ? "This cannot be empty. Use reset to go back to the .env value." : text(200)(value);
+  return value === "" ? "This cannot be empty. Use Remove to use the built-in default." : text(200)(value);
 }
 
 // ---- Registry --------------------------------------------------------------
@@ -219,8 +210,8 @@ function nonEmptyText(value) {
  * @property {boolean} editable - Can be changed from the dashboard.
  * @property {boolean} restartRequired - Only read at startup.
  * @property {function} [validate] - (trimmedString, ctx) => error message or null.
- * @property {boolean} [allowEmpty] - An empty string is a valid override.
- * @property {string} [defaultValue] - Built-in default, for display.
+ * @property {boolean} [allowEmpty] - An empty string is a valid value.
+ * @property {string} [defaultValue] - Built-in default; only its presence is exposed.
  * @property {string} [type] - "text" | "url" | "number" | "boolean" | "enum"; a UI hint.
  * @property {Array<string>} [options] - For "enum"/"boolean".
  */
@@ -440,13 +431,12 @@ var REGISTRY = [
   )
   .concat([
     // Read-only
-    fixed("MONGODB_URI", "Database connection", "Where the database is. This config is stored in that database, so it cannot be changed from here.", { secret: true }),
+    fixed("MONGODB_URI", "Database connection", "Where the database is. A wrong value would disconnect the server.", { secret: true }),
     fixed("PORT", "Server port", "The port the server listens on. Changing it live would cut off the dashboard.", { defaultValue: "4000" }),
     fixed("NODE_ENV", "Environment mode", "Whether the server runs in production mode. It changes behaviour across the whole server.", {}),
-    fixed("JWT_SECRET", "Sign-in token secret", "Signs login tokens and protects these encrypted settings. A wrong value signs everyone out and locks admins out.", { secret: true }),
+    fixed("JWT_SECRET", "Sign-in token secret", "Signs login tokens. A wrong value signs everyone out and locks admins out.", { secret: true }),
     fixed("JWT_EXPIRES_IN", "Sign-in token lifetime", "How long a login lasts. A bad value would stop everyone, admins included, from signing in.", { defaultValue: "7d" }),
     fixed("SETUP_ADMIN", "First admin setup", "Allows creating the first admin. It is a startup switch and should stay off once an admin exists.", {}),
-    fixed("CONFIG_ENCRYPTION_KEY", "Settings encryption key", "Encrypts secret values saved here. If it changed, saved secrets could no longer be read.", { secret: true }),
     fixed("ALLOW_SELF_RESTART", "Allow restart from the dashboard", "Lets the Restart button stop the server so the service manager starts it again. Only set it when the server runs under one.", {}),
   ]);
 
@@ -454,69 +444,6 @@ var BY_KEY = Object.create(null);
 REGISTRY.forEach(function index(item) {
   BY_KEY[item.key] = item;
 });
-
-// The .env values as they were when the server started, so reset can restore
-// them. A key missing here was unset.
-var ORIGINAL = {};
-
-/**
- * Remember each registered variable's value before any dashboard override is
- * applied. Safe to call repeatedly: a key already remembered is kept.
- * @returns {void}
- */
-function captureOriginals() {
-  REGISTRY.forEach(function remember(item) {
-    if (!Object.prototype.hasOwnProperty.call(ORIGINAL, item.key)) {
-      ORIGINAL[item.key] = process.env[item.key];
-    }
-  });
-}
-captureOriginals();
-
-// ---- Encryption ------------------------------------------------------------
-
-/**
- * @returns {Buffer} A 32 byte AES key derived from CONFIG_ENCRYPTION_KEY, or
- *   JWT_SECRET when that is not set.
- */
-function deriveKey() {
-  var material = process.env.CONFIG_ENCRYPTION_KEY || process.env.JWT_SECRET;
-  if (!material) {
-    throw new Error("Neither CONFIG_ENCRYPTION_KEY nor JWT_SECRET is set, so secret settings cannot be stored.");
-  }
-  return Buffer.from(crypto.hkdfSync("sha256", material, "hackdash-system-config-salt", "hackdash-system-config-v1", 32));
-}
-
-/**
- * Encrypt a secret with AES-256-GCM, bound to its key name.
- * @param {string} key - Env var name (authenticated, not secret).
- * @param {string} plain - The secret.
- * @returns {string} "v1:<iv>:<tag>:<ciphertext>", each base64.
- */
-function encrypt(key, plain) {
-  var iv = crypto.randomBytes(12);
-  var cipher = crypto.createCipheriv("aes-256-gcm", deriveKey(), iv);
-  cipher.setAAD(Buffer.from(key));
-  var data = Buffer.concat([cipher.update(plain, "utf8"), cipher.final()]);
-  return ["v1", iv.toString("base64"), cipher.getAuthTag().toString("base64"), data.toString("base64")].join(":");
-}
-
-/**
- * @param {string} key - Env var name it was encrypted for.
- * @param {string} stored - Output of encrypt().
- * @returns {string} The secret.
- * @throws {Error} When the data was altered or the key changed.
- */
-function decrypt(key, stored) {
-  var parts = String(stored).split(":");
-  if (parts.length !== 4 || parts[0] !== "v1") {
-    throw new Error("Unrecognised encrypted value.");
-  }
-  var decipher = crypto.createDecipheriv("aes-256-gcm", deriveKey(), Buffer.from(parts[1], "base64"));
-  decipher.setAAD(Buffer.from(key));
-  decipher.setAuthTag(Buffer.from(parts[2], "base64"));
-  return Buffer.concat([decipher.update(Buffer.from(parts[3], "base64")), decipher.final()]).toString("utf8");
-}
 
 // ---- Validation ------------------------------------------------------------
 
@@ -529,15 +456,15 @@ function decrypt(key, stored) {
  */
 function validateValue(item, raw, ctx) {
   if (typeof raw !== "string") {
-    return { error: "Send the value as text, or null to reset it." };
+    return { error: "Send the value as text, or null to remove it." };
   }
   var value = item.secret ? raw : raw.trim();
-  if (value.length > 8192 || /[\u0000-\u001f\u007f]/.test(value)) {
+  if (raw.length > 8192 || /[\u0000-\u001f\u007f]/.test(raw)) {
     return { error: "Remove control characters and use at most 8192 characters." };
   }
   if (value === "") {
     if (!item.allowEmpty) {
-      return { error: "Enter a value, or reset to use the .env value." };
+      return { error: "Enter a value, or remove it to use the built-in default." };
     }
     return { value: "" };
   }
@@ -573,101 +500,46 @@ function setEnv(key, value) {
 }
 
 /**
- * Load every saved dashboard override into process.env. Call right after the
- * database connects and before anything reads env at startup. A value that
- * cannot be decrypted is skipped (the .env value stays), with a warning that
- * names only the key.
- * @returns {Promise<number>} How many overrides were applied.
- */
-function loadOverrides() {
-  captureOriginals();
-  return SystemSetting.find({})
-    .lean()
-    .then(function apply(docs) {
-      var applied = 0;
-      docs.forEach(function each(doc) {
-        var item = BY_KEY[doc.key];
-        if (!item || !item.editable) {
-          return;
-        }
-        try {
-          if (item.secret && !doc.encrypted) {
-            throw new Error("Secret override must be encrypted.");
-          }
-          var loaded = doc.encrypted ? decrypt(doc.key, doc.value) : doc.value;
-          var checked = validateValue(item, loaded);
-          if (checked.error) throw new Error("Invalid saved setting.");
-          setEnv(doc.key, checked.value);
-          applied += 1;
-        } catch (_err) {
-          console.warn("Technical settings: could not read the saved value for " + doc.key + "; using the .env value.");
-        }
-      });
-      return applied;
-    });
-}
-
-/**
- * Where the effective value of a key comes from.
- * @param {ConfigDef} item - Registry entry.
- * @param {object} overrides - Map of key to true for keys with a saved override.
- * @returns {string} "dashboard" | "env" | "default" | "unset"
- */
-function sourceOf(item, overrides) {
-  if (overrides[item.key]) {
-    return "dashboard";
-  }
-  var original = ORIGINAL[item.key];
-  if (original !== undefined && original !== "") {
-    return "env";
-  }
-  return item.defaultValue !== undefined ? "default" : "unset";
-}
-
-/**
- * The page model: every setting with its source and whether it is set.
- * Write-only: no value (secret or not) is ever returned.
- * @returns {Promise<{groups: Array<string>, settings: Array<object>, selfRestart: boolean}>}
+ * Return metadata only; neither secrets nor public values leave the server.
+ * @returns {Promise<object>} Write-only page model.
  */
 function describeAll() {
-  return SystemSetting.find({})
-    .select("key")
-    .lean()
-    .then(function build(docs) {
-      var overrides = {};
-      docs.forEach(function mark(doc) {
-        overrides[doc.key] = true;
-      });
-      var settings = REGISTRY.map(function describe(item) {
-        var current = process.env[item.key];
-        var isSet = current !== undefined && current !== "";
-        var out = {
-          key: item.key,
-          label: item.label,
-          group: item.group,
-          help: item.help,
-          secret: item.secret,
-          editable: item.editable,
-          restartRequired: item.restartRequired,
-          type: item.type,
-          allowEmpty: Boolean(item.allowEmpty),
-          source: item.editable ? sourceOf(item, overrides) : isSet ? "env" : item.defaultValue !== undefined ? "default" : "unset",
-          isSet: isSet,
-        };
-        // Write-only: the page learns whether a value is set and where it
-        // comes from, never the value itself (secret or not).
-        return out;
-      });
-      return { groups: GROUPS.slice(), settings: settings, selfRestart: selfRestartAllowed() };
-    });
+  var settings = REGISTRY.map(function describe(item) {
+    var isSet = process.env[item.key] !== undefined && process.env[item.key] !== "";
+    return {
+      key: item.key, label: item.label, group: item.group, help: item.help,
+      secret: item.secret, editable: item.editable, restartRequired: item.restartRequired,
+      type: item.type, allowEmpty: Boolean(item.allowEmpty), isSet: isSet,
+      source: isSet ? "env" : item.defaultValue !== undefined ? "default" : "unset",
+    };
+  });
+  return Promise.resolve({ groups: GROUPS.slice(), settings: settings, selfRestart: selfRestartAllowed() });
 }
 
 /**
- * Validate and save a batch of changes. Nothing is saved unless all are valid.
- * @param {object} values - { KEY: "value" | null }.
- * @param {string|null} userId - The admin making the change.
- * @param {object} [ctx] - { requestOrigin }.
- * @returns {Promise<{errors: object}|{changed: Array<string>, restartRequired: Array<string>}>}
+ * dotenv does not unescape backslashes or quotes. Choose a delimiter that
+ * round-trips rather than adding escapes that would alter the saved value.
+ * @param {string} value - Validated single-line value.
+ * @returns {string} dotenv assignment value.
+ */
+function quoteValue(value) {
+  if (!/[\s#"'`=\\]/.test(value)) return value;
+  var candidates = ['"' + value + '"', "'" + value + "'", "`" + value + "`"];
+  for (var i = 0; i < candidates.length; i++) {
+    if (dotenv.parse("VALUE=" + candidates[i]).VALUE === value) return candidates[i];
+  }
+  throw new Error("Value cannot be represented in dotenv format.");
+}
+
+// A rejected save must not poison the queue for the next admin.
+var writeQueue = Promise.resolve();
+
+/**
+ * Validate the whole batch, then serialize atomic file replacements.
+ * @param {object} values - Map of key to text or null (remove).
+ * @param {string|null} userId - Admin id for the key-only audit log.
+ * @param {object} [ctx] - Request validation context.
+ * @returns {Promise<object>} Errors or changed keys and restart requirements.
  */
 function applyChanges(values, userId, ctx) {
   var errors = Object.create(null);
@@ -690,70 +562,94 @@ function applyChanges(values, userId, ctx) {
     if (result.error) {
       errors[key] = result.error;
     } else {
-      plan.push({ item: item, value: result.value });
+      try {
+        quoteValue(result.value);
+        plan.push({ item: item, value: result.value });
+      } catch (_err) {
+        errors[key] = "This combination of quotes cannot be represented in a dotenv file.";
+      }
     }
   });
   if (Object.keys(errors).length) {
     return Promise.resolve({ errors: errors });
   }
 
-  // Prepare every ciphertext before the first write, so encryption failures
-  // cannot leave earlier settings saved.
-  try {
-    plan.forEach(function prepare(entry) {
-      if (!entry.reset) entry.stored = entry.item.secret ? encrypt(entry.item.key, entry.value) : entry.value;
-    });
-  } catch (_err) {
-    return Promise.reject(new Error("Could not encrypt technical settings. Check the server encryption key."));
-  }
-  var changed = [];
-  var chain = Promise.resolve();
-  plan.forEach(function step(entry) {
-    chain = chain.then(function run() {
-      var key = entry.item.key;
-      if (entry.reset) {
-        return SystemSetting.deleteOne({ key: key }).then(function afterDelete(res) {
-          if (res.deletedCount) {
-            setEnv(key, ORIGINAL[key]);
-            changed.push(key);
-          }
-        });
-      }
-      return SystemSetting.findOne({ key: key })
-        .lean()
-        .then(function compare(existing) {
-          if (existing && process.env[key] === entry.value) {
-            return undefined;
-          }
-          if (!existing && process.env[key] === entry.value) {
-            // Same as the .env value: nothing to override.
-            return undefined;
-          }
-          var stored = entry.stored;
-          return SystemSetting.updateOne(
-            { key: key },
-            { $set: { value: stored, encrypted: entry.item.secret, updatedBy: userId || undefined, updatedAt: new Date() } },
-            { upsert: true }
-          ).then(function afterSave() {
-            setEnv(key, entry.value);
-            changed.push(key);
-          });
-        });
-    });
-  });
-
-  return chain.then(function done() {
-    if (changed.length) {
-      // Keys only, never values.
-      console.log("Technical settings changed by " + (userId || "unknown") + ": " + changed.join(", "));
+  var pending = writeQueue.then(function writeBatch() {
+    var filename = process.env.ENV_FILE_PATH || path.resolve(process.cwd(), ".env");
+    var original = "";
+    var mode = 0o600;
+    var exists = false;
+    try {
+      original = fs.readFileSync(filename, "utf8");
+      mode = fs.statSync(filename).mode & 0o777;
+      exists = true;
+    } catch (err) {
+      if (err.code !== "ENOENT") throw err;
     }
-    return {
-      changed: changed,
-      restartRequired: changed.filter(function needs(key) {
-        return BY_KEY[key].restartRequired;
-      }),
-    };
+    var stored = dotenv.parse(original);
+    var activePlan = plan.filter(function differs(entry) {
+      var key = entry.item.key;
+      return entry.reset
+        ? Object.prototype.hasOwnProperty.call(stored, key) || process.env[key] !== undefined
+        : stored[key] !== entry.value || process.env[key] !== entry.value;
+    });
+    if (!activePlan.length) return { changed: [], restartRequired: [] };
+    var newline = original.indexOf("\r\n") !== -1 ? "\r\n" : "\n";
+    // Keep each untouched line, including its original line terminator.
+    var lines = original.match(/[^\r\n]*(?:\r\n|\n|\r|$)/g).filter(function nonempty(line) { return line !== ""; });
+    var changed = [];
+    activePlan.forEach(function rewrite(entry) {
+      var key = entry.item.key;
+      var found = false;
+      var encoded = entry.reset ? null : quoteValue(entry.value);
+      lines = lines.reduce(function replace(out, line) {
+        var match = line.match(/^\s*(?:export\s+)?([\w.-]+)\s*=/);
+        if (!match || match[1] !== key) {
+          out.push(line);
+        } else {
+          found = true;
+          if (!entry.reset) {
+            var ending = line.match(/(\r\n|\n|\r)$/);
+            out.push(key + "=" + encoded + (ending ? ending[0] : ""));
+          }
+        }
+        return out;
+      }, []);
+      if (!found && !entry.reset) {
+        if (lines.length && !/[\r\n]$/.test(lines[lines.length - 1])) lines.push(newline);
+        lines.push(key + "=" + encoded + newline);
+      }
+      if (found || !entry.reset || process.env[key] !== undefined) changed.push(key);
+    });
+    var temporary;
+    try {
+      var candidate = path.join(path.dirname(filename), ".env-write-" + randomUUID());
+      var descriptor = fs.openSync(candidate, "wx", mode);
+      temporary = candidate;
+      try {
+        fs.writeFileSync(descriptor, lines.join(""));
+        fs.fchmodSync(descriptor, mode);
+      } finally {
+        fs.closeSync(descriptor);
+      }
+      if (exists) {
+        // Remove the prior backup first so its permissions cannot be stale.
+        var backup = filename + ".previous";
+        try { fs.unlinkSync(backup); } catch (err) { if (err.code !== "ENOENT") throw err; }
+        fs.copyFileSync(filename, backup);
+        fs.chmodSync(backup, mode);
+      }
+      fs.renameSync(temporary, filename);
+      temporary = null;
+    } finally {
+      if (temporary) fs.unlinkSync(temporary);
+    }
+    activePlan.forEach(function apply(entry) { setEnv(entry.item.key, entry.reset ? undefined : entry.value); });
+    if (changed.length) console.log("Technical settings changed by " + (userId || "unknown") + ": " + changed.join(", "));
+    return { changed: changed, restartRequired: changed.filter(function needs(key) { return BY_KEY[key].restartRequired; }) };
   });
+  writeQueue = pending.catch(function recover() {});
+  return pending;
 }
 
 // ---- Restart ---------------------------------------------------------------
@@ -833,10 +729,7 @@ module.exports = {
   GROUPS: GROUPS,
   REGISTRY: REGISTRY,
   getDef: getDef,
-  encrypt: encrypt,
-  decrypt: decrypt,
   validateValue: validateValue,
-  loadOverrides: loadOverrides,
   describeAll: describeAll,
   applyChanges: applyChanges,
   selfRestartAllowed: selfRestartAllowed,

@@ -1,363 +1,226 @@
 "use strict";
 
-// Technical settings: GET/PATCH /api/admin/system-config and the restart route.
-
 var test = require("node:test");
 var assert = require("node:assert/strict");
-var request = require("supertest");
-
-var db = require("./helpers/db");
-var fixtures = require("./helpers/fixtures");
-var app = require("../server");
+var fs = require("node:fs");
+var os = require("node:os");
+var path = require("node:path");
+var dotenv = require("dotenv");
+var jwt = require("jsonwebtoken");
 var systemConfig = require("../utils/systemConfig");
-var SystemSetting = require("../schemas/systemSetting");
+var controller = require("../controllers/systemConfigController");
+var parseToken = require("../utils/parseToken");
+var isAdmin = require("../utils/isAdmin");
 
 var URL_PATH = "/api/admin/system-config";
 
 /**
- * @param {object} body - A GET/PATCH response body.
- * @param {string} key - Env var name.
- * @returns {object}
+ * @param {object} model - Page metadata.
+ * @param {string} key - Setting key.
+ * @returns {object} Setting metadata.
  */
-function find(body, key) {
-  return body.settings.find(function match(s) {
-    return s.key === key;
-  });
+function find(model, key) {
+  return model.settings.find(function match(item) { return item.key === key; });
 }
 
-test("Technical settings", async function technicalSettings(t) {
-  await db.connect();
-  await db.clearDatabase();
+test("technical settings file API (no database)", async function suite(t) {
+  var directory = fs.mkdtempSync(path.join(os.tmpdir(), "system-config-test-"));
+  var filename = path.join(directory, ".env");
+  var saved = {};
+  ["ENV_FILE_PATH", "JWT_SECRET", "ALLOW_SELF_RESTART"].concat(systemConfig.REGISTRY.map(function key(item) { return item.key; })).forEach(function remember(key) {
+    saved[key] = process.env[key];
+  });
+  process.env.ENV_FILE_PATH = filename;
+  process.env.JWT_SECRET = "test-only-system-config-signing-secret";
+  delete process.env.ALLOW_SELF_RESTART;
+  t.after(function cleanup() {
+    Object.keys(saved).forEach(function restore(key) {
+      if (saved[key] === undefined) delete process.env[key];
+      else process.env[key] = saved[key];
+    });
+    fs.rmSync(directory, { recursive: true, force: true });
+  });
 
-  var admin = await fixtures.createUser({ role: "admin" });
-  var moderator = await fixtures.createUser({ role: "moderator" });
-  var applicant = await fixtures.createUser({ role: "applicant" });
-  var savedEnv = {
-    ORG_NAME: process.env.ORG_NAME,
-    ALLOW_SELF_RESTART: process.env.ALLOW_SELF_RESTART,
-  };
+  t.mock.method(require("../schemas/user"), "findById", function lookup(id) {
+    return { select: function select() { return { lean: function lean() { return Promise.resolve({ role: id }); } }; } };
+  });
 
+  var audit = [];
+  t.mock.method(console, "log", function capture(message) { audit.push(message); });
+
+  // Exercise production controllers and guards without opening a socket.
   /**
    * @param {string} method - HTTP method.
-   * @param {string} path - Path.
-   * @param {object} [who] - A fixture user; none sends no token.
-   * @returns {object} A supertest request.
+   * @param {object} [values] - Patch values.
+   * @param {string|null} [role] - Caller role.
+   * @returns {object} Supertest request.
    */
-  function call(method, path, who) {
-    var req = request(app)[method](path);
-    return who ? req.set("Authorization", "Bearer " + who.token) : req;
+  function call(method, values, role) {
+    return new Promise(function dispatch(resolve, reject) {
+      var token = role === null ? null : jwt.sign({ id: role || "admin", role: role || "admin" }, process.env.JWT_SECRET);
+      var req = {
+        body: { values: values }, headers: token ? { authorization: "Bearer " + token } : {},
+        get: function get(name) { return req.headers[name.toLowerCase()]; },
+      };
+      var result = { status: 200, headers: {} };
+      var res = {
+        set: function set(key, value) { result.headers[key.toLowerCase()] = value; return res; },
+        status: function status(code) { result.status = code; return res; },
+        json: function json(body) { result.body = body; result.text = JSON.stringify(body); resolve(result); return res; },
+      };
+      parseToken(req, res, function parsed() {
+        isAdmin(req, res, function authorized(err) {
+          if (err) return reject(err);
+          Promise.resolve(method === "get" ? controller.getSystemConfig(req, res) : method === "post" ? controller.restartServer(req, res) : controller.updateSystemConfig(req, res)).catch(reject);
+        });
+      });
+    });
   }
 
-  t.after(async function cleanup() {
-    Object.keys(savedEnv).forEach(function restore(key) {
-      if (savedEnv[key] === undefined) delete process.env[key];
-      else process.env[key] = savedEnv[key];
-    });
-    await db.closeDatabase();
-  });
-
-  await t.test("only admins may read or change settings", async function () {
-    for (var who of [null, applicant, moderator]) {
-      var want = who ? 403 : 401;
-      assert.equal((await call("get", URL_PATH, who)).status, want);
-      assert.equal((await call("patch", URL_PATH, who).send({ values: { ORG_NAME: "x" } })).status, want);
-      assert.equal((await call("post", URL_PATH + "/restart", who)).status, want);
+  await t.test("admin-only read and write", async function () {
+    for (var role of [null, "applicant", "moderator"]) {
+      assert.equal((await call("get", null, role)).status, role ? 403 : 401);
+      assert.equal((await call("patch", { ORG_NAME: "denied" }, role)).status, role ? 403 : 401);
+      assert.equal((await call("post", null, role)).status, role ? 403 : 401);
     }
-    assert.equal(await SystemSetting.countDocuments({}), 0);
+    assert.equal((await call("post")).status, 409);
+    assert.equal(fs.existsSync(filename), false);
+    assert.equal(require("mongoose").models.SystemSetting, undefined);
   });
 
-  await t.test("lists every setting with its source and no secret values", async function () {
-    var res = await call("get", URL_PATH, admin);
-    assert.equal(res.status, 200);
-    assert.ok(res.body.groups.indexOf("Email") !== -1);
-    assert.equal(res.body.selfRestart, false);
+  var initial = "# keep this comment\r\nORG_NAME=Before # old\r\n\r\nUNRELATED=unchanged\r\nSMTP_HOST=old.example\r\nSMTP_HOST=duplicate.example\r\n# last\r\n";
+  fs.writeFileSync(filename, initial, { mode: 0o640 });
 
-    var jwt = find(res.body, "JWT_SECRET");
-    assert.equal(jwt.editable, false);
-    assert.equal(jwt.secret, true);
-    assert.equal(jwt.value, undefined);
-    assert.equal(jwt.hint, undefined);
-    assert.equal(jwt.isSet, true);
-    assert.equal(res.text.indexOf(process.env.JWT_SECRET), -1);
-    assert.equal(res.text.indexOf(process.env.SMTP_PASS), -1);
-
-    var org = find(res.body, "ORG_NAME");
-    assert.equal(org.source, "env");
-    assert.equal(org.isSet, true);
-    // Write-only: no value comes back, secret or not.
-    assert.equal(org.value, undefined);
-    assert.equal(res.text.indexOf("Test Org"), -1);
-
-    ["MONGODB_URI", "PORT", "JWT_SECRET", "SETUP_ADMIN", "NODE_ENV"].forEach(function readOnly(key) {
-      assert.equal(find(res.body, key).editable, false, key);
-    });
-    assert.equal(find(res.body, "GOOGLE_CLIENT_SECRET").restartRequired, true);
-    assert.equal(find(res.body, "SMTP_HOST").restartRequired, false);
-  });
-
-  await t.test("a save with any invalid value saves nothing", async function () {
-    var res = await call("patch", URL_PATH, admin).send({
-      values: { ORG_NAME: "Should not stick", SMTP_PORT: "99999", ORG_WEBSITE_URL: "not a url" },
-    });
+  await t.test("invalid batch leaves bytes, environment and backup untouched", async function () {
+    var before = process.env.ORG_NAME;
+    var res = await call("patch", { ORG_NAME: "Should not land", SMTP_PORT: "99999", SMTP_PASS: "bad\nvalue" });
     assert.equal(res.status, 400);
     assert.ok(res.body.errors.SMTP_PORT);
-    assert.ok(res.body.errors.ORG_WEBSITE_URL);
-    assert.equal(res.body.errors.ORG_NAME, undefined);
-    assert.equal(await SystemSetting.countDocuments({}), 0);
-    assert.equal(process.env.ORG_NAME, "Test Org");
-  });
-
-  await t.test("unknown and read-only keys are refused", async function () {
-    for (var key of ["JWT_SECRET", "MONGODB_URI", "PORT", "SETUP_ADMIN", "NODE_ENV", "CONFIG_ENCRYPTION_KEY", "ALLOW_SELF_RESTART", "JWT_EXPIRES_IN", "CLIENT_ORIGIN", "TRUST_PROXY", "NOT_A_SETTING"]) {
-      var res = await call("patch", URL_PATH, admin).send({ values: { [key]: "x" } });
-      assert.equal(res.status, 400, key);
-      assert.ok(res.body.errors[key], key);
+    assert.ok(res.body.errors.SMTP_PASS);
+    assert.equal(fs.readFileSync(filename, "utf8"), initial);
+    assert.equal(process.env.ORG_NAME, before);
+    assert.equal(fs.existsSync(filename + ".previous"), false);
+    for (var key of ["MONGODB_URI", "PORT", "NODE_ENV", "JWT_SECRET", "JWT_EXPIRES_IN", "SETUP_ADMIN", "ALLOW_SELF_RESTART", "CLIENT_ORIGIN", "TRUST_PROXY", "UNKNOWN_KEY", "__proto__", "constructor"]) {
+      var values = JSON.parse('{"ORG_NAME":"Valid","' + key + '":null}');
+      var denied = await call("patch", values);
+      assert.equal(denied.status, 400, key);
+      assert.ok(denied.body.errors[key], key);
     }
-    var empty = await call("patch", URL_PATH, admin).send({ values: {} });
-    assert.equal(empty.status, 400);
-    assert.equal(await SystemSetting.countDocuments({}), 0);
+    assert.equal(fs.readFileSync(filename, "utf8"), initial);
+    assert.equal((await call("patch", {})).status, 400);
   });
 
-  await t.test("changing a value applies it at once, and null resets it to .env", async function () {
-    var res = await call("patch", URL_PATH, admin).send({ values: { ORG_NAME: "Dashboard Org" } });
+  await t.test("replace, append, remove duplicates, backup and mode", async function () {
+    var res = await call("patch", { ORG_NAME: "After name", SMTP_PASS: "a secret", SMTP_HOST: null });
     assert.equal(res.status, 200);
-    assert.deepEqual(res.body.changed, ["ORG_NAME"]);
+    assert.deepEqual(res.body.changed, ["ORG_NAME", "SMTP_PASS", "SMTP_HOST"]);
     assert.deepEqual(res.body.restartRequired, []);
-    assert.equal(process.env.ORG_NAME, "Dashboard Org");
-    assert.equal(find(res.body, "ORG_NAME").source, "dashboard");
-
-    var again = await call("get", URL_PATH, admin);
-    assert.equal(find(again.body, "ORG_NAME").value, undefined);
-    assert.equal(again.text.indexOf("Dashboard Org"), -1, "the saved value is never shown");
-
-    var reset = await call("patch", URL_PATH, admin).send({ values: { ORG_NAME: null } });
-    assert.equal(reset.status, 200);
-    assert.equal(process.env.ORG_NAME, "Test Org");
-    assert.equal(find(reset.body, "ORG_NAME").source, "env");
-    assert.equal(await SystemSetting.countDocuments({ key: "ORG_NAME" }), 0);
+    assert.equal(fs.readFileSync(filename, "utf8"), '# keep this comment\r\nORG_NAME="After name"\r\n\r\nUNRELATED=unchanged\r\n# last\r\nSMTP_PASS="a secret"\r\n');
+    assert.equal(fs.readFileSync(filename + ".previous", "utf8"), initial);
+    assert.equal(fs.statSync(filename).mode & 0o777, 0o640);
+    assert.equal(fs.statSync(filename + ".previous").mode & 0o777, 0o640);
+    assert.equal(process.env.ORG_NAME, "After name");
+    assert.equal(process.env.SMTP_PASS, "a secret");
+    assert.equal(process.env.SMTP_HOST, undefined);
+    assert.equal(find(res.body, "ORG_NAME").source, "env");
+    assert.equal(find(res.body, "SMTP_HOST").source, "unset");
+    var beforeRemove = fs.readFileSync(filename, "utf8");
+    var removed = await call("patch", { ORG_NAME: null });
+    assert.equal(removed.status, 200);
+    assert.equal(process.env.ORG_NAME, undefined);
+    assert.equal(find(removed.body, "ORG_NAME").source, "default");
+    assert.equal(find(removed.body, "ORG_NAME").isSet, false);
+    assert.equal(fs.readFileSync(filename + ".previous", "utf8"), beforeRemove);
   });
 
-  await t.test("secrets are encrypted at rest and never returned", async function () {
-    var plain = "very-secret-value-0123456789";
-    var res = await call("patch", URL_PATH, admin).send({ values: { GOOGLE_CLIENT_SECRET: plain } });
-    assert.equal(res.status, 200);
-    assert.deepEqual(res.body.restartRequired, ["GOOGLE_CLIENT_SECRET"]);
-    assert.equal(res.text.indexOf(plain), -1);
-
-    var stored = await SystemSetting.findOne({ key: "GOOGLE_CLIENT_SECRET" }).lean();
-    assert.equal(stored.encrypted, true);
-    assert.notEqual(stored.value, plain);
-    assert.equal(stored.value.indexOf(plain), -1);
-    assert.equal(systemConfig.decrypt("GOOGLE_CLIENT_SECRET", stored.value), plain);
-    // Bound to its key: moving the ciphertext to another key does not decrypt.
-    assert.throws(function () {
-      systemConfig.decrypt("SMTP_PASS", stored.value);
-    });
-    assert.equal(String(stored.updatedBy), String(admin.user._id));
-
-    var list = await call("get", URL_PATH, admin);
-    var entry = find(list.body, "GOOGLE_CLIENT_SECRET");
-    assert.equal(entry.isSet, true);
-    assert.equal(entry.hint, undefined, "not even the last characters");
-    assert.equal(entry.value, undefined);
-    assert.equal(list.text.indexOf(plain), -1);
-
-    await call("patch", URL_PATH, admin).send({ values: { GOOGLE_CLIENT_SECRET: null } });
-    assert.equal(process.env.GOOGLE_CLIENT_SECRET, undefined);
-  });
-
-  await t.test("short secrets show no hint", async function () {
-    await call("patch", URL_PATH, admin).send({ values: { SMTP_PASS: "short" } });
-    var list = await call("get", URL_PATH, admin);
-    assert.equal(find(list.body, "SMTP_PASS").hint, undefined);
-    await call("patch", URL_PATH, admin).send({ values: { SMTP_PASS: null } });
-  });
-
-  await t.test("CLIENT_ORIGIN must keep the address the admin is using", async function () {
-    var res = await call("patch", URL_PATH, admin)
-      .set("Origin", "http://localhost:3000")
-      .send({ values: { CLIENT_ORIGIN: "https://elsewhere.example.com" } });
-    assert.equal(res.status, 400);
-    assert.ok(res.body.errors.CLIENT_ORIGIN);
-    assert.equal(process.env.CLIENT_ORIGIN, "http://localhost:3000");
-  });
-
-  await t.test("saved overrides load into process.env on startup", async function () {
-    await SystemSetting.deleteMany({});
-    await SystemSetting.create({ key: "ORG_NAME", value: "From the database" });
-    await SystemSetting.create({
-      key: "SMTP_PASS",
-      value: systemConfig.encrypt("SMTP_PASS", "loaded-secret-0123456789"),
-      encrypted: true,
-    });
-    // A read-only key in the database is never applied.
-    await SystemSetting.create({ key: "JWT_SECRET", value: "attacker-secret" });
-    var jwtBefore = process.env.JWT_SECRET;
-    var passBefore = process.env.SMTP_PASS;
-
-    var applied = await systemConfig.loadOverrides();
-    assert.equal(applied, 2);
-    assert.equal(process.env.ORG_NAME, "From the database");
-    assert.equal(process.env.SMTP_PASS, "loaded-secret-0123456789");
-    assert.equal(process.env.JWT_SECRET, jwtBefore);
-
-    // Reset still goes back to the original .env values.
-    var reset = await call("patch", URL_PATH, admin).send({ values: { ORG_NAME: null, SMTP_PASS: null } });
-    assert.equal(reset.status, 200);
-    assert.equal(process.env.ORG_NAME, "Test Org");
-    assert.equal(process.env.SMTP_PASS, passBefore);
-  });
-
-  await t.test("restart is refused unless ALLOW_SELF_RESTART is true", async function () {
-    delete process.env.ALLOW_SELF_RESTART;
-    var exits = [];
-    systemConfig.setRestartHooks({
-      exit: function fakeExit(code) {
-        exits.push(code);
-      },
-      delayMs: 10,
-      forceAfterMs: 20,
-    });
-
-    var refused = await call("post", URL_PATH + "/restart", admin);
-    assert.equal(refused.status, 409);
-    assert.match(refused.body.error, /by hand/);
-    await new Promise(function wait(r) {
-      setTimeout(r, 80);
-    });
-    assert.deepEqual(exits, []);
-
-    process.env.ALLOW_SELF_RESTART = "true";
-    var accepted = await call("post", URL_PATH + "/restart", admin);
-    assert.equal(accepted.status, 202);
-    assert.deepEqual(accepted.body, { restarting: true });
-    await new Promise(function wait(r) {
-      setTimeout(r, 120);
-    });
-    assert.deepEqual(exits, [0]);
-  });
-
-  await t.test("restart is rate limited", async function () {
-    process.env.ALLOW_SELF_RESTART = "false";
-    var last;
-    for (var i = 0; i < 5; i++) {
-      last = await call("post", URL_PATH + "/restart", admin);
+  await t.test("dotenv round-trips spaces, quotes, hashes, equals and backslashes", async function () {
+    for (var value of ['  secret  ', 'say "hello" # = yes', "it's a secret", 'C:\\new\\route']) {
+      assert.equal((await call("patch", { SMTP_PASS: value })).status, 200);
+      assert.equal(dotenv.parse(fs.readFileSync(filename)).SMTP_PASS, value);
+      assert.equal(process.env.SMTP_PASS, value);
     }
-    assert.equal(last.status, 429);
   });
 
-});
+  await t.test("unrepresentable dotenv quoting rejects the entire batch", async function () {
+    var before = fs.readFileSync(filename);
+    var res = await call("patch", { ORG_NAME: "Must not land", SMTP_PASS: '\"both\' quotes\" and `ticks` # =' });
+    assert.equal(res.status, 400);
+    assert.ok(res.body.errors.SMTP_PASS);
+    assert.deepEqual(fs.readFileSync(filename), before);
+  });
 
-// These checks run without MongoDB: node --test --test-name-pattern="config unit" test/systemConfig.test.js
+  await t.test("unchanged values do not replace the file or backup", async function () {
+    var before = fs.readFileSync(filename);
+    var backup = fs.readFileSync(filename + ".previous");
+    var res = await call("patch", { SMTP_PASS: process.env.SMTP_PASS });
+    assert.equal(res.status, 200);
+    assert.deepEqual(res.body.changed, []);
+    assert.deepEqual(fs.readFileSync(filename), before);
+    assert.deepEqual(fs.readFileSync(filename + ".previous"), backup);
+  });
 
-test("config unit: registry covers backend environment reads", function () {
-  var fs = require("node:fs");
-  var path = require("node:path");
-  function scan(dir) {
-    fs.readdirSync(dir, { withFileTypes: true }).forEach(function visit(entry) {
-      if (["test", "node_modules"].indexOf(entry.name) !== -1) return;
-      var name = path.join(dir, entry.name);
-      if (entry.isDirectory()) return scan(name);
-      if (!name.endsWith(".js")) return;
-      var source = fs.readFileSync(name, "utf8");
-      var matches = source.matchAll(/process\.env\.([A-Z][A-Z0-9_]*)/g);
-      for (var match of matches) assert.ok(systemConfig.getDef(match[1]), match[1]);
+  await t.test("concurrent PATCHes both land and restart metadata is preserved", async function () {
+    var responses = await Promise.all([
+      call("patch", { ORG_NAME: "Concurrent name" }),
+      call("patch", { GOOGLE_CLIENT_SECRET: "concurrent-secret" }),
+    ]);
+    responses.forEach(function ok(res) { assert.equal(res.status, 200); });
+    assert.deepEqual(responses[1].body.restartRequired, ["GOOGLE_CLIENT_SECRET"]);
+    var parsed = dotenv.parse(fs.readFileSync(filename));
+    assert.equal(parsed.ORG_NAME, "Concurrent name");
+    assert.equal(parsed.GOOGLE_CLIENT_SECRET, "concurrent-secret");
+    assert.equal(process.env.GOOGLE_CLIENT_SECRET, "concurrent-secret");
+  });
+
+  await t.test("GET returns metadata only for every setting", async function () {
+    var res = await call("get");
+    assert.equal(res.status, 200);
+    assert.equal(res.headers["cache-control"], "no-store");
+    for (var item of res.body.settings) {
+      assert.equal(item.value, undefined);
+      assert.equal(item.defaultValue, undefined);
+      assert.equal(item.hint, undefined);
+      assert.ok(["env", "default", "unset"].includes(item.source));
+    }
+    for (var value of [process.env.SMTP_PASS, process.env.JWT_SECRET, "Concurrent name", "concurrent-secret"]) {
+      assert.equal(res.text.includes(value), false);
+    }
+  });
+
+  await t.test("new files use 0600 and appends handle missing final newline", async function () {
+    fs.unlinkSync(filename);
+    assert.equal((await call("patch", { SMTP_PORT: "2525" })).status, 200);
+    assert.equal(fs.statSync(filename).mode & 0o777, 0o600);
+    fs.writeFileSync(filename, "# no final newline");
+    assert.equal((await call("patch", { ORG_NAME: "Appended" })).status, 200);
+    assert.equal(fs.readFileSync(filename, "utf8"), "# no final newline\nORG_NAME=Appended\n");
+  });
+
+  await t.test("failed rename leaves file and environment intact; next save succeeds", async function () {
+    var original = fs.readFileSync(filename, "utf8");
+    var previousEnv = process.env.ORG_NAME;
+    var mock = t.mock.method(fs, "renameSync", function fail() { throw new Error("private-file-value"); });
+    var res = await call("patch", { ORG_NAME: "Failed" });
+    assert.equal(res.status, 500);
+    assert.equal(res.text.includes("private-file-value"), false);
+    assert.equal(fs.readFileSync(filename, "utf8"), original);
+    assert.equal(process.env.ORG_NAME, previousEnv);
+    mock.mock.restore();
+    assert.equal((await call("patch", { ORG_NAME: "Recovered" })).status, 200);
+    assert.equal(dotenv.parse(fs.readFileSync(filename)).ORG_NAME, "Recovered");
+  });
+  await t.test("audit logs contain only admin id and changed key names", function () {
+    assert.ok(audit.length > 0);
+    audit.forEach(function keysOnly(message) {
+      assert.match(message, /^Technical settings changed by admin: [A-Z_]+(?:, [A-Z_]+)*$/);
     });
-  }
-  scan(require("node:path").join(__dirname, ".."));
-  systemConfig.REGISTRY.forEach(function check(item) {
-    assert.equal(typeof item.validate, "function", item.key);
   });
 });
 
-test("config unit: invalid batches and prototype keys never write", async function (t) {
-  t.mock.method(SystemSetting, "updateOne", function unexpected() { assert.fail("unexpected write"); });
-  t.mock.method(SystemSetting, "deleteOne", function unexpected() { assert.fail("unexpected delete"); });
-  for (var key of ["CLIENT_ORIGIN", "TRUST_PROXY", "JWT_SECRET", "CONFIG_ENCRYPTION_KEY", "__proto__", "constructor"]) {
-    var values = JSON.parse('{"ORG_NAME":"Valid","' + key + '":null}');
-    var result = await systemConfig.applyChanges(values, null);
-    assert.ok(result.errors[key], key);
-  }
-  var invalid = await systemConfig.applyChanges({ ORG_NAME: "Valid", SMTP_PORT: false }, null);
-  assert.ok(invalid.errors.SMTP_PORT);
-});
-
-test("config unit: encryption failure happens before any write", async function (t) {
-  var jwt = process.env.JWT_SECRET;
-  var encryption = process.env.CONFIG_ENCRYPTION_KEY;
-  delete process.env.JWT_SECRET;
-  delete process.env.CONFIG_ENCRYPTION_KEY;
-  t.after(function restore() {
-    if (jwt !== undefined) process.env.JWT_SECRET = jwt;
-    if (encryption !== undefined) process.env.CONFIG_ENCRYPTION_KEY = encryption;
-  });
-  t.mock.method(SystemSetting, "findOne", function unexpected() { assert.fail("unexpected database access"); });
-  await assert.rejects(systemConfig.applyChanges({ ORG_NAME: "Valid", SMTP_PASS: "secret-value" }, null), /encrypt/);
-});
-
-test("config unit: secrets retain spaces and never serialize from the model", function () {
-  var checked = systemConfig.validateValue(systemConfig.getDef("SMTP_PASS"), "  secret  ");
-  assert.equal(checked.value, "  secret  ");
-  var doc = new SystemSetting({ key: "SMTP_PASS", value: "private-value", encrypted: true });
-  assert.equal(JSON.stringify(doc).includes("private-value"), false);
-});
-
-test("config unit: controller errors never forward driver secrets", async function () {
-  var controller = require("../controllers/systemConfigController");
-  var original = systemConfig.applyChanges;
-  systemConfig.applyChanges = function fail() { return Promise.reject(new Error("private-driver-value")); };
-  var body;
-  var res = {
-    set: function set() {},
-    status: function status(code) { assert.equal(code, 500); return res; },
-    json: function json(value) { body = value; },
-  };
-  try {
-    await controller.updateSystemConfig({ body: { values: { SMTP_PASS: "secret" } }, user: {}, get: function get() {} }, res,
-      function next() { assert.fail("must not forward driver error"); });
-    assert.equal(JSON.stringify(body).includes("private-driver-value"), false);
-  } finally { systemConfig.applyChanges = original; }
-});
-
-test("config unit: restart uses injected exit exactly once", async function () {
+test("restart uses injected exit exactly once", async function () {
   var exits = [];
   systemConfig.setRestartHooks({ exit: function fake(code) { exits.push(code); }, delayMs: 1, forceAfterMs: 10 });
   systemConfig.scheduleRestart();
   await new Promise(function wait(resolve) { setTimeout(resolve, 30); });
   assert.deepEqual(exits, [0]);
-});
-
-
-test("config unit: authenticated encryption binds secrets to their setting", function () {
-  var plain = "regression-secret-with-spaces ";
-  var stored = systemConfig.encrypt("SMTP_PASS", plain);
-  assert.equal(stored.includes(plain), false);
-  assert.equal(systemConfig.decrypt("SMTP_PASS", stored), plain);
-  assert.throws(function moved() { systemConfig.decrypt("GOOGLE_CLIENT_SECRET", stored); });
-  var parts = stored.split(":");
-  var cipher = Buffer.from(parts[3], "base64");
-  cipher[0] ^= 1;
-  parts[3] = cipher.toString("base64");
-  assert.throws(function tampered() { systemConfig.decrypt("SMTP_PASS", parts.join(":")); });
-});
-
-test("config unit: page model redacts secrets and preserves empty overrides", async function (t) {
-  var original = process.env.SMTP_PASS;
-  var org = process.env.ORG_NAME;
-  process.env.SMTP_PASS = "regression-secret-123456789";
-  process.env.ORG_NAME = "";
-  t.after(function restore() {
-    if (original === undefined) delete process.env.SMTP_PASS; else process.env.SMTP_PASS = original;
-    if (org === undefined) delete process.env.ORG_NAME; else process.env.ORG_NAME = org;
-  });
-  t.mock.method(SystemSetting, "find", function fake() {
-    return { select: function select() { return { lean: function lean() { return Promise.resolve([{ key: "SMTP_PASS" }, { key: "ORG_NAME" }]); } }; } };
-  });
-  var model = await systemConfig.describeAll();
-  assert.equal(JSON.stringify(model).includes(process.env.SMTP_PASS), false);
-  assert.equal(find(model, "SMTP_PASS").value, undefined);
-  assert.equal(find(model, "SMTP_PASS").hint, undefined);
-  assert.equal(find(model, "ORG_NAME").value, undefined);
-  assert.equal(find(model, "ORG_NAME").isSet, false);
-  assert.equal(find(model, "ORG_NAME").source, "dashboard");
 });

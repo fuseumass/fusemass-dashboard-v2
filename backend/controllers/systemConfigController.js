@@ -4,7 +4,7 @@ var systemConfig = require("../utils/systemConfig");
 
 /**
  * GET /api/admin/system-config (admin only): every server setting with where
- * its value comes from. Secret values are never included.
+ * its value comes from. No values are ever included.
  * @param {object} _req - Express request.
  * @param {object} res - Express response.
  * @param {function} next - Express next callback.
@@ -18,15 +18,15 @@ function getSystemConfig(_req, res, next) {
       res.status(200).json(model);
     })
     .catch(function failed() {
-      // Driver errors can contain stored values. Do not forward them to logging.
-      res.status(500).json({ error: "Could not access technical settings. Check the server configuration and database." });
+      // File errors can contain sensitive details. Do not forward them to logging.
+      res.status(500).json({ error: "Could not access technical settings. Check the server dotenv file permissions." });
     });
 }
 
 /**
  * PATCH /api/admin/system-config (admin only): body { values: { KEY: "value" | null } }.
  * Validates everything first; on any error nothing is saved. null removes the
- * dashboard value so the .env value applies again.
+ * key from the server dotenv file.
  * @param {object} req - Express request.
  * @param {object} res - Express response.
  * @param {function} next - Express next callback.
@@ -57,8 +57,8 @@ function updateSystemConfig(req, res, next) {
       });
     })
     .catch(function failed() {
-      // Driver errors can contain stored values. Do not forward them to logging.
-      res.status(500).json({ error: "Could not access technical settings. Check the server configuration and database." });
+      // File errors can contain sensitive details. Do not forward them to logging.
+      res.status(500).json({ error: "Could not access technical settings. Check the server dotenv file permissions." });
     });
 }
 

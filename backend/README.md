@@ -147,22 +147,27 @@ Dashboard > Technical settings (`/dashboard/admin/system`). The registry of
 every variable (label, group, help, secret, editable, restart needed,
 validator) is `utils/systemConfig.js`.
 
-- **Precedence:** dashboard value > `.env` value > built-in default. Dashboard
-  values live in the `SystemSetting` collection. On startup `server.js`
-  connects to the database, loads them into `process.env`, and only then builds
-  the app, so rate limiters, Google sign-in and `TRUST_PROXY` see them. The
-  original `.env` values are remembered, so "reset" restores them.
-- **Secrets** (passwords, keys, connection strings, webhook URLs) are encrypted
-  at rest with AES-256-GCM. The key is derived (HKDF) from `CONFIG_ENCRYPTION_KEY`
-  when set, otherwise from `JWT_SECRET`. Changing that key makes saved secrets
-  unreadable (they are skipped on startup with a warning). Secret values are
-  never returned or logged; the API gives only "is set" and the last 4 characters
-  of long values.
-- **Read-only** (shown, but only changeable on the server): `MONGODB_URI`, `PORT`,
-  `NODE_ENV`, `JWT_SECRET`, `JWT_EXPIRES_IN`, `SETUP_ADMIN`,
-  `CONFIG_ENCRYPTION_KEY`, `ALLOW_SELF_RESTART`, `CLIENT_ORIGIN`, `TRUST_PROXY`.
-  A bad value in any of them could lock everyone out with no way back from the
-  dashboard.
+- **Storage:** values, including secrets, live only in the server's `.env`
+  file. There is no database copy or encryption. The page is write-only: it
+  reports Set/Not set and env/default/unset, never a value or secret hint.
+- **File path:** set `ENV_FILE_PATH` in the service environment before startup
+  to select another dotenv file; otherwise the server loads and edits
+  `path.resolve(process.cwd(), ".env")`. Set it before launching tests too:
+  tests use disposable files, never the deployment's `.env`.
+- **Saving:** the whole batch is validated before any write. Saves are serialized
+  within the server process, preserve unrelated lines and comments, and replace
+  the file atomically with its existing permissions (0600 for a new file).
+  Before replacement the current file is copied to `.env.previous` (or
+  `<ENV_FILE_PATH>.previous`), overwriting the prior backup. This backup contains
+  secrets too. Remove deletes the key's lines and unsets it in `process.env`;
+  a built-in default applies where available. Other changes update `process.env`
+  immediately. Manual edits take effect after a restart. Quoting follows the
+  installed dotenv parser: it does not unescape `\\` or `\"`, so the writer
+  chooses a quote delimiter that round-trips without added escapes. Values
+  that cannot round-trip are rejected before any write.
+- **Read-only:** `MONGODB_URI`, `PORT`, `NODE_ENV`, `JWT_SECRET`,
+  `JWT_EXPIRES_IN`, `SETUP_ADMIN`, `ALLOW_SELF_RESTART`, `CLIENT_ORIGIN`,
+  `TRUST_PROXY`. Change these on the server to avoid dashboard lockouts.
 - **Restart:** settings read only at startup (rate limits, Google credentials,
   `EMAIL_RETRY_INTERVAL_MS`, `AUTO_ACCEPT_INTERVAL_MS`) are marked
   `restartRequired`. With
@@ -273,8 +278,8 @@ emailed on acceptance (or via "Forgot password").
 | POST   | `/api/admin/outbox/:id/cancel`  | admin     | Cancel a queued email                  |
 | GET    | `/api/admin/settings`           | admin     | Org settings (+ Google env status)     |
 | PATCH  | `/api/admin/settings`           | admin     | Update settings (Google toggle, `autoFlagApplications`, `features`, `branding`) |
-| GET    | `/api/admin/system-config`      | admin     | Technical settings: every env var with its source; secret values are never returned |
-| PATCH  | `/api/admin/system-config`      | admin     | Save `{ values: { KEY: "value" | null } }` (all validated first; `null` resets to `.env`) |
+| GET    | `/api/admin/system-config`      | admin     | Technical settings: set/unset status and source only; no values are returned |
+| PATCH  | `/api/admin/system-config`      | admin     | Save `{ values: { KEY: "value" | null } }` (all validated first; `null` removes the key from `.env`) |
 | POST   | `/api/admin/system-config/restart` | admin  | Restart the service (`202`), only when `ALLOW_SELF_RESTART=true`, else `409`; 3 per minute |
 | PUT    | `/api/admin/branding/:slot`     | admin     | Upload `logo` / `logo-dark` / `favicon` (multipart `file`) |
 | DELETE | `/api/admin/branding/:slot`     | admin     | Remove that image (back to the server default) |
