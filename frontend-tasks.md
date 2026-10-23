@@ -42,7 +42,7 @@ apart in spacing, type sizes and states. Goal: one component library, one set
 of tokens, no inline styles in pages. **F10 → F11 → F12 → F13** are the
 foundation; after that, F14 pages can be split across people.
 
-### F10. Set up shadcn/ui (plain JS, Tailwind v4)
+### F10. Set up shadcn/ui (plain JS, Tailwind v4) (Keshav)
 - [x] `npx shadcn@latest init` in `frontend/` with **`"tsx": false`** in
       `components.json`. The repo bans TypeScript (`AGENTS.md` golden rule
       1), so components must be generated as `.jsx`/`.js`. Check no
@@ -73,7 +73,7 @@ foundation; after that, F14 pages can be split across people.
       *Done:* edited in place (36 px controls, status variants on `Badge`/`Alert`, `loading` on `Button`, no blurred overlays).
 - **Depends on:** none. **Related:** F11.
 
-### F11. Design tokens and theme
+### F11. Design tokens and theme (Keshav)
 - [x] Replace the ad-hoc variables in `globals.css` with shadcn's token set:
       `--background --foreground --card --popover --primary
       --primary-foreground --secondary --secondary-foreground --muted
