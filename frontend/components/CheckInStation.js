@@ -4,12 +4,7 @@ import { CircleAlert, CircleCheck, CircleX } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import QRScanner from "@/components/QRScanner";
 import { Button } from "@/components/ui/button";
-import {
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 
@@ -209,7 +204,6 @@ function CheckInPopup({ rows }) {
 
   if (!open) return null;
   return (
-    // biome-ignore lint/a11y/noStaticElementInteractions: the scrim closes the popup on tap; Escape and the Done button do the same by keyboard
     <div
       aria-live="polite"
       onPointerDown={() => setOpen(false)}
@@ -252,10 +246,9 @@ function ResultBanner({ result }) {
   const style = RESULT_STYLES[result.kind];
   const Icon = style.icon;
   return (
-    <div
-      role="status"
+    <output
       aria-live="polite"
-      className={cn("space-y-1 rounded-xl p-4", style.banner)}
+      className={cn("block space-y-1 rounded-xl p-4", style.banner)}
     >
       <p className="flex items-center gap-2 text-xl leading-tight font-semibold">
         <Icon className="size-6 shrink-0" aria-hidden="true" />
@@ -278,7 +271,7 @@ function ResultBanner({ result }) {
             {result.action.label}
           </Button>
         : null}
-    </div>
+    </output>
   );
 }
 

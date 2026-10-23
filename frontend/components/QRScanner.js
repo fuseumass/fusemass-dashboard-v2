@@ -136,16 +136,14 @@ export default function QRScanner({ onScan }) {
         loading={starting}
         onClick={running ? stopScanner : startScanner}
       >
-        {starting ? (
-          "Opening camera"
-        ) : running ? (
-          "Stop camera"
-        ) : (
-          <>
-            <Camera aria-hidden="true" />
-            Open camera
-          </>
-        )}
+        {starting
+          ? "Opening camera"
+          : running
+            ? "Stop camera"
+            : <>
+                <Camera aria-hidden="true" />
+                Open camera
+              </>}
       </Button>
     </div>
   );

@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 import ApplicationForm from "@/components/ApplicationForm";
 import { API_URL, apiFetch, getToken } from "@/lib/api";
 import { useBranding } from "@/lib/branding";
+import { config } from "@/lib/config";
 
 // The home page. Logged-in visitors go to their dashboard. Everyone else gets
 // the application form when admins accept applications without an account,
@@ -39,7 +40,7 @@ export default function Home() {
     ? branding.logoUrl.startsWith("/")
       ? `${API_URL}${branding.logoUrl}`
       : branding.logoUrl
-    : "";
+    : config.logo;
 
   return (
     <main className="mx-auto w-full max-w-3xl px-4 pt-6 pb-0 md:pt-10">

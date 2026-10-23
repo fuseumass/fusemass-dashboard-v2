@@ -105,7 +105,6 @@ export default function StaffCheckInPage() {
     return ok;
   }
 
-
   const percent =
     stats?.accepted > 0
       ? Math.round((stats.checkedIn / stats.accepted) * 100)
@@ -223,8 +222,8 @@ function ForceCheckInPanel({ initial, onSubmit, onClose }) {
       <CardHeader>
         <CardTitle>Force check-in</CardTitle>
         <CardDescription>
-          Checks in someone whose application is not accepted. Your name and
-          the reason are recorded with the check-in.
+          Checks in someone whose application is not accepted. Your name and the
+          reason are recorded with the check-in.
         </CardDescription>
       </CardHeader>
       <CardContent>

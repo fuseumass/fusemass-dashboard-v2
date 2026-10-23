@@ -135,6 +135,7 @@ export default function AttendeeHelpPage() {
         <form onSubmit={lookUp} className="flex flex-wrap gap-2">
           <Input
             type="email"
+            required
             aria-label="Attendee email"
             placeholder="attendee@example.com"
             value={email}
@@ -227,6 +228,8 @@ export default function AttendeeHelpPage() {
                         <div className="flex flex-wrap gap-2">
                           <Input
                             id="force-reason"
+                            required
+                            minLength={3}
                             value={reason}
                             onChange={(e) => setReason(e.target.value)}
                             placeholder="Reason (at least 3 characters)"

@@ -2,6 +2,7 @@
 
 import { API_URL } from "@/lib/api";
 import { useBranding } from "@/lib/branding";
+import { config } from "@/lib/config";
 
 /**
  * The layout every signed-out page uses (login, signup, password reset, the
@@ -17,7 +18,7 @@ export default function AuthShell({ title, subtitle, children, footer }) {
     ? branding.logoUrl.startsWith("/")
       ? `${API_URL}${branding.logoUrl}`
       : branding.logoUrl
-    : "";
+    : config.logo;
 
   return (
     <main className="flex min-h-screen flex-col items-center justify-center px-4 py-10">

@@ -1,6 +1,14 @@
 "use client";
 
-import { Crown, Link2, LogOut, Mail, Pencil, UserMinus, UserPlus } from "lucide-react";
+import {
+  Crown,
+  Link2,
+  LogOut,
+  Mail,
+  Pencil,
+  UserMinus,
+  UserPlus,
+} from "lucide-react";
 import { useEffect, useState } from "react";
 import PageHeader from "@/components/PageHeader";
 import { CardSkeleton } from "@/components/skeletons";
@@ -195,6 +203,7 @@ function CreateTeam({ busy, act }) {
         >
           <Input
             aria-label="Team name"
+            required
             placeholder="Team name"
             value={name}
             maxLength={60}
@@ -215,7 +224,14 @@ function CreateTeam({ busy, act }) {
 }
 
 // A confirm step for destructive team actions.
-function ConfirmDialog({ open, onOpenChange, title, description, action, onConfirm }) {
+function ConfirmDialog({
+  open,
+  onOpenChange,
+  title,
+  description,
+  action,
+  onConfirm,
+}) {
   return (
     <AlertDialog open={open} onOpenChange={onOpenChange}>
       <AlertDialogContent>
@@ -408,6 +424,7 @@ function TeamCard({ team, isLeader, userId, busy, act }) {
           <div className="flex flex-wrap gap-2">
             <Input
               id="invite-email"
+              required
               type="email"
               placeholder="teammate@example.com"
               value={inviteEmail}

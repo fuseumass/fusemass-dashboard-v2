@@ -129,7 +129,11 @@ export default function Autocomplete({
         onKeyDown={onKeyDown}
       />
       {open && options.length > 0
-        ? <SuggestionList options={options} activeIndex={active} onPick={pick} />
+        ? <SuggestionList
+            options={options}
+            activeIndex={active}
+            onPick={pick}
+          />
         : null}
     </div>
   );

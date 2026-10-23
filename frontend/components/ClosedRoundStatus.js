@@ -17,11 +17,7 @@ const STATUS_LINES = {
 // `{ none: true }` means they never applied.
 export default function ClosedRoundStatus({ latest }) {
   if (!latest || latest.none || !latest.application) {
-    return (
-      <p className="text-muted-foreground">
-        Applications are closed.
-      </p>
-    );
+    return <p className="text-muted-foreground">Applications are closed.</p>;
   }
 
   const status = latest.application.status;

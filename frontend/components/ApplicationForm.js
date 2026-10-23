@@ -303,6 +303,7 @@ export default function ApplicationForm({ mode = "account" }) {
 
   function handleSubmit(e) {
     e.preventDefault();
+    if (!e.currentTarget.reportValidity()) return;
     submit("pending");
   }
 

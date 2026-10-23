@@ -41,11 +41,11 @@ export default function VerifyEmailNotice({ user }) {
   return (
     <Alert variant="warning" aria-live="polite" className="mb-6">
       <MailCheck aria-hidden="true" />
-      <AlertTitle className="font-medium">Verify your email to apply</AlertTitle>
+      <AlertTitle className="font-medium">
+        Verify your email to apply
+      </AlertTitle>
       <AlertDescription className="space-y-3">
-        <p>
-          We sent a link to {user.email}. Open it, then refresh this page.
-        </p>
+        <p>We sent a link to {user.email}. Open it, then refresh this page.</p>
         <div className="flex flex-wrap items-center gap-3">
           <Button
             type="button"
