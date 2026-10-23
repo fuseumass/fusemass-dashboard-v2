@@ -1,8 +1,37 @@
 "use client";
 
+import { Sandwich } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
+import EmptyState from "@/components/EmptyState";
+import PageHeader from "@/components/PageHeader";
+import { TableRowsSkeleton } from "@/components/skeletons";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Switch } from "@/components/ui/switch";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
 import { apiFetch } from "@/lib/api";
+import { notifySuccess } from "@/lib/notify";
 import { useUser } from "@/lib/userContext";
 
 // Suggestions only; any name can be typed.
@@ -17,7 +46,7 @@ const MEAL_NAME_SUGGESTIONS = [
 
 function formatWindow(meal) {
   const opts = { weekday: "short", hour: "numeric", minute: "2-digit" };
-  return `${new Date(meal.startsAt).toLocaleString([], opts)} – ${new Date(
+  return `${new Date(meal.startsAt).toLocaleString([], opts)} to ${new Date(
     meal.endsAt,
   ).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}`;
 }
@@ -36,7 +65,7 @@ export default function AdminMealsPage() {
   const [endsAt, setEndsAt] = useState("");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
-  const [success, setSuccess] = useState("");
+  const [deleting, setDeleting] = useState(null);
 
   const load = useCallback(() => {
     return apiFetch("/api/admin/meals")
@@ -58,7 +87,6 @@ export default function AdminMealsPage() {
   async function handleCreate(e) {
     e.preventDefault();
     setError("");
-    setSuccess("");
     setSaving(true);
     try {
       await apiFetch("/api/admin/meals", {
@@ -69,7 +97,7 @@ export default function AdminMealsPage() {
           endsAt: new Date(endsAt).toISOString(),
         }),
       });
-      setSuccess(`${name.trim()} created.`);
+      notifySuccess(`${name.trim()} created.`);
       setName("");
       setStartsAt("");
       setEndsAt("");
@@ -97,187 +125,174 @@ export default function AdminMealsPage() {
   }
 
   async function handleDelete(meal) {
-    if (!window.confirm(`Delete ${meal.name}?`)) return;
     setError("");
     try {
       await apiFetch(`/api/admin/meals/${meal._id}`, { method: "DELETE" });
       setMeals((list) => list.filter((m) => m._id !== meal._id));
+      notifySuccess(`${meal.name} deleted.`);
     } catch (err) {
       setError(err.message);
     }
   }
 
-  const cell = { padding: "0.75rem 1rem" };
-
   return (
-    <div>
-      <h1
-        style={{ fontSize: "1.5rem", fontWeight: 700, marginBottom: "0.25rem" }}
-      >
-        Meals
-      </h1>
-      <p className="muted" style={{ marginBottom: "1.5rem" }}>
-        Set up meal services. Staff pick an active meal on the Check-in page and
-        scan attendees&apos; QR codes; each attendee can be served once per
-        meal.
-      </p>
+    <div className="space-y-6">
+      <PageHeader
+        className="mb-0"
+        title="Meals"
+        description="Staff pick an active meal on the meal check-in page and scan QR codes. Each attendee can be served once per meal."
+      />
 
       {error
-        ? <div className="alert-error" style={{ marginBottom: "1rem" }}>
-            {error}
-          </div>
-        : null}
-      {success
-        ? <div className="alert-success" style={{ marginBottom: "1rem" }}>
-            {success}
-          </div>
+        ? <Alert variant="destructive">
+            <AlertDescription>{error}</AlertDescription>
+          </Alert>
         : null}
 
-      <form
-        className="card"
-        style={{ padding: "1.5rem", marginBottom: "1.5rem" }}
-        onSubmit={handleCreate}
-      >
-        <h2
-          style={{ fontSize: "1.05rem", fontWeight: 600, marginBottom: "1rem" }}
-        >
-          New meal
-        </h2>
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))",
-            gap: "0.85rem",
-          }}
-        >
-          <div>
-            <label className="field-label" htmlFor="meal-name">
-              Name
-            </label>
-            <input
-              id="meal-name"
-              className="input"
-              list="meal-name-suggestions"
-              placeholder="e.g. Saturday Lunch"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              required
-            />
-            <datalist id="meal-name-suggestions">
-              {MEAL_NAME_SUGGESTIONS.map((option) => (
-                <option key={option} value={option} />
-              ))}
-            </datalist>
-          </div>
-          <div>
-            <label className="field-label" htmlFor="meal-start">
-              Starts
-            </label>
-            <input
-              id="meal-start"
-              className="input"
-              type="datetime-local"
-              value={startsAt}
-              onChange={(e) => setStartsAt(e.target.value)}
-              required
-            />
-          </div>
-          <div>
-            <label className="field-label" htmlFor="meal-end">
-              Ends
-            </label>
-            <input
-              id="meal-end"
-              className="input"
-              type="datetime-local"
-              value={endsAt}
-              onChange={(e) => setEndsAt(e.target.value)}
-              required
-            />
-          </div>
-        </div>
-        <button
-          type="submit"
-          className="btn btn-primary"
-          style={{ width: "auto", marginTop: "1rem" }}
-          disabled={saving}
-        >
-          {saving ? "Creating…" : "Create meal"}
-        </button>
-      </form>
-
-      <div className="card" style={{ overflowX: "auto" }}>
-        <table
-          style={{
-            width: "100%",
-            borderCollapse: "collapse",
-            fontSize: "0.9rem",
-          }}
-        >
-          <thead>
-            <tr
-              style={{
-                textAlign: "left",
-                borderBottom: "1px solid var(--border)",
-              }}
+      <Card>
+        <CardHeader>
+          <CardTitle>New meal</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <form onSubmit={handleCreate} className="space-y-4">
+            <div className="grid gap-4 sm:grid-cols-3">
+              <div className="grid gap-1.5">
+                <Label htmlFor="meal-name">Name</Label>
+                <Input
+                  id="meal-name"
+                  list="meal-name-suggestions"
+                  placeholder="e.g. Saturday Lunch"
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                />
+                <datalist id="meal-name-suggestions">
+                  {MEAL_NAME_SUGGESTIONS.map((option) => (
+                    <option key={option} value={option} />
+                  ))}
+                </datalist>
+              </div>
+              <div className="grid gap-1.5">
+                <Label htmlFor="meal-start">Starts</Label>
+                <Input
+                  id="meal-start"
+                  type="datetime-local"
+                  value={startsAt}
+                  onChange={(e) => setStartsAt(e.target.value)}
+                />
+              </div>
+              <div className="grid gap-1.5">
+                <Label htmlFor="meal-end">Ends</Label>
+                <Input
+                  id="meal-end"
+                  type="datetime-local"
+                  value={endsAt}
+                  onChange={(e) => setEndsAt(e.target.value)}
+                />
+              </div>
+            </div>
+            <Button
+              type="submit"
+              loading={saving}
+              disabled={!name.trim() || !startsAt || !endsAt}
             >
-              <th style={{ ...cell, fontWeight: 600 }}>Meal</th>
-              <th style={{ ...cell, fontWeight: 600 }}>When</th>
-              <th style={{ ...cell, fontWeight: 600 }}>Served</th>
-              <th style={{ ...cell, fontWeight: 600 }}>Active</th>
-              <th style={cell} aria-label="Actions" />
-            </tr>
-          </thead>
-          <tbody>
+              {saving ? "Creating" : "Create meal"}
+            </Button>
+          </form>
+        </CardContent>
+      </Card>
+
+      <Card className="py-0">
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>Meal</TableHead>
+              <TableHead>When</TableHead>
+              <TableHead className="text-right">Served</TableHead>
+              <TableHead>Active</TableHead>
+              <TableHead className="w-0">
+                <span className="sr-only">Actions</span>
+              </TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
             {loading
-              ? <tr>
-                  <td colSpan={5} style={cell} className="muted">
-                    Loading…
-                  </td>
-                </tr>
+              ? <TableRowsSkeleton rows={3} columns={5} />
               : meals.length === 0
-                ? <tr>
-                    <td colSpan={5} style={cell} className="muted">
-                      No meals yet.
-                    </td>
-                  </tr>
+                ? <TableRow>
+                    <TableCell colSpan={5}>
+                      <EmptyState
+                        icon={Sandwich}
+                        title="No meals yet"
+                        description="Create the first meal above."
+                      />
+                    </TableCell>
+                  </TableRow>
                 : meals.map((meal) => (
-                    <tr
-                      key={meal._id}
-                      style={{ borderBottom: "1px solid var(--border)" }}
-                    >
-                      <td style={{ ...cell, fontWeight: 600 }}>{meal.name}</td>
-                      <td style={cell}>{formatWindow(meal)}</td>
-                      <td style={cell}>{meal.checkInCount || 0}</td>
-                      <td style={cell}>
-                        <input
-                          type="checkbox"
+                    <TableRow key={meal._id}>
+                      <TableCell className="font-medium">{meal.name}</TableCell>
+                      <TableCell className="whitespace-nowrap text-muted-foreground tabular-nums">
+                        {formatWindow(meal)}
+                      </TableCell>
+                      <TableCell className="text-right tabular-nums">
+                        {meal.checkInCount || 0}
+                      </TableCell>
+                      <TableCell>
+                        <Switch
+                          size="sm"
                           aria-label={`${meal.name} active`}
                           checked={meal.active}
-                          onChange={(e) => setActive(meal, e.target.checked)}
+                          onCheckedChange={(checked) =>
+                            setActive(meal, checked)
+                          }
                         />
-                      </td>
-                      <td style={{ ...cell, textAlign: "right" }}>
-                        <button
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <Button
                           type="button"
-                          className="btn btn-ghost"
-                          style={{ width: "auto" }}
+                          variant="ghost"
+                          size="sm"
                           disabled={meal.checkInCount > 0}
                           title={
                             meal.checkInCount > 0
-                              ? "Already served; deactivate it instead."
+                              ? "Already served. Deactivate it instead."
                               : undefined
                           }
-                          onClick={() => handleDelete(meal)}
+                          onClick={() => setDeleting(meal)}
                         >
                           Delete
-                        </button>
-                      </td>
-                    </tr>
+                        </Button>
+                      </TableCell>
+                    </TableRow>
                   ))}
-          </tbody>
-        </table>
-      </div>
+          </TableBody>
+        </Table>
+      </Card>
+
+      <AlertDialog
+        open={Boolean(deleting)}
+        onOpenChange={(open) => {
+          if (!open) setDeleting(null);
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete {deleting?.name}?</AlertDialogTitle>
+            <AlertDialogDescription>
+              The meal is removed from the check-in station. This cannot be
+              undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              variant="destructive"
+              onClick={() => handleDelete(deleting)}
+            >
+              Delete meal
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

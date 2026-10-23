@@ -140,6 +140,47 @@ Optional environment variables:
 | `EMAIL_RETRY_INTERVAL_MS` | `30000` | How often the retry worker looks for due emails |
 | `EMAIL_LOG_RETENTION_DAYS`| `90`    | How long outbox rows are kept                 |
 
+## Technical settings
+
+Admins can see and change the server's environment variables from
+Dashboard > Technical settings (`/dashboard/admin/system`). The registry of
+every variable (label, group, help, secret, editable, restart needed,
+validator) is `utils/systemConfig.js`.
+
+- **Storage:** values, including secrets, live only in the server's `.env`
+  file. There is no database copy or encryption. The page is write-only: it
+  reports Set/Not set and env/default/unset, never a value or secret hint.
+- **File path:** set `ENV_FILE_PATH` in the service environment before startup
+  to select another dotenv file; otherwise the server loads and edits
+  `path.resolve(process.cwd(), ".env")`. Set it before launching tests too:
+  tests use disposable files, never the deployment's `.env`.
+- **Saving:** the whole batch is validated before any write. Saves are serialized
+  within the server process, preserve unrelated lines and comments, and replace
+  the file atomically with its existing permissions (0600 for a new file).
+  Before replacement the current file is copied to `.env.previous` (or
+  `<ENV_FILE_PATH>.previous`), overwriting the prior backup. This backup contains
+  secrets too. Remove deletes the key's lines and unsets it in `process.env`;
+  a built-in default applies where available. Other changes update `process.env`
+  immediately. Manual edits take effect after a restart. Quoting follows the
+  installed dotenv parser: it does not unescape `\\` or `\"`, so the writer
+  chooses a quote delimiter that round-trips without added escapes. Values
+  that cannot round-trip are rejected before any write.
+- **Read-only:** `MONGODB_URI`, `PORT`, `NODE_ENV`, `JWT_SECRET`,
+  `JWT_EXPIRES_IN`, `SETUP_ADMIN`, `ALLOW_SELF_RESTART`, `CLIENT_ORIGIN`,
+  `TRUST_PROXY`. Change these on the server to avoid dashboard lockouts.
+- **Restart:** settings read only at startup (rate limits, Google credentials,
+  `EMAIL_RETRY_INTERVAL_MS`, `AUTO_ACCEPT_INTERVAL_MS`) are marked
+  `restartRequired`. With
+  `ALLOW_SELF_RESTART=true` the Restart button closes the HTTP server and exits
+  with code 0 so the service manager starts it again; this needs
+  `Restart=always` in the systemd unit. Without it the API answers `409` and
+  the change waits for a manual restart.
+- With more than one server instance, each instance picks up a saved value when
+  it restarts.
+- `CLIENT_ORIGIN` and `TRUST_PROXY` are read-only to prevent dashboard lockouts.
+  Email pacing (`EMAIL_MIN_INTERVAL_MS`) takes effect immediately; automatic
+  acceptance timing (`AUTO_ACCEPT_INTERVAL_MS`) needs a restart.
+
 ## Scripts
 
 | Command               | What it does                                  |
@@ -254,6 +295,9 @@ emailed on acceptance (or via "Forgot password").
 | POST   | `/api/admin/outbox/:id/cancel`  | admin     | Cancel a queued email                  |
 | GET    | `/api/admin/settings`           | admin     | Org settings (+ Google env status)     |
 | PATCH  | `/api/admin/settings`           | admin     | Update settings (Google toggle, `autoFlagApplications`, `features`, `branding`) |
+| GET    | `/api/admin/system-config`      | admin     | Technical settings: set/unset status and source only; no values are returned |
+| PATCH  | `/api/admin/system-config`      | admin     | Save `{ values: { KEY: "value" | null } }` (all validated first; `null` removes the key from `.env`) |
+| POST   | `/api/admin/system-config/restart` | admin  | Restart the service (`202`), only when `ALLOW_SELF_RESTART=true`, else `409`; 3 per minute |
 | PUT    | `/api/admin/branding/:slot`     | admin     | Upload `logo` / `logo-dark` / `favicon` (multipart `file`) |
 | DELETE | `/api/admin/branding/:slot`     | admin     | Remove that image (back to the server default) |
 | GET    | `/api/admin/stats`              | admin     | Application + event-day statistics (`?round=&status=`) |
@@ -421,6 +465,26 @@ Who counts as verified:
   `utils/applicationFlags.js` (rules) and `utils/resumeText.js` (reading).
 
 See [`../backend-tasks.md`](../backend-tasks.md) for the backlog.
+
+## Workshops
+
+All workshop routes return 404 when the workshops module is off. Attendee
+routes require authentication and an accepted application; admin routes require
+an admin. Capacity 0 means unlimited. Signups always use the caller's account.
+
+| Method | Route | Purpose |
+| --- | --- | --- |
+| GET | `/api/admin/workshops` | List all workshops, including drafts and cancellations |
+| POST | `/api/admin/workshops` | Create a workshop |
+| PATCH | `/api/admin/workshops/:id` | Edit; time or location changes email updated invites |
+| DELETE | `/api/admin/workshops/:id` | Delete if empty, otherwise soft-cancel and email cancellations |
+| GET | `/api/workshops` | Published, active workshops with spotsLeft (null = unlimited) and signedUp |
+| GET | `/api/workshops/mine` | Caller's published, active workshops in time order |
+| POST | `/api/workshops/:id/signup` | Reserve a seat; overlapping signups include a warning |
+| DELETE | `/api/workshops/:id/signup` | Cancel caller's signup, free the seat and email a cancellation |
+
+Calendar emails use stable workshop UIDs and increasing sequences. Organizer
+assignment, waitlists and subscription feeds are deferred.
 
 ## Hardware lab
 

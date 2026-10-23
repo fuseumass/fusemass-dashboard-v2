@@ -81,7 +81,6 @@ function LoginInner() {
   return (
     <AuthShell
       title="Log in"
-      subtitle="Continue your application"
       footer={
         <>
           Don&apos;t have an account?{" "}

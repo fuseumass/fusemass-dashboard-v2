@@ -14,6 +14,7 @@ import {
   Users,
   UsersRound,
   UtensilsCrossed,
+  Wrench,
 } from "lucide-react";
 
 // The single source of truth for dashboard navigation. The sidebar, the
@@ -55,6 +56,13 @@ export const NAV_ITEMS = [
     group: "me",
   },
   { href: "/dashboard/team", label: "Team", icon: UsersRound, group: "me" },
+  {
+    href: "/dashboard/workshops",
+    label: "Workshops",
+    icon: CalendarDays,
+    group: "me",
+    feature: "workshops",
+  },
   {
     href: "/dashboard/hardware",
     label: "Hardware lab",
@@ -142,6 +150,14 @@ export const NAV_ITEMS = [
     roles: ADMIN,
   },
   {
+    href: "/dashboard/admin/workshops",
+    label: "Workshops",
+    icon: CalendarDays,
+    group: "admin",
+    roles: ADMIN,
+    feature: "workshops",
+  },
+  {
     href: "/dashboard/admin/meals",
     label: "Meals",
     icon: UtensilsCrossed,
@@ -160,6 +176,13 @@ export const NAV_ITEMS = [
     href: "/dashboard/admin/settings",
     label: "Settings",
     icon: Settings,
+    group: "admin",
+    roles: ADMIN,
+  },
+  {
+    href: "/dashboard/admin/system",
+    label: "Technical settings",
+    icon: Wrench,
     group: "admin",
     roles: ADMIN,
   },

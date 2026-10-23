@@ -11,6 +11,7 @@ var routes = require("./helpers/routes");
 var Item = require("../schemas/hardwareItem");
 var Checkout = require("../schemas/hardwareCheckout");
 var Application = require("../schemas/application");
+var User = require("../schemas/user");
 var OrgSettings = require("../schemas/orgSettings");
 var settingsCache = require("../utils/orgSettingsCache");
 var mailer = require("../utils/mailer");
@@ -25,6 +26,9 @@ async function seed() {
   p.mod = await fixtures.createUser({ role: "moderator" });
   p.attendee = await fixtures.createUser({ name: "Borrower", checkedIn: true });
   p.other = await fixtures.createUser({ name: "Private borrower", checkedIn: true });
+  // Issue their check-in codes, as acceptance does (fixtures don't have one).
+  p.attendee.user.qrId = await User.ensureQrId(p.attendee.user._id);
+  p.other.user.qrId = await User.ensureQrId(p.other.user._id);
   for (var person of [p.attendee, p.other]) await Application.create({ applicant: person.user._id, name: person.user.name, status: "accepted" });
   p.item = await Item.create({ name: "Board", totalQty: 3, availableQty: 3, maxPerAttendee: 10 });
   return p;

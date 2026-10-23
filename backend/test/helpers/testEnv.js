@@ -6,6 +6,18 @@
 // process.env values) sees these as already present. Keeps tests self
 // contained: no real .env file or secrets required to run them.
 
+// Every test process gets its own dotenv path, including permission-matrix
+// requests. Never load or modify a developer's real .env, even if a test save
+// unexpectedly passes its guard.
+var fs = require("node:fs");
+var path = require("node:path");
+var testEnvDirectory = fs.mkdtempSync(path.join(require("node:os").tmpdir(), "dashboard-test-env-"));
+process.env.ENV_FILE_PATH = path.join(testEnvDirectory, ".env");
+fs.writeFileSync(process.env.ENV_FILE_PATH, "", { mode: 0o600 });
+process.on("exit", function cleanupTestEnv() {
+  fs.rmSync(testEnvDirectory, { recursive: true, force: true });
+});
+
 // Node's test runner runs each test file as its own process, often
 // concurrently. They all share one real local MongoDB server, so each file
 // needs its own database name — otherwise one file's dropDatabase()/seeding

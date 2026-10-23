@@ -51,6 +51,7 @@ var ROLES = ["none", "applicant", "moderator", "admin"];
 // "the guard lets it through" (any answer except 401, 403 or a crash; what the
 // handler does with an empty request is tested elsewhere).
 var LEVELS = {
+  accepted: { none: 401, applicant: 403, moderator: 403, admin: 403 },
   public: { none: "ok", applicant: "ok", moderator: "ok", admin: "ok" },
   authenticated: { none: 401, applicant: "ok", moderator: "ok", admin: "ok" },
   moderator: { none: 401, applicant: 403, moderator: "ok", admin: "ok" },
@@ -75,6 +76,14 @@ function row(method, path, level, options) {
 }
 
 var MATRIX = [
+  row("GET", "/api/workshops", "accepted"),
+  row("GET", "/api/workshops/mine", "accepted"),
+  row("POST", "/api/workshops/:id/signup", "accepted"),
+  row("DELETE", "/api/workshops/:id/signup", "accepted"),
+  row("GET", "/api/admin/workshops", "admin"),
+  row("POST", "/api/admin/workshops", "admin", { body: { title: "Workshop", startsAt: "2026-10-24T12:00:00Z", endsAt: "2026-10-24T13:00:00Z" } }),
+  row("PATCH", "/api/admin/workshops/:id", "admin"),
+  row("DELETE", "/api/admin/workshops/:id", "admin"),
   row("GET", "/api/hardware", "authenticated"),
   row("GET", "/api/hardware/mine", "authenticated"),
   row("GET", "/api/staff/hardware", "moderator"),
@@ -202,6 +211,9 @@ var MATRIX = [
   row("PATCH", "/api/admin/settings", "admin", { body: { publicApplications: true } }),
   row("GET", "/api/admin/auto-accept", "admin"),
   row("POST", "/api/admin/auto-accept/preview", "admin", { body: { domains: ["example.com"] } }),
+  row("GET", "/api/admin/system-config", "admin"),
+  row("PATCH", "/api/admin/system-config", "admin", { body: { values: { ORG_NAME: "Hacked" } } }),
+  row("POST", "/api/admin/system-config/restart", "admin"),
   row("GET", "/api/admin/meals", "admin"),
   row("POST", "/api/admin/meals", "admin", {
     body: { name: "Sneaky lunch", startsAt: "2026-10-24T12:00:00Z", endsAt: "2026-10-24T13:00:00Z" },

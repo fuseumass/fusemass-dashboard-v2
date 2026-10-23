@@ -1,5 +1,6 @@
 "use client";
 
+import { Sandwich } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import CheckInStation, {
@@ -7,6 +8,19 @@ import CheckInStation, {
   resultFromError,
   useStationLog,
 } from "@/components/CheckInStation";
+import EmptyState from "@/components/EmptyState";
+import PageHeader from "@/components/PageHeader";
+import { CardSkeleton } from "@/components/skeletons";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Card, CardContent } from "@/components/ui/card";
+import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { apiFetch } from "@/lib/api";
 import { useUser } from "@/lib/userContext";
 
@@ -71,55 +85,53 @@ export default function StaffMealCheckInPage() {
   }
 
   return (
-    <div>
-      <h1
-        style={{ fontSize: "1.5rem", fontWeight: 700, marginBottom: "0.25rem" }}
-      >
-        Meal check-in
-      </h1>
-      <p className="muted" style={{ marginBottom: "1.5rem" }}>
-        Scan attendees&apos; QR codes at the meal line.
-      </p>
+    <div className="mx-auto w-full max-w-2xl space-y-4">
+      <PageHeader
+        className="mb-2"
+        title="Meal check-in"
+        description="Scan attendees' QR codes at the meal line."
+      />
 
       {loadError
-        ? <div className="alert-error" style={{ marginBottom: "1rem" }}>
-            {loadError}
-          </div>
+        ? <Alert variant="destructive">
+            <AlertDescription>{loadError}</AlertDescription>
+          </Alert>
         : null}
 
       {loading
-        ? <p className="muted">Loading…</p>
+        ? <CardSkeleton lines={2} />
         : meals.length === 0
-          ? <div className="card" style={{ padding: "1.5rem" }}>
-              <p className="muted">
-                No active meals right now. An admin can set them up under Meals.
-              </p>
-            </div>
+          ? <Card>
+              <EmptyState
+                icon={Sandwich}
+                title="No active meals"
+                description="An admin can set meals up under Meals."
+              />
+            </Card>
           : <>
-              <div
-                className="card"
-                style={{ padding: "1.5rem", marginBottom: "1rem" }}
-              >
-                <label className="field-label" htmlFor="meal">
-                  Serving
-                </label>
-                <select
-                  id="meal"
-                  className="select"
-                  style={{ maxWidth: 420 }}
-                  value={mealId}
-                  onChange={(e) => {
-                    setMealId(e.target.value);
-                    log.clear();
-                  }}
-                >
-                  {meals.map((m) => (
-                    <option key={m._id} value={m._id}>
-                      {m.name} ({m.checkInCount || 0} served)
-                    </option>
-                  ))}
-                </select>
-              </div>
+              <Card>
+                <CardContent className="space-y-1.5">
+                  <Label htmlFor="meal">Serving</Label>
+                  <Select
+                    value={mealId}
+                    onValueChange={(value) => {
+                      setMealId(value);
+                      log.clear();
+                    }}
+                  >
+                    <SelectTrigger id="meal" className="h-10 w-full">
+                      <SelectValue placeholder="Pick a meal" />
+                    </SelectTrigger>
+                    <SelectContent position="popper">
+                      {meals.map((m) => (
+                        <SelectItem key={m._id} value={m._id}>
+                          {m.name} ({m.checkInCount || 0} served)
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </CardContent>
+              </Card>
 
               <CheckInStation
                 title={meal ? `Scan for ${meal.name}` : "Scan"}

@@ -472,6 +472,7 @@ export default function HardwareLab({ mode }) {
           </div>
           <CheckInStation
             title="Scan attendee QR"
+            submitLabel="Find attendee"
             onCode={(qrId) => run(() => lookup({ qrId }))}
             result={null}
           />
@@ -490,7 +491,7 @@ export default function HardwareLab({ mode }) {
               );
             }}
           >
-            <div className="space-y-2">
+            <div className="min-w-64 flex-1 space-y-2">
               <Label htmlFor="attendee-search">Attendee name or email</Label>
               <Input
                 id="attendee-search"
@@ -573,7 +574,13 @@ export default function HardwareLab({ mode }) {
               />
               <div className="space-y-2">
                 <Label htmlFor="checkout-item">Item</Label>
-                <Select value={selectedItem} onValueChange={setSelectedItem}>
+                {/* Keyed on the chosen item's stock so the trigger's label
+                    refreshes after a checkout or return. */}
+                <Select
+                  key={`${selectedItem}:${items.find((item) => item._id === selectedItem)?.availableQty ?? ""}`}
+                  value={selectedItem}
+                  onValueChange={setSelectedItem}
+                >
                   <SelectTrigger id="checkout-item">
                     <SelectValue placeholder="Select an item" />
                   </SelectTrigger>

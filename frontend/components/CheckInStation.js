@@ -3,6 +3,10 @@
 import { CircleAlert, CircleCheck, CircleX } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import QRScanner from "@/components/QRScanner";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { cn } from "@/lib/utils";
 
 // Shared pieces of the event-day scanning screens (first check-in and meals):
 // the camera + code box, the big result banner, and the per-device log.
@@ -23,12 +27,31 @@ function hasFinePointer() {
   );
 }
 
+// Result kinds: a solid fill for the banner (kiosk banners are the one place
+// DESIGN.md allows it), a text colour for the log, and an icon so the meaning
+// never rests on colour alone.
 const RESULT_STYLES = {
-  success: { color: "var(--success)", icon: CircleCheck },
-  duplicate: { color: "var(--warning)", icon: CircleAlert },
-  error: { color: "var(--destructive)", icon: CircleX },
+  success: {
+    banner: "bg-success text-success-foreground",
+    text: "text-success",
+    icon: CircleCheck,
+  },
+  duplicate: {
+    banner: "bg-warning text-warning-foreground",
+    text: "text-warning",
+    icon: CircleAlert,
+  },
+  error: {
+    banner: "bg-destructive text-white",
+    text: "text-destructive",
+    icon: CircleX,
+  },
 };
 
+/**
+ * @param {string|Date} value - A date.
+ * @returns {string} Local time like "9:41 AM", or "" when empty.
+ */
 export function formatTime(value) {
   return value
     ? new Date(value).toLocaleTimeString([], {
@@ -85,8 +108,14 @@ export function useStationLog() {
  * @param {function(string): Promise<void>} props.onCode - Called with each scanned/typed code.
  * @param {object|null} props.result - Last result to show; may carry an
  *   `action: { label, onClick }` button (e.g. "Force check-in").
+ * @returns {JSX.Element}
  */
-export default function CheckInStation({ title, onCode, result }) {
+export default function CheckInStation({
+  title,
+  onCode,
+  result,
+  submitLabel = "Check in",
+}) {
   const [code, setCode] = useState("");
   const inputRef = useRef(null);
   const busyRef = useRef(false);
@@ -129,45 +158,37 @@ export default function CheckInStation({ title, onCode, result }) {
   }
 
   return (
-    <div className="card" style={{ padding: "1.5rem", marginBottom: "1rem" }}>
-      <h2
-        style={{ fontSize: "1.05rem", fontWeight: 600, marginBottom: "1rem" }}
-      >
-        {title}
-      </h2>
+    <Card>
+      <CardHeader>
+        <CardTitle>{title}</CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        {result ? <ResultBanner result={result} /> : null}
 
-      <QRScanner onScan={onCode} />
+        <QRScanner onScan={onCode} />
 
-      <form
-        onSubmit={handleSubmit}
-        style={{ display: "flex", gap: "0.5rem", marginTop: "1rem" }}
-      >
-        <input
-          ref={inputRef}
-          className="input"
-          aria-label="Check-in code"
-          placeholder="Or scan with a USB scanner / paste the code"
-          autoComplete="off"
-          autoCapitalize="off"
-          spellCheck={false}
-          value={code}
-          onChange={handleChange}
-        />
-        <button
-          type="submit"
-          className="btn btn-ghost"
-          style={{ width: "auto", whiteSpace: "nowrap" }}
-          disabled={!code.trim()}
-        >
-          Check in
-        </button>
-      </form>
+        <form onSubmit={handleSubmit} className="flex gap-2">
+          <Input
+            ref={inputRef}
+            aria-label="Check-in code"
+            placeholder="Scan with a USB scanner or paste a code"
+            autoComplete="off"
+            autoCapitalize="off"
+            spellCheck={false}
+            value={code}
+            onChange={handleChange}
+            className="h-10 min-w-0 flex-1"
+          />
+          <Button type="submit" size="lg" disabled={!code.trim()}>
+            {submitLabel}
+          </Button>
+        </form>
 
-      {result ? <ResultBanner result={result} /> : null}
-      {result?.kind === "success" && result.popup?.length
-        ? <CheckInPopup key={result.id} rows={result.popup} />
-        : null}
-    </div>
+        {result?.kind === "success" && result.popup?.length
+          ? <CheckInPopup key={result.id} rows={result.popup} />
+          : null}
+      </CardContent>
+    </Card>
   );
 }
 
@@ -191,116 +212,71 @@ function CheckInPopup({ rows }) {
     <div
       aria-live="polite"
       onPointerDown={() => setOpen(false)}
-      style={{
-        position: "fixed",
-        inset: 0,
-        zIndex: 50,
-        display: "flex",
-        alignItems: "flex-start",
-        justifyContent: "center",
-        paddingTop: "12vh",
-        background: "var(--overlay)",
-      }}
+      className="fixed inset-0 z-50 flex items-start justify-center bg-overlay p-4 pt-[12vh]"
     >
       <div
-        className="card"
-        style={{
-          padding: "1.75rem 2rem",
-          minWidth: "min(420px, 92vw)",
-          maxWidth: "92vw",
-          borderTop: "6px solid var(--success)",
-        }}
+        // Stop taps inside the card from reaching the scrim.
+        onPointerDown={(e) => e.stopPropagation()}
+        className="w-full max-w-md rounded-xl border border-t-4 border-t-success bg-card p-6 text-card-foreground shadow-lg"
       >
-        <div
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: "0.5rem",
-            color: "var(--success)",
-            fontWeight: 700,
-            marginBottom: "1rem",
-          }}
-        >
-          <CircleCheck size={22} aria-hidden="true" />
+        <p className="mb-4 flex items-center gap-2 text-sm font-medium text-success">
+          <CircleCheck className="size-5" aria-hidden="true" />
           Checked in
-        </div>
-        <dl style={{ display: "grid", gap: "0.9rem", margin: 0 }}>
+        </p>
+        <dl className="grid gap-4">
           {rows.map((row) => (
             <div key={row.key}>
-              <dt className="muted" style={{ fontSize: "0.85rem" }}>
-                {row.label}
-              </dt>
-              <dd
-                style={{
-                  margin: 0,
-                  fontSize: "1.9rem",
-                  fontWeight: 700,
-                  lineHeight: 1.15,
-                  overflowWrap: "anywhere",
-                }}
-              >
+              <dt className="text-xs text-muted-foreground">{row.label}</dt>
+              <dd className="text-3xl leading-tight font-semibold tracking-tight wrap-anywhere">
                 {row.value}
               </dd>
             </div>
           ))}
         </dl>
-        <button
+        <Button
           type="button"
-          className="btn btn-primary"
-          style={{ marginTop: "1.25rem" }}
+          size="lg"
+          className="mt-6 w-full"
           onClick={() => setOpen(false)}
         >
           Done
-        </button>
+        </Button>
       </div>
     </div>
   );
 }
 
-// Big, color-coded outcome of the last scan, readable at arm's length.
+// Big, solid outcome of the last scan, readable at arm's length.
 function ResultBanner({ result }) {
   const style = RESULT_STYLES[result.kind];
+  const Icon = style.icon;
   return (
-    <div
+    <output
       aria-live="polite"
-      style={{
-        marginTop: "1rem",
-        padding: "1rem 1.25rem",
-        borderRadius: 10,
-        border: `2px solid ${style.color}`,
-        background: `color-mix(in srgb, ${style.color} 10%, transparent)`,
-      }}
+      className={cn("block space-y-1 rounded-xl p-4", style.banner)}
     >
-      <div style={{ fontSize: "1.2rem", fontWeight: 700, color: style.color }}>
-        <style.icon
-          size={22}
-          aria-hidden="true"
-          style={{ verticalAlign: "-4px" }}
-        />{" "}
+      <p className="flex items-center gap-2 text-xl leading-tight font-semibold">
+        <Icon className="size-6 shrink-0" aria-hidden="true" />
         {result.message}
-      </div>
+      </p>
       {result.attendee
-        ? <div style={{ marginTop: 4 }}>
-            <strong>{result.attendee.name}</strong>
-            <span className="muted"> · {result.attendee.email}</span>
-          </div>
+        ? <p className="text-base wrap-anywhere">
+            <span className="font-semibold">{result.attendee.name}</span>
+            <span className="opacity-80"> {result.attendee.email}</span>
+          </p>
         : null}
-      {result.warning
-        ? <div style={{ marginTop: 4, fontSize: "0.88rem" }}>
-            {result.warning}
-          </div>
-        : null}
+      {result.warning ? <p className="text-sm">{result.warning}</p> : null}
       {result.action
-        ? <button
+        ? <Button
             type="button"
-            className="btn btn-ghost"
-            style={{ width: "auto", marginTop: "0.6rem" }}
+            variant="outline"
+            className="mt-2 text-foreground"
             onClick={result.action.onClick}
           >
             {result.action.label}
-          </button>
+          </Button>
         : null}
-    </div>
+    </output>
   );
 }
 
@@ -308,52 +284,40 @@ function ResultBanner({ result }) {
  * Log of this device's recent check-ins.
  * @param {object} props
  * @param {Array<object>} props.recent - Entries from useStationLog().
+ * @returns {JSX.Element|null}
  */
 export function RecentScans({ recent }) {
   if (recent.length === 0) return null;
   return (
-    <div className="card" style={{ padding: "1.5rem" }}>
-      <h2
-        style={{
-          fontSize: "1.05rem",
-          fontWeight: 600,
-          marginBottom: "0.75rem",
-        }}
-      >
-        Recent on this device
-      </h2>
-      {recent.map((entry) => (
-        <div
-          key={entry.id}
-          style={{
-            display: "flex",
-            gap: "0.75rem",
-            padding: "0.4rem 0",
-            fontSize: "0.88rem",
-            borderBottom: "1px solid var(--border)",
-          }}
-        >
-          <span
-            style={{
-              color: RESULT_STYLES[entry.kind].color,
-              fontWeight: 700,
-              width: 14,
-            }}
-          >
-            {(() => {
-              const Icon = RESULT_STYLES[entry.kind].icon;
-              return <Icon size={14} aria-hidden="true" />;
-            })()}
-          </span>
-          <span className="muted" style={{ width: 70 }}>
-            {formatTime(entry.at)}
-          </span>
-          <span>
-            {entry.attendee ? `${entry.attendee.name}: ` : ""}
-            {entry.message}
-          </span>
-        </div>
-      ))}
-    </div>
+    <Card>
+      <CardHeader>
+        <CardTitle>Recent on this device</CardTitle>
+      </CardHeader>
+      <CardContent>
+        <ul className="divide-y text-sm">
+          {recent.map((entry) => {
+            const Icon = RESULT_STYLES[entry.kind].icon;
+            return (
+              <li key={entry.id} className="flex items-start gap-3 py-2">
+                <Icon
+                  className={cn(
+                    "mt-0.5 size-4 shrink-0",
+                    RESULT_STYLES[entry.kind].text,
+                  )}
+                  aria-hidden="true"
+                />
+                <span className="w-16 shrink-0 text-muted-foreground tabular-nums">
+                  {formatTime(entry.at)}
+                </span>
+                <span className="min-w-0 wrap-anywhere">
+                  {entry.attendee ? `${entry.attendee.name}: ` : ""}
+                  {entry.message}
+                </span>
+              </li>
+            );
+          })}
+        </ul>
+      </CardContent>
+    </Card>
   );
 }

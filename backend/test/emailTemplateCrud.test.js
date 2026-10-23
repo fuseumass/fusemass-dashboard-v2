@@ -52,6 +52,9 @@ test("B1: email template CRUD", async function emailTemplateCrud(t) {
         "hardware_reminder",
         "team_invite",
         "verify_email",
+        "workshop_signup",
+        "workshop_changed",
+        "workshop_cancelled",
       ].sort()
     );
   });

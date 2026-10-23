@@ -2,7 +2,35 @@
 
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
+import PageHeader from "@/components/PageHeader";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import {
+  AlertDialog,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Skeleton } from "@/components/ui/skeleton";
+import { Switch } from "@/components/ui/switch";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import { Textarea } from "@/components/ui/textarea";
 import { apiFetch } from "@/lib/api";
+import { notifySuccess } from "@/lib/notify";
 import { useUser } from "@/lib/userContext";
 
 const EMPTY_FORM = {
@@ -31,7 +59,7 @@ function formatWhen(item) {
     hour: "numeric",
     minute: "2-digit",
   });
-  return `${day} – ${end}`;
+  return `${day} to ${end}`;
 }
 
 // Admin-only: the event's run of show. Attendees get it by email, as a
@@ -46,6 +74,8 @@ export default function RunOfShowPage() {
   const [form, setForm] = useState(EMPTY_FORM);
   const [editingId, setEditingId] = useState(null);
   const [saving, setSaving] = useState(false);
+  const [deleting, setDeleting] = useState(null);
+  const [removing, setRemoving] = useState(false);
   const [error, setError] = useState("");
 
   const load = useCallback(() => {
@@ -104,6 +134,9 @@ export default function RunOfShowPage() {
           body: JSON.stringify(payload),
         },
       );
+      notifySuccess(
+        editingId ? "Schedule item updated." : "Schedule item added.",
+      );
       cancelEdit();
       await load();
     } catch (err) {
@@ -114,253 +147,228 @@ export default function RunOfShowPage() {
   }
 
   async function handleDelete(item) {
-    if (!window.confirm(`Remove ${item.title} from the run of show?`)) return;
+    if (removing) return;
+    setRemoving(true);
     setError("");
     try {
       await apiFetch(`/api/admin/schedule/${item._id}`, { method: "DELETE" });
       if (editingId === item._id) cancelEdit();
       setItems((list) => list.filter((i) => i._id !== item._id));
+      setDeleting(null);
+      notifySuccess("Schedule item removed.");
     } catch (err) {
       setError(err.message);
+      setDeleting(null);
+    } finally {
+      setRemoving(false);
     }
   }
 
-  const cell = { padding: "0.75rem 1rem", verticalAlign: "top" };
-
   return (
-    <div>
-      <h1
-        style={{ fontSize: "1.5rem", fontWeight: 700, marginBottom: "0.25rem" }}
-      >
-        Run of show
-      </h1>
-      <p className="muted" style={{ marginBottom: "1.5rem" }}>
-        The event schedule. Attendees get it as a calendar invite in their
-        &ldquo;You&apos;re checked in&rdquo; email. Meals are not added
-        automatically; list them here too if they should be on it. Items marked
-        public also appear on the hackathon website, through the public schedule
-        feed (<code>/api/public/schedule</code>, plus <code>schedule.ics</code>{" "}
-        for calendars); the rest stay private.
-      </p>
-
+    <div className="space-y-6">
+      <PageHeader
+        title="Run of show"
+        description="Attendees receive the schedule as a calendar invite when they check in. Add meals here too if they belong on the schedule. Published items also appear on the event website and public calendar feed; other items stay private."
+      />
       {error
-        ? <div className="alert-error" style={{ marginBottom: "1rem" }}>
-            {error}
-          </div>
-        : null}
-
-      <form
-        className="card"
-        style={{ padding: "1.5rem", marginBottom: "1.5rem" }}
-        onSubmit={handleSubmit}
-      >
-        <h2
-          style={{ fontSize: "1.05rem", fontWeight: 600, marginBottom: "1rem" }}
-        >
-          {editingId ? "Edit item" : "Add item"}
-        </h2>
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))",
-            gap: "0.85rem",
-          }}
-        >
-          <div>
-            <label className="field-label" htmlFor="ros-title">
-              Title
-            </label>
-            <input
-              id="ros-title"
-              className="input"
-              placeholder="e.g. Opening ceremony"
-              value={form.title}
-              onChange={(e) => setField("title", e.target.value)}
-              required
-            />
-          </div>
-          <div>
-            <label className="field-label" htmlFor="ros-start">
-              Starts
-            </label>
-            <input
-              id="ros-start"
-              className="input"
-              type="datetime-local"
-              value={form.startsAt}
-              onChange={(e) => setField("startsAt", e.target.value)}
-              required
-            />
-          </div>
-          <div>
-            <label className="field-label" htmlFor="ros-end">
-              Ends
-            </label>
-            <input
-              id="ros-end"
-              className="input"
-              type="datetime-local"
-              value={form.endsAt}
-              onChange={(e) => setField("endsAt", e.target.value)}
-              required
-            />
-          </div>
-          <div>
-            <label className="field-label" htmlFor="ros-location">
-              Location (optional)
-            </label>
-            <input
-              id="ros-location"
-              className="input"
-              placeholder="e.g. Main hall"
-              value={form.location}
-              onChange={(e) => setField("location", e.target.value)}
-            />
-          </div>
-          <div style={{ gridColumn: "1 / -1" }}>
-            <label
-              style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}
-            >
-              <input
-                type="checkbox"
-                checked={form.published}
-                onChange={(e) => setField("published", e.target.checked)}
-              />
-              Show on the public schedule (the hackathon website)
-            </label>
-          </div>
-          <div style={{ gridColumn: "1 / -1" }}>
-            <label className="field-label" htmlFor="ros-description">
-              Description (optional)
-            </label>
-            <textarea
-              id="ros-description"
-              className="textarea"
-              rows={2}
-              value={form.description}
-              onChange={(e) => setField("description", e.target.value)}
-            />
-          </div>
-        </div>
-        <div style={{ display: "flex", gap: "0.5rem", marginTop: "1rem" }}>
-          <button
-            type="submit"
-            className="btn btn-primary"
-            style={{ width: "auto" }}
-            disabled={saving}
-          >
-            {saving
-              ? "Saving…"
-              : editingId
-                ? "Save changes"
-                : "Add to schedule"}
-          </button>
-          {editingId
-            ? <button
-                type="button"
-                className="btn btn-ghost"
-                style={{ width: "auto" }}
-                onClick={cancelEdit}
+        ? <Alert variant="destructive">
+            <AlertDescription className="flex flex-wrap items-center gap-2">
+              {error}
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  setError("");
+                  load();
+                }}
               >
-                Cancel
-              </button>
-            : null}
-        </div>
-      </form>
-
-      <div className="card" style={{ overflowX: "auto" }}>
-        <table
-          style={{
-            width: "100%",
-            borderCollapse: "collapse",
-            fontSize: "0.9rem",
-          }}
-        >
-          <thead>
-            <tr
-              style={{
-                textAlign: "left",
-                borderBottom: "1px solid var(--border)",
-              }}
-            >
-              <th style={{ ...cell, fontWeight: 600 }}>When</th>
-              <th style={{ ...cell, fontWeight: 600 }}>What</th>
-              <th style={{ ...cell, fontWeight: 600 }}>Where</th>
-              <th style={cell} aria-label="Actions" />
-            </tr>
-          </thead>
-          <tbody>
+                Retry loading
+              </Button>
+            </AlertDescription>
+          </Alert>
+        : null}
+      <Card>
+        <CardHeader>
+          <CardTitle>{editingId ? "Edit item" : "Add item"}</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <form onSubmit={handleSubmit} className="space-y-4">
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div className="space-y-1.5">
+                <Label htmlFor="ros-title">Title</Label>
+                <Input
+                  id="ros-title"
+                  placeholder="e.g. Opening ceremony"
+                  value={form.title}
+                  onChange={(e) => setField("title", e.target.value)}
+                  required
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="ros-location">Location (optional)</Label>
+                <Input
+                  id="ros-location"
+                  placeholder="e.g. Main hall"
+                  value={form.location}
+                  onChange={(e) => setField("location", e.target.value)}
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="ros-start">Starts</Label>
+                <Input
+                  id="ros-start"
+                  type="datetime-local"
+                  value={form.startsAt}
+                  onChange={(e) => setField("startsAt", e.target.value)}
+                  required
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="ros-end">Ends</Label>
+                <Input
+                  id="ros-end"
+                  type="datetime-local"
+                  value={form.endsAt}
+                  onChange={(e) => setField("endsAt", e.target.value)}
+                  required
+                />
+              </div>
+              <div className="flex items-center gap-2 sm:col-span-2">
+                <Switch
+                  id="ros-published"
+                  checked={form.published}
+                  onCheckedChange={(value) => setField("published", value)}
+                />
+                <Label htmlFor="ros-published">
+                  Show on the public schedule (the event website)
+                </Label>
+              </div>
+              <div className="space-y-1.5 sm:col-span-2">
+                <Label htmlFor="ros-description">Description (optional)</Label>
+                <Textarea
+                  id="ros-description"
+                  rows={2}
+                  value={form.description}
+                  onChange={(e) => setField("description", e.target.value)}
+                />
+              </div>
+            </div>
+            <div className="flex gap-2">
+              <Button type="submit" loading={saving}>
+                {editingId ? "Save changes" : "Add to schedule"}
+              </Button>
+              {editingId
+                ? <Button
+                    type="button"
+                    variant="outline"
+                    onClick={cancelEdit}
+                    disabled={saving}
+                  >
+                    Cancel
+                  </Button>
+                : null}
+            </div>
+          </form>
+        </CardContent>
+      </Card>
+      <div className="overflow-hidden rounded-xl border bg-card">
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>When</TableHead>
+              <TableHead>What</TableHead>
+              <TableHead>Where</TableHead>
+              <TableHead className="text-right">Actions</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
             {loading
-              ? <tr>
-                  <td colSpan={4} style={cell} className="muted">
-                    Loading…
-                  </td>
-                </tr>
+              ? <TableRow>
+                  <TableCell colSpan={4}>
+                    <Skeleton className="h-10 w-full" />
+                    <span className="sr-only">Loading schedule</span>
+                  </TableCell>
+                </TableRow>
               : items.length === 0
-                ? <tr>
-                    <td colSpan={4} style={cell} className="muted">
-                      Nothing scheduled yet.
-                    </td>
-                  </tr>
-                : items.map((item) => (
-                    <tr
-                      key={item._id}
-                      style={{ borderBottom: "1px solid var(--border)" }}
+                ? <TableRow>
+                    <TableCell
+                      colSpan={4}
+                      className="py-8 text-center text-muted-foreground"
                     >
-                      <td style={{ ...cell, whiteSpace: "nowrap" }}>
+                      Nothing scheduled yet. Add the first item above.
+                    </TableCell>
+                  </TableRow>
+                : items.map((item) => (
+                    <TableRow key={item._id}>
+                      <TableCell className="align-top whitespace-nowrap tabular-nums">
                         {formatWhen(item)}
-                      </td>
-                      <td style={cell}>
-                        <div style={{ fontWeight: 600 }}>
+                      </TableCell>
+                      <TableCell className="min-w-48 align-top">
+                        <div className="flex items-center gap-2 font-medium">
                           {item.title}
                           {item.published
-                            ? <span
-                                className="chip"
-                                style={{ marginLeft: 8, fontWeight: 400 }}
-                              >
-                                Public
-                              </span>
+                            ? <Badge variant="secondary">Public</Badge>
                             : null}
                         </div>
                         {item.description
-                          ? <div
-                              className="muted"
-                              style={{ fontSize: "0.82rem" }}
-                            >
+                          ? <p className="text-xs whitespace-pre-wrap text-muted-foreground">
                               {item.description}
-                            </div>
+                            </p>
                           : null}
-                      </td>
-                      <td style={cell}>{item.location}</td>
-                      <td
-                        style={{
-                          ...cell,
-                          textAlign: "right",
-                          whiteSpace: "nowrap",
-                        }}
-                      >
-                        <button
+                      </TableCell>
+                      <TableCell className="align-top">
+                        {item.location}
+                      </TableCell>
+                      <TableCell className="text-right align-top whitespace-nowrap">
+                        <Button
                           type="button"
-                          className="btn btn-ghost"
-                          style={{ width: "auto", marginRight: 6 }}
+                          variant="ghost"
+                          size="sm"
+                          disabled={saving || removing}
                           onClick={() => startEdit(item)}
                         >
                           Edit
-                        </button>
-                        <button
+                        </Button>
+                        <Button
                           type="button"
-                          className="btn btn-ghost"
-                          style={{ width: "auto" }}
-                          onClick={() => handleDelete(item)}
+                          variant="destructive"
+                          size="sm"
+                          disabled={saving || removing}
+                          onClick={() => setDeleting(item)}
                         >
                           Delete
-                        </button>
-                      </td>
-                    </tr>
+                        </Button>
+                      </TableCell>
+                    </TableRow>
                   ))}
-          </tbody>
-        </table>
+          </TableBody>
+        </Table>
       </div>
+      <AlertDialog
+        open={Boolean(deleting)}
+        onOpenChange={(open) => {
+          if (!open && !removing) setDeleting(null);
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Remove schedule item?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Remove {deleting?.title} from the run of show?
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={removing}>Cancel</AlertDialogCancel>
+            <Button
+              variant="destructive"
+              loading={removing}
+              onClick={() => handleDelete(deleting)}
+            >
+              Remove item
+            </Button>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

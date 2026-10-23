@@ -296,6 +296,11 @@ serving.
 ## Workshops
 
 ### F17. Workshops for attendees
+- [x] Scoped delivery: browse published workshops with host, time, place and
+      spots left; sign up/cancel with pending states and overlap warnings;
+      My workshops section ordered by time, accepted-applicant explanation.
+      Day filtering, optimistic updates, calendar download/Google links,
+      detail pages, announcements, attendance and raffles remain deferred.
 - [ ] `/dashboard/workshops`: browse published workshops (time, host,
       location, spots left), filter by day; sign up / cancel with optimistic
       UI and a clear "Full" / "Waitlisted" state; overlap warning.
@@ -344,10 +349,10 @@ Visible only to `workshop_organizer`s for **their** workshops (plus admins).
 - **Depends on:** B17, B20, B21, F13 (kiosk layout for Present mode).
 
 ### F19. Admin workshop management
-- [ ] `/dashboard/admin/workshops`: `DataTable` + create/edit `Dialog` (title,
+- [x] `/dashboard/admin/workshops`: `DataTable` + create/edit `Dialog` (title,
       host, location, time, capacity, published, raffle on/off);
       cancel-workshop flow that warns how many people will be notified.
-- [ ] Assign organizers: user search (`Command`) → add/remove. **Moderators
+- [ ] Deferred with B17: assign organizers: user search (`Command`) → add/remove. **Moderators
       and admins can be assigned as-is**; for an applicant, offer to make them
       a `workshop_organizer` first; judges can't be picked. Assigned mods and
       admins see the workshop under "Organize" too.

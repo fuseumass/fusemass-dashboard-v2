@@ -256,17 +256,17 @@ workshops, judging, raffles. The old dashboard had this; we should too.
 ## Workshops
 
 ### B18. Workshop model + admin CRUD
-- [ ] `schemas/workshop.js`: `title`, `description`, `host` (speaker name),
+- [x] `schemas/workshop.js`: `title`, `description`, `host` (speaker name),
       `location`, `startsAt`, `endsAt`, `capacity` (0 = unlimited),
       `signupCount` (kept in step with B19), `organizers: [User]`,
       `published` (hidden from attendees until true), `raffleEnabled`.
-- [ ] Admin CRUD at `/api/admin/workshops` (`isAdmin`), the same pattern as
+- [x] Admin CRUD at `/api/admin/workshops` (`isAdmin`), the same pattern as
       `/api/admin/meals` and `/api/admin/schedule`.
-- [ ] Attendee list: `GET /api/workshops` (published only, accepted
+- [x] Attendee list: `GET /api/workshops` (published only, accepted
       applicants), each with `spotsLeft` and whether the caller is signed up.
-- [ ] Changing `startsAt`/`endsAt` of a workshop with sign-ups triggers updated
+- [x] Changing `startsAt`/`endsAt` of a workshop with sign-ups triggers updated
       calendar invites (B19).
-- [ ] Deleting a workshop with sign-ups: soft-cancel instead (`cancelled:
+- [x] Deleting a workshop with sign-ups: soft-cancel instead (`cancelled:
       true`), email the sign-ups and send calendar cancellations. Same reasoning
       as meals, which can't be deleted once served.
 - **Depends on:** B17. **Related:** F17, F19.
@@ -274,20 +274,20 @@ workshops, judging, raffles. The old dashboard had this; we should too.
 ### B19. Workshop sign-up, my workshops, calendar invites
 Attendees pick and manage the workshops they're signed up for, and each one
 lands in their calendar.
-- [ ] `schemas/workshopSignup.js`: `user`, `workshop`, `createdAt`; unique
+- [x] `schemas/workshopSignup.js`: `user`, `workshop`, `createdAt`; unique
       index on (user, workshop).
-- [ ] `POST /api/workshops/:id/signup` / `DELETE` (cancel). Only accepted
+- [x] `POST /api/workshops/:id/signup` / `DELETE` (cancel). Only accepted
       applicants. Ignore any user id in the body; always act on `req.user`.
-- [ ] **Capacity must hold under concurrency:** take a seat with
+- [x] **Capacity must hold under concurrency:** take a seat with
       `Workshop.findOneAndUpdate({ _id, $or: [{ capacity: 0 }, { $expr: { $lt: ["$signupCount", "$capacity"] } }] }, { $inc: { signupCount: 1 } })`,
       then create the sign-up. Roll the counter back if the unique index says
       they were already signed up. Cancelling decrements.
 - [ ] Optional waitlist: when full, join a waitlist; on cancellation promote
       the first waiter and email them.
-- [ ] Warn (don't block) when a sign-up overlaps another of the user's
+- [x] Warn (don't block) when a sign-up overlaps another of the user's
       workshops.
-- [ ] `GET /api/workshops/mine`: the caller's workshops, ordered by time.
-- [ ] **Calendar invite per sign-up**, using `utils/calendar.js` from
+- [x] `GET /api/workshops/mine`: the caller's workshops, ordered by time.
+- [x] **Calendar invite per sign-up**, using `utils/calendar.js` from
       `feature/qr-checkin`. Give each event a stable `UID`
       (`workshop-<id>@<website host>`) and a `SEQUENCE` that goes up on every
       change, so calendars update the existing entry instead of adding a
@@ -306,6 +306,10 @@ lands in their calendar.
   duplicate RSVPs (no unique index). Its un-RSVP crashed when there was no
   RSVP (`find_by(...).destroy` on nil).
 - **Depends on:** B18. **Related:** F17, T9.
+
+
+Implementation scope: B17 organizer assignment and views, optional waitlist and
+per-user calendar subscription feed are deferred. The organizers field is reserved.
 
 ### B20. Workshop announcements feed (files + posts)
 A chat-style announcement channel per workshop. Organizers post slides,
