@@ -120,8 +120,8 @@ Individual unit tracking and the optional reserve/request queue are deferred.
 | Printed judging forms (`paper_judging`) | 🟡 printable table signs only | B24c |
 | Judging results + CSV | 📋 (the 2025 app never computed results) | B24g |
 | **2025 judging:** two-step desk → table check-in | 📋 | B24c |
-| **2025 judging:** calibration rounds + judge bias | 📋 | B24d |
-| **2025 judging:** time-slotted assignments + verifier | 📋 | B24a, B24e |
+| **2025 judging:** calibration rounds + judge bias | 🟡 pure bias formula ported and tested; calibration flow pending | B24d |
+| **2025 judging:** time-slotted assignments + verifier | 🟡 pure generator/verifier ported and tested; API integration pending | B24a, B24e |
 | **2025 judging:** one-at-a-time scoring, skip, rejudge, assignment sheet | 📋 | B24f |
 | **2025 judging:** progress board ("leaderboard") | 📋 | B24g |
 
