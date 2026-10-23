@@ -46,7 +46,7 @@ export default function CommandMenu({ groups }) {
         aria-label="Go to page"
       >
         <Search aria-hidden="true" />
-        <span className="max-sm:hidden">Go to…</span>
+        <span className="max-sm:hidden">Go to page</span>
         <kbd className="ml-auto text-xs max-sm:hidden">Ctrl K</kbd>
       </Button>
       <CommandDialog

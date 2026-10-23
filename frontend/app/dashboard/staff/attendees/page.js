@@ -4,8 +4,25 @@ import { KeyRound, QrCode, Search, UserCheck } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { formatTime } from "@/components/CheckInStation";
+import PageHeader from "@/components/PageHeader";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Separator } from "@/components/ui/separator";
 import { apiFetch } from "@/lib/api";
+import { notifySuccess } from "@/lib/notify";
 import { useUser } from "@/lib/userContext";
+
+const STATUS_WORDS = {
+  none: "Has not applied",
+  draft: "Draft",
+  pending: "Pending",
+  accepted: "Accepted",
+  rejected: "Rejected",
+  waitlisted: "Waitlisted",
+};
 
 // Attendee help (moderators + admins): look someone up by email, then resend
 // their QR code email, send them an account setup / password reset link, or
@@ -18,7 +35,6 @@ export default function AttendeeHelpPage() {
   const [email, setEmail] = useState("");
   const [attendee, setAttendee] = useState(null);
   const [error, setError] = useState("");
-  const [notice, setNotice] = useState("");
   const [busy, setBusy] = useState("");
   const [reason, setReason] = useState("");
 
@@ -30,7 +46,6 @@ export default function AttendeeHelpPage() {
 
   async function run(action, fn) {
     setError("");
-    setNotice("");
     setBusy(action);
     try {
       await fn();
@@ -61,7 +76,7 @@ export default function AttendeeHelpPage() {
         method: "POST",
         body: JSON.stringify({ email: attendee.email }),
       });
-      setNotice(`QR code email sent to ${attendee.email}.`);
+      notifySuccess(`QR code email sent to ${attendee.email}.`);
     });
   }
 
@@ -72,10 +87,10 @@ export default function AttendeeHelpPage() {
         body: JSON.stringify({ email: attendee.email }),
       });
       setAttendee(data.attendee);
-      setNotice(
+      notifySuccess(
         data.kind === "setup"
-          ? `Account setup link sent to ${attendee.email} (works for 7 days).`
-          : `Password reset link sent to ${attendee.email} (works for 1 hour).`,
+          ? `Account setup link sent to ${attendee.email}. It works for 7 days.`
+          : `Password reset link sent to ${attendee.email}. It works for 1 hour.`,
       );
     });
   }
@@ -96,7 +111,7 @@ export default function AttendeeHelpPage() {
         checkedIn: true,
         checkedInAt: data.checkIn?.checkedInAt || new Date().toISOString(),
       }));
-      setNotice(
+      notifySuccess(
         data.forced
           ? `${attendee.name} is checked in (forced).`
           : `${attendee.name} is checked in.`,
@@ -105,175 +120,136 @@ export default function AttendeeHelpPage() {
   }
 
   const accepted = attendee?.applicationStatus === "accepted";
+  const statusWord = attendee
+    ? STATUS_WORDS[attendee.applicationStatus] || attendee.applicationStatus
+    : "";
 
   return (
-    <div>
-      <h1
-        style={{ fontSize: "1.5rem", fontWeight: 700, marginBottom: "0.25rem" }}
-      >
-        Attendee help
-      </h1>
-      <p className="muted" style={{ marginBottom: "1.25rem" }}>
-        Find someone by email to resend their QR code, send them a way into
-        their account, or check them in by hand.
-      </p>
+    <div className="mx-auto w-full max-w-2xl">
+      <PageHeader
+        title="Attendee help"
+        description="Find someone by email to resend their QR code, send a way into their account, or check them in by hand."
+      />
 
-      <form
-        onSubmit={lookUp}
-        className="card"
-        style={{
-          padding: "1.25rem",
-          display: "flex",
-          gap: "0.5rem",
-          marginBottom: "1rem",
-          flexWrap: "wrap",
-        }}
-      >
-        <input
-          className="input"
-          type="email"
-          aria-label="Attendee email"
-          placeholder="attendee@example.com"
-          value={email}
-          onChange={(e) => setEmail(e.target.value)}
-          required
-          style={{ flex: "1 1 240px" }}
-        />
-        <button
-          type="submit"
-          className="btn btn-primary"
-          style={{ width: "auto", gap: "0.4rem" }}
-          disabled={busy === "lookup" || !email.trim()}
-        >
-          <Search size={16} aria-hidden="true" />
-          {busy === "lookup" ? "Looking up…" : "Look up"}
-        </button>
-      </form>
-
-      {error
-        ? <div
-            className="alert-error"
-            role="alert"
-            style={{ marginBottom: "1rem" }}
+      <div className="space-y-4">
+        <form onSubmit={lookUp} className="flex flex-wrap gap-2">
+          <Input
+            type="email"
+            required
+            aria-label="Attendee email"
+            placeholder="attendee@example.com"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            className="min-w-48 flex-1"
+          />
+          <Button
+            type="submit"
+            loading={busy === "lookup"}
+            disabled={!email.trim()}
           >
-            {error}
-          </div>
-        : null}
-      {notice
-        ? <div className="alert-success" style={{ marginBottom: "1rem" }}>
-            {notice}
-          </div>
-        : null}
+            <Search aria-hidden="true" />
+            {busy === "lookup" ? "Looking up" : "Look up"}
+          </Button>
+        </form>
 
-      {attendee
-        ? <div className="card" style={{ padding: "1.25rem 1.5rem" }}>
-            <h2 style={{ fontSize: "1.15rem", fontWeight: 700 }}>
-              {attendee.name}
-            </h2>
-            <p className="muted" style={{ marginBottom: "0.75rem" }}>
-              {attendee.email}
-            </p>
-            <dl
-              style={{
-                display: "grid",
-                gridTemplateColumns: "max-content 1fr",
-                gap: "0.35rem 1rem",
-                margin: "0 0 1.25rem",
-              }}
-            >
-              <dt className="muted">Application</dt>
-              <dd style={{ margin: 0, fontWeight: 600 }}>
-                {attendee.applicationStatus === "none"
-                  ? "Hasn't applied"
-                  : attendee.applicationStatus}
-              </dd>
-              <dt className="muted">Checked in</dt>
-              <dd style={{ margin: 0 }}>
-                {attendee.checkedIn
-                  ? `Yes, at ${formatTime(attendee.checkedInAt)}`
-                  : "Not yet"}
-              </dd>
-              <dt className="muted">Account</dt>
-              <dd style={{ margin: 0 }}>
-                {attendee.accountReady
-                  ? "Can sign in"
-                  : "No password yet (applied without an account)"}
-              </dd>
-            </dl>
+        {error
+          ? <Alert variant="destructive">
+              <AlertDescription>{error}</AlertDescription>
+            </Alert>
+          : null}
 
-            <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
-              <button
-                type="button"
-                className="btn btn-ghost"
-                style={{ width: "auto", gap: "0.4rem" }}
-                disabled={!accepted || busy === "qr"}
-                title={
-                  accepted
-                    ? undefined
-                    : "Only accepted applicants have a QR code"
-                }
-                onClick={resendQr}
-              >
-                <QrCode size={16} aria-hidden="true" />
-                {busy === "qr" ? "Sending…" : "Resend QR code email"}
-              </button>
-              <button
-                type="button"
-                className="btn btn-ghost"
-                style={{ width: "auto", gap: "0.4rem" }}
-                disabled={busy === "link"}
-                onClick={sendAccountLink}
-              >
-                <KeyRound size={16} aria-hidden="true" />
-                {busy === "link"
-                  ? "Sending…"
-                  : attendee.accountReady
-                    ? "Send password reset link"
-                    : "Send account setup link"}
-              </button>
-            </div>
+        {attendee
+          ? <Card>
+              <CardHeader>
+                <CardTitle className="text-lg">{attendee.name}</CardTitle>
+                <p className="text-sm text-muted-foreground">
+                  {attendee.email}
+                </p>
+              </CardHeader>
+              <CardContent className="space-y-5">
+                <dl className="grid grid-cols-[max-content_1fr] gap-x-6 gap-y-1.5 text-sm">
+                  <dt className="text-muted-foreground">Application</dt>
+                  <dd className="font-medium">{statusWord}</dd>
+                  <dt className="text-muted-foreground">Checked in</dt>
+                  <dd className="tabular-nums">
+                    {attendee.checkedIn
+                      ? `Yes, at ${formatTime(attendee.checkedInAt)}`
+                      : "Not yet"}
+                  </dd>
+                  <dt className="text-muted-foreground">Account</dt>
+                  <dd>
+                    {attendee.accountReady
+                      ? "Can sign in"
+                      : "No password yet (applied without an account)"}
+                  </dd>
+                </dl>
 
-            {attendee.checkedIn
-              ? null
-              : <form
-                  onSubmit={forceCheckIn}
-                  style={{
-                    marginTop: "1.25rem",
-                    paddingTop: "1rem",
-                    borderTop: "1px solid var(--border)",
-                  }}
-                >
-                  <label className="field-label" htmlFor="force-reason">
-                    {accepted
-                      ? "Check them in by hand (note why, e.g. lost their QR code)"
-                      : `Force check-in: their application is ${attendee.applicationStatus === "none" ? "missing" : attendee.applicationStatus}, so note why`}
-                  </label>
-                  <div
-                    style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap" }}
+                <div className="flex flex-wrap gap-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    disabled={!accepted}
+                    loading={busy === "qr"}
+                    title={
+                      accepted
+                        ? undefined
+                        : "Only accepted applicants have a QR code"
+                    }
+                    onClick={resendQr}
                   >
-                    <input
-                      id="force-reason"
-                      className="input"
-                      value={reason}
-                      onChange={(e) => setReason(e.target.value)}
-                      placeholder="Reason (at least 3 characters)"
-                      minLength={3}
-                      required
-                      style={{ flex: "1 1 240px" }}
-                    />
-                    <button
-                      type="submit"
-                      className="btn btn-primary"
-                      style={{ width: "auto", gap: "0.4rem" }}
-                      disabled={busy === "checkin" || reason.trim().length < 3}
-                    >
-                      <UserCheck size={16} aria-hidden="true" />
-                      {busy === "checkin" ? "Checking in…" : "Check in"}
-                    </button>
-                  </div>
-                </form>}
-          </div>
-        : null}
+                    <QrCode aria-hidden="true" />
+                    {busy === "qr" ? "Sending" : "Resend QR code email"}
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    loading={busy === "link"}
+                    onClick={sendAccountLink}
+                  >
+                    <KeyRound aria-hidden="true" />
+                    {busy === "link"
+                      ? "Sending"
+                      : attendee.accountReady
+                        ? "Send password reset link"
+                        : "Send account setup link"}
+                  </Button>
+                </div>
+
+                {attendee.checkedIn
+                  ? null
+                  : <>
+                      <Separator />
+                      <form onSubmit={forceCheckIn} className="space-y-1.5">
+                        <Label htmlFor="force-reason" className="leading-snug">
+                          {accepted
+                            ? "Check in by hand. Note why, for example a lost QR code."
+                            : `Their application is ${attendee.applicationStatus === "none" ? "missing" : statusWord.toLowerCase()}. Note why you are checking them in.`}
+                        </Label>
+                        <div className="flex flex-wrap gap-2">
+                          <Input
+                            id="force-reason"
+                            required
+                            minLength={3}
+                            value={reason}
+                            onChange={(e) => setReason(e.target.value)}
+                            placeholder="Reason (at least 3 characters)"
+                            className="min-w-48 flex-1"
+                          />
+                          <Button
+                            type="submit"
+                            loading={busy === "checkin"}
+                            disabled={reason.trim().length < 3}
+                          >
+                            <UserCheck aria-hidden="true" />
+                            {busy === "checkin" ? "Checking in" : "Check in"}
+                          </Button>
+                        </div>
+                      </form>
+                    </>}
+              </CardContent>
+            </Card>
+          : null}
+      </div>
     </div>
   );
 }

@@ -4,6 +4,8 @@ import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { Suspense, useState } from "react";
 import AuthShell from "@/components/AuthShell";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Button } from "@/components/ui/button";
 import { apiFetch } from "@/lib/api";
 
 export default function UnsubscribePage() {
@@ -43,54 +45,46 @@ function UnsubscribeInner() {
   }
 
   return (
-    <AuthShell title="Unsubscribe" subtitle="Stop getting announcement emails">
+    <AuthShell
+      title="Unsubscribe"
+      footer={
+        <Link href="/login" className="font-medium text-link hover:underline">
+          Open the dashboard
+        </Link>
+      }
+    >
       {done
-        ? <div className="alert-success">
-            You're unsubscribed from announcement emails. You'll still get
-            emails about your application, check-in and account.
-          </div>
+        ? <Alert variant="success">
+            <AlertDescription>
+              You are unsubscribed from announcement emails. You will still get
+              emails about your application, check-in and account.
+            </AlertDescription>
+          </Alert>
         : !userId || !token
-          ? <div className="alert-error" role="alert">
-              This unsubscribe link is incomplete. Use the link from the email.
-            </div>
-          : <div
-              style={{
-                display: "flex",
-                flexDirection: "column",
-                gap: "0.9rem",
-              }}
-            >
-              <p className="muted" style={{ fontSize: "0.9rem" }}>
-                You'll stop getting news and reminders. Emails about your
+          ? <Alert variant="destructive">
+              <AlertDescription>
+                This unsubscribe link is incomplete. Use the link from the
+                email.
+              </AlertDescription>
+            </Alert>
+          : <div className="flex flex-col gap-4">
+              <p className="text-sm text-muted-foreground">
+                You will stop getting news and reminders. Emails about your
                 application, check-in and account will keep coming.
               </p>
               {error
-                ? <div className="alert-error" role="alert">
-                    {error}
-                  </div>
+                ? <Alert variant="destructive">
+                    <AlertDescription>{error}</AlertDescription>
+                  </Alert>
                 : null}
-              <button
+              <Button
                 type="button"
-                className="btn btn-primary"
-                disabled={submitting}
+                loading={submitting}
                 onClick={handleUnsubscribe}
               >
-                {submitting ? "Unsubscribing…" : "Unsubscribe"}
-              </button>
+                {submitting ? "Unsubscribing" : "Unsubscribe"}
+              </Button>
             </div>}
-
-      <p
-        className="muted"
-        style={{
-          textAlign: "center",
-          marginTop: "1.25rem",
-          fontSize: "0.9rem",
-        }}
-      >
-        <Link href="/login" className="link">
-          Go to the dashboard
-        </Link>
-      </p>
     </AuthShell>
   );
 }

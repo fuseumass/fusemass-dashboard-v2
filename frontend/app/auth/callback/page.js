@@ -34,7 +34,7 @@ function CallbackInner() {
     <AuthShell title="Signing you in">
       <output className="flex items-center gap-2 text-sm text-muted-foreground">
         <Loader2 className="size-4 animate-spin" aria-hidden="true" />
-        One moment.
+        Redirecting to your dashboard
       </output>
     </AuthShell>
   );
