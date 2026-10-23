@@ -625,7 +625,8 @@ function sourceOf(item, overrides) {
 }
 
 /**
- * The page model: every setting with its source, never with secret values.
+ * The page model: every setting with its source and whether it is set.
+ * Write-only: no value (secret or not) is ever returned.
  * @returns {Promise<{groups: Array<string>, settings: Array<object>, selfRestart: boolean}>}
  */
 function describeAll() {
@@ -653,13 +654,8 @@ function describeAll() {
           source: item.editable ? sourceOf(item, overrides) : isSet ? "env" : item.defaultValue !== undefined ? "default" : "unset",
           isSet: isSet,
         };
-        if (item.secret) {
-          if (item.editable && isSet && current.length >= 12) {
-            out.hint = current.slice(-4);
-          }
-        } else {
-          out.value = overrides[item.key] && item.editable && current !== undefined ? current : isSet ? current : item.defaultValue !== undefined ? item.defaultValue : "";
-        }
+        // Write-only: the page learns whether a value is set and where it
+        // comes from, never the value itself (secret or not).
         return out;
       });
       return { groups: GROUPS.slice(), settings: settings, selfRestart: selfRestartAllowed() };

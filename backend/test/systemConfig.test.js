@@ -83,7 +83,10 @@ test("Technical settings", async function technicalSettings(t) {
 
     var org = find(res.body, "ORG_NAME");
     assert.equal(org.source, "env");
-    assert.equal(org.value, "Test Org");
+    assert.equal(org.isSet, true);
+    // Write-only: no value comes back, secret or not.
+    assert.equal(org.value, undefined);
+    assert.equal(res.text.indexOf("Test Org"), -1);
 
     ["MONGODB_URI", "PORT", "JWT_SECRET", "SETUP_ADMIN", "NODE_ENV"].forEach(function readOnly(key) {
       assert.equal(find(res.body, key).editable, false, key);
@@ -124,7 +127,8 @@ test("Technical settings", async function technicalSettings(t) {
     assert.equal(find(res.body, "ORG_NAME").source, "dashboard");
 
     var again = await call("get", URL_PATH, admin);
-    assert.equal(find(again.body, "ORG_NAME").value, "Dashboard Org");
+    assert.equal(find(again.body, "ORG_NAME").value, undefined);
+    assert.equal(again.text.indexOf("Dashboard Org"), -1, "the saved value is never shown");
 
     var reset = await call("patch", URL_PATH, admin).send({ values: { ORG_NAME: null } });
     assert.equal(reset.status, 200);
@@ -154,7 +158,7 @@ test("Technical settings", async function technicalSettings(t) {
     var list = await call("get", URL_PATH, admin);
     var entry = find(list.body, "GOOGLE_CLIENT_SECRET");
     assert.equal(entry.isSet, true);
-    assert.equal(entry.hint, plain.slice(-4));
+    assert.equal(entry.hint, undefined, "not even the last characters");
     assert.equal(entry.value, undefined);
     assert.equal(list.text.indexOf(plain), -1);
 
@@ -352,7 +356,8 @@ test("config unit: page model redacts secrets and preserves empty overrides", as
   var model = await systemConfig.describeAll();
   assert.equal(JSON.stringify(model).includes(process.env.SMTP_PASS), false);
   assert.equal(find(model, "SMTP_PASS").value, undefined);
-  assert.equal(find(model, "SMTP_PASS").hint, "6789");
-  assert.equal(find(model, "ORG_NAME").value, "");
+  assert.equal(find(model, "SMTP_PASS").hint, undefined);
+  assert.equal(find(model, "ORG_NAME").value, undefined);
+  assert.equal(find(model, "ORG_NAME").isSet, false);
   assert.equal(find(model, "ORG_NAME").source, "dashboard");
 });

@@ -26,7 +26,7 @@ const SOURCE_TAGS = {
  * @param {object} props.setting - One entry of GET /api/admin/system-config.
  * @param {string|undefined} props.draft - Unsaved text, if the field was touched.
  * @param {boolean} props.resetPending - Marked to go back to the .env value on save.
- * @param {boolean} props.replacing - A secret whose replace field is open.
+ * @param {boolean} props.replacing - The field for a new value is open.
  * @param {string} props.error - Server validation message for this key.
  * @param {boolean} props.disabled - Locked while saving or restarting.
  * @param {object} props.on - { change(key, text), reset(key), undoReset(key), startReplace(key), cancelReplace(key) }.
@@ -43,10 +43,7 @@ export default function SystemSettingRow({
 }) {
   const id = `sys-${setting.key}`;
   const tag = SOURCE_TAGS[setting.source] || SOURCE_TAGS.unset;
-  const changed =
-    resetPending ||
-    (draft !== undefined &&
-      (setting.secret ? draft !== "" : draft !== (setting.value ?? "")));
+  const changed = resetPending || (draft !== undefined && draft !== "");
 
   return (
     <div className="grid gap-3 py-4 first:pt-0 last:pb-0 md:grid-cols-[minmax(0,1fr)_minmax(0,24rem)] md:gap-6">
@@ -114,16 +111,11 @@ export default function SystemSettingRow({
   );
 }
 
+// The page is write-only: it shows whether a value is set, never the value.
 function ReadOnly({ id, setting }) {
-  let text;
-  if (setting.secret || !setting.isSet) {
-    text = setting.isSet ? "Set on the server" : "Not set on the server";
-  } else {
-    text = setting.value;
-  }
   return (
-    <p id={id} className="break-all text-sm">
-      {text}
+    <p id={id} className="text-sm">
+      {setting.isSet ? "Set on the server" : "Not set on the server"}
     </p>
   );
 }
@@ -138,83 +130,72 @@ function Control({
   disabled,
   on,
 }) {
-  if (setting.secret) {
-    if (!replacing) {
-      return (
-        <div className="flex flex-wrap items-center gap-2">
-          <span id={id} className="text-sm">
-            {setting.isSet
-              ? `Set${setting.hint ? `, ends in ${setting.hint}` : ""}`
-              : "Not set"}
-          </span>
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            disabled={disabled || resetPending}
-            onClick={() => on.startReplace(setting.key)}
-          >
-            {setting.isSet ? "Replace" : "Set value"}
-          </Button>
-        </div>
-      );
-    }
+  if (!replacing) {
     return (
-      <div className="flex gap-2">
-        <Input
-          id={id}
-          type="password"
-          autoComplete="new-password"
-          placeholder="Enter the new value"
-          value={draft ?? ""}
-          aria-invalid={Boolean(error)}
-          disabled={disabled}
-          onChange={(e) => on.change(setting.key, e.target.value)}
-        />
+      <div className="flex flex-wrap items-center gap-2">
+        <span id={id} className="text-sm">
+          {resetPending
+            ? "Goes back to the .env value on save"
+            : setting.isSet
+              ? "Set"
+              : "Not set"}
+        </span>
         <Button
           type="button"
-          variant="ghost"
-          disabled={disabled}
-          onClick={() => on.cancelReplace(setting.key)}
+          variant="outline"
+          size="sm"
+          disabled={disabled || resetPending}
+          onClick={() => on.startReplace(setting.key)}
         >
-          Cancel
+          {setting.isSet ? "Replace" : "Set value"}
         </Button>
       </div>
     );
   }
 
-  const shown = resetPending ? "" : (draft ?? setting.value ?? "");
-
-  if (setting.type === "boolean") {
-    return (
-      <Select
-        value={shown}
-        disabled={disabled || resetPending}
-        onValueChange={(v) => on.change(setting.key, v)}
-      >
-        <SelectTrigger id={id} className="w-full" aria-invalid={Boolean(error)}>
-          <SelectValue placeholder="Choose" />
-        </SelectTrigger>
-        <SelectContent>
-          <SelectItem value="true">true</SelectItem>
-          <SelectItem value="false">false</SelectItem>
-        </SelectContent>
-      </Select>
-    );
-  }
+  const field =
+    setting.type === "boolean"
+      ? <Select
+          value={draft ?? ""}
+          disabled={disabled}
+          onValueChange={(v) => on.change(setting.key, v)}
+        >
+          <SelectTrigger
+            id={id}
+            className="w-full"
+            aria-invalid={Boolean(error)}
+          >
+            <SelectValue placeholder="Choose" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="true">true</SelectItem>
+            <SelectItem value="false">false</SelectItem>
+          </SelectContent>
+        </Select>
+      : <Input
+          id={id}
+          type={setting.secret ? "password" : "text"}
+          inputMode={setting.type === "number" ? "numeric" : undefined}
+          autoComplete={setting.secret ? "new-password" : "off"}
+          spellCheck={false}
+          placeholder="Enter the new value"
+          value={draft ?? ""}
+          aria-invalid={Boolean(error)}
+          disabled={disabled}
+          onChange={(e) => on.change(setting.key, e.target.value)}
+        />;
 
   return (
-    <Input
-      id={id}
-      type="text"
-      inputMode={setting.type === "number" ? "numeric" : undefined}
-      autoComplete="off"
-      spellCheck={false}
-      value={shown}
-      placeholder={resetPending ? "Back to the .env value on save" : undefined}
-      aria-invalid={Boolean(error)}
-      disabled={disabled || resetPending}
-      onChange={(e) => on.change(setting.key, e.target.value)}
-    />
+    <div className="flex gap-2">
+      {field}
+      <Button
+        type="button"
+        variant="ghost"
+        disabled={disabled}
+        onClick={() => on.cancelReplace(setting.key)}
+      >
+        Cancel
+      </Button>
+    </div>
   );
 }

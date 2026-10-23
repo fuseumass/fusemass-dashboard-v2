@@ -136,7 +136,7 @@ export default function SystemSettingsPage() {
         out[s.key] = null;
       } else if (drafts[s.key] !== undefined) {
         const draft = drafts[s.key];
-        if (s.secret ? draft !== "" : draft !== (s.value ?? "")) {
+        if (draft !== "") {
           out[s.key] = draft;
         }
       }
@@ -405,7 +405,7 @@ export default function SystemSettingsPage() {
                   <p className="font-mono text-xs text-muted-foreground md:text-sm">
                     {name}
                   </p>
-                  <p className="break-all text-sm">{value || "Not set"}</p>
+                  <p className="text-sm">{value ? "Set" : "Not set"}</p>
                 </div>
               ))}
             </CardContent>
