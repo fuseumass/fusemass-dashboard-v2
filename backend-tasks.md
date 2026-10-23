@@ -561,23 +561,25 @@ parallel**; then B24b → B24c → B24d/B24e → B24f → B24g → B24h; B24i la
 Each is one PR, behind the `judging` feature flag (B25) until B24i.
 
 ### B24a. Port the algorithms as pure modules (do first)
-- [ ] Copy `generateJudgingAssignments` + `AssignmentGenerator` +
+- [x] Copy `generateJudgingAssignments` + `AssignmentGenerator` +
       `AssignmentVerifier` from `utils/judging-api.js` into
       `utils/judging/assignments.js`, converted to CommonJS, with no `console.log`
       noise (return a `log` array instead). `utils/judging-assignments.js` (the
       CLI/demo version) is not used by the app; don't port it.
-- [ ] **Characterization tests before changing anything** (T11): run it on the
+- [x] **Characterization tests before changing anything** (T11): run it on the
       2025 shape (the 5 regular rooms 33/49/33/40/22 + hardware room 31,
       ~160 teams, 3 judgings per team) with a seeded RNG, and snapshot the
       invariants.
-- [ ] Make randomness injectable (`rng` parameter, default `Math.random`) so
+- [x] Make randomness injectable (`rng` parameter, default `Math.random`) so
       tests are deterministic.
-- [ ] Then fix the verifier: after `_fixUnderJudgedProjects`, re-run **all**
+- [x] Then fix the verifier: after `_fixUnderJudgedProjects`, re-run **all**
       checks; place fixes only where the slot is free; fail loudly if it can't.
-- [ ] Extract the bias formula from `/update-bias-scores` into
+- [x] Extract the bias formula from `/update-bias-scores` into
       `utils/judging/bias.js` (`computeBias(tutorialScoresByJudge, rubric)` →
       `{ judgeId: { general, category } }`). Keep the formula identical so the
       2025 numbers can be reproduced.
+- Pure modules and algorithm tests complete; API/database wiring remains in later tasks.
+  Compact legacy queues are retained; `slots` preserves empty time slots.
 - **Depends on:** none. **Related:** T11.
 
 ### B24b. Rooms, projects and the Devpost import

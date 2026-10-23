@@ -143,18 +143,18 @@ for the frontend, wired into CI.
 Write the algorithm tests **before** changing the ported code (B24a): they
 pin down what the 2025 code does, then catch regressions when its bugs are
 fixed.
-- [ ] **Characterization (assignments):** with a seeded RNG, run the ported
+- [x] **Characterization (assignments):** with a seeded RNG, run the ported
       generator on the 2025 shape (regular rooms 33/49/33/40/22, hardware room
       31, ~160 projects, 3 judgings each) and on small shapes. Assert the
       invariants: every project judged exactly k times; no judge sees a
       project twice; no two judges at one table in the same slot; no two
       judges start at the same table; load within ±2; hardware projects only
       get hardware judges (separate pools).
-- [ ] **Verifier fix:** a hand-built case where the 2025
+- [x] **Verifier fix:** a hand-built case where the 2025
       `_fixUnderJudgedProjects` creates a slot clash. The old verifier reports
       success; the fixed one re-runs every check and fails (or places it
       correctly).
-- [ ] **Bias (pure):** a fixture of 3 judges × 3 calibration rounds computed by
+- [x] **Bias (pure):** a fixture of 3 judges × 3 calibration rounds computed by
       hand with the 2025 formula (judge's mean of the general criteria minus
       the mean of all judges' means, per round, averaged; category the same);
       a judge who scores everything +2 gets general bias +2; a judge with no
