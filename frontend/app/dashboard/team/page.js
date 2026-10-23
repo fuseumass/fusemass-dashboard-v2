@@ -1,16 +1,34 @@
 "use client";
 
-import {
-  Crown,
-  Link2,
-  LogOut,
-  Mail,
-  Pencil,
-  Trash2,
-  UserPlus,
-} from "lucide-react";
+import { Crown, Link2, LogOut, Mail, Pencil, UserMinus, UserPlus } from "lucide-react";
 import { useEffect, useState } from "react";
+import PageHeader from "@/components/PageHeader";
+import { CardSkeleton } from "@/components/skeletons";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Separator } from "@/components/ui/separator";
 import { apiFetch } from "@/lib/api";
+import { notifySuccess } from "@/lib/notify";
 import { useUser } from "@/lib/userContext";
 
 // The caller's hackathon team: start one, answer invites, invite teammates by
@@ -20,7 +38,6 @@ export default function TeamPage() {
   const user = useUser();
   const [data, setData] = useState(null);
   const [error, setError] = useState("");
-  const [notice, setNotice] = useState("");
   const [busy, setBusy] = useState("");
 
   useEffect(() => {
@@ -29,14 +46,15 @@ export default function TeamPage() {
       .catch((err) => setError(err.message));
   }, []);
 
+  // Runs one team request. `label` names it for the pending state; `done` is
+  // the toast on success. Resolves true when it worked.
   async function act(label, path, options, done) {
     setError("");
-    setNotice("");
     setBusy(label);
     try {
       const next = await apiFetch(path, options);
       setData(next);
-      if (done) setNotice(done);
+      if (done) notifySuccess(done);
       return true;
     } catch (err) {
       setError(err.message);
@@ -46,109 +64,79 @@ export default function TeamPage() {
     }
   }
 
-  if (!data && !error) return <p className="muted">Loading…</p>;
-
   const team = data?.team;
   const isLeader = team && String(team.leader?._id) === String(user._id);
 
   return (
-    <div>
-      <h1
-        style={{ fontSize: "1.5rem", fontWeight: 700, marginBottom: "0.25rem" }}
-      >
-        Team
-      </h1>
-      <p className="muted" style={{ marginBottom: "1.25rem" }}>
-        Teams of up to {data?.maxSize || 4}. Add your Devpost project link once
-        you&apos;ve submitted, so judges can match your project to your team.
-      </p>
+    <div className="mx-auto w-full max-w-2xl">
+      <PageHeader
+        title="Team"
+        description={`Teams of up to ${data?.maxSize || 4}. Add your Devpost link after you submit so judges can find your project.`}
+      />
 
-      {error
-        ? <div
-            className="alert-error"
-            role="alert"
-            style={{ marginBottom: "1rem" }}
-          >
-            {error}
-          </div>
-        : null}
-      {notice
-        ? <div className="alert-success" style={{ marginBottom: "1rem" }}>
-            {notice}
-          </div>
-        : null}
-
-      {data?.invites?.length
-        ? <Invites
-            invites={data.invites}
-            busy={busy}
-            act={act}
-            onTeam={Boolean(team)}
-          />
-        : null}
-
-      {team
-        ? <TeamCard
-            team={team}
-            isLeader={isLeader}
-            userId={user._id}
-            busy={busy}
-            act={act}
-          />
-        : data
-          ? <CreateTeam busy={busy} act={act} />
+      <div className="space-y-4">
+        {error
+          ? <Alert variant="destructive">
+              <AlertDescription>{error}</AlertDescription>
+            </Alert>
           : null}
+
+        {!data && !error ? <CardSkeleton lines={4} /> : null}
+
+        {data?.invites?.length
+          ? <Invites
+              invites={data.invites}
+              busy={busy}
+              act={act}
+              onTeam={Boolean(team)}
+            />
+          : null}
+
+        {team
+          ? <TeamCard
+              team={team}
+              isLeader={isLeader}
+              userId={user._id}
+              busy={busy}
+              act={act}
+            />
+          : data
+            ? <CreateTeam busy={busy} act={act} />
+            : null}
+      </div>
     </div>
   );
 }
 
 function Invites({ invites, busy, act, onTeam }) {
   return (
-    <div
-      className="card"
-      style={{ padding: "1.25rem 1.5rem", marginBottom: "1rem" }}
-    >
-      <h2
-        style={{
-          fontSize: "1.05rem",
-          fontWeight: 600,
-          marginBottom: "0.75rem",
-        }}
-      >
-        Invites for you
-      </h2>
-      {onTeam
-        ? <p
-            className="muted"
-            style={{ fontSize: "0.85rem", marginBottom: "0.5rem" }}
-          >
-            Leave your current team to accept one.
-          </p>
-        : null}
-      <div style={{ display: "grid", gap: "0.6rem" }}>
+    <Card>
+      <CardHeader>
+        <CardTitle>Invites for you</CardTitle>
+        {onTeam
+          ? <CardDescription>
+              Leave your current team to accept one.
+            </CardDescription>
+          : null}
+      </CardHeader>
+      <CardContent className="divide-y">
         {invites.map((inv) => (
           <div
             key={inv.teamId}
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: "0.5rem",
-              flexWrap: "wrap",
-            }}
+            className="flex flex-wrap items-center gap-2 py-3 first:pt-0 last:pb-0"
           >
-            <div style={{ flex: "1 1 220px" }}>
-              <strong>{inv.teamName}</strong>
-              <span className="muted">
-                {" "}
-                · {inv.members} member{inv.members === 1 ? "" : "s"}
-                {inv.invitedBy ? ` · invited by ${inv.invitedBy}` : ""}
-              </span>
+            <div className="min-w-48 flex-1">
+              <p className="text-sm font-medium">{inv.teamName}</p>
+              <p className="text-xs text-muted-foreground tabular-nums">
+                {inv.members} member{inv.members === 1 ? "" : "s"}
+                {inv.invitedBy ? `, invited by ${inv.invitedBy}` : ""}
+              </p>
             </div>
-            <button
+            <Button
               type="button"
-              className="btn btn-primary"
-              style={{ width: "auto" }}
-              disabled={onTeam || busy === `accept-${inv.teamId}`}
+              size="sm"
+              disabled={onTeam}
+              loading={busy === `accept-${inv.teamId}`}
               onClick={() =>
                 act(
                   `accept-${inv.teamId}`,
@@ -159,111 +147,115 @@ function Invites({ invites, busy, act, onTeam }) {
               }
             >
               Accept
-            </button>
-            <button
+            </Button>
+            <Button
               type="button"
-              className="btn btn-ghost"
-              style={{ width: "auto" }}
-              disabled={busy === `decline-${inv.teamId}`}
+              size="sm"
+              variant="outline"
+              loading={busy === `decline-${inv.teamId}`}
               onClick={() =>
                 act(
                   `decline-${inv.teamId}`,
                   `/api/teams/invites/${inv.teamId}/decline`,
-                  {
-                    method: "POST",
-                  },
+                  { method: "POST" },
                 )
               }
             >
               Decline
-            </button>
+            </Button>
           </div>
         ))}
-      </div>
-    </div>
+      </CardContent>
+    </Card>
   );
 }
 
 function CreateTeam({ busy, act }) {
   const [name, setName] = useState("");
   return (
-    <form
-      className="card"
-      style={{ padding: "1.25rem 1.5rem" }}
-      onSubmit={(e) => {
-        e.preventDefault();
-        act(
-          "create",
-          "/api/teams",
-          { method: "POST", body: JSON.stringify({ name }) },
-          "Team created. Invite your teammates below.",
-        );
-      }}
-    >
-      <h2
-        style={{ fontSize: "1.05rem", fontWeight: 600, marginBottom: "0.5rem" }}
-      >
-        Start a team
-      </h2>
-      <p
-        className="muted"
-        style={{ fontSize: "0.85rem", marginBottom: "0.75rem" }}
-      >
-        Or ask a teammate to invite your email, and accept it here.
-      </p>
-      <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
-        <input
-          className="input"
-          aria-label="Team name"
-          placeholder="Team name"
-          value={name}
-          maxLength={60}
-          onChange={(e) => setName(e.target.value)}
-          style={{ flex: "1 1 240px" }}
-          required
-        />
-        <button
-          type="submit"
-          className="btn btn-primary"
-          style={{ width: "auto" }}
-          disabled={busy === "create" || name.trim().length < 2}
+    <Card>
+      <CardHeader>
+        <CardTitle>Start a team</CardTitle>
+        <CardDescription>
+          Or ask a teammate to invite your email, then accept it here.
+        </CardDescription>
+      </CardHeader>
+      <CardContent>
+        <form
+          className="flex flex-wrap gap-2"
+          onSubmit={(e) => {
+            e.preventDefault();
+            act(
+              "create",
+              "/api/teams",
+              { method: "POST", body: JSON.stringify({ name }) },
+              "Team created. Invite your teammates below.",
+            );
+          }}
         >
-          {busy === "create" ? "Creating…" : "Create team"}
-        </button>
-      </div>
-    </form>
+          <Input
+            aria-label="Team name"
+            placeholder="Team name"
+            value={name}
+            maxLength={60}
+            onChange={(e) => setName(e.target.value)}
+            className="min-w-48 flex-1"
+          />
+          <Button
+            type="submit"
+            loading={busy === "create"}
+            disabled={name.trim().length < 2}
+          >
+            {busy === "create" ? "Creating" : "Create team"}
+          </Button>
+        </form>
+      </CardContent>
+    </Card>
+  );
+}
+
+// A confirm step for destructive team actions.
+function ConfirmDialog({ open, onOpenChange, title, description, action, onConfirm }) {
+  return (
+    <AlertDialog open={open} onOpenChange={onOpenChange}>
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle>{title}</AlertDialogTitle>
+          <AlertDialogDescription>{description}</AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel>Cancel</AlertDialogCancel>
+          <AlertDialogAction variant="destructive" onClick={onConfirm}>
+            {action}
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
   );
 }
 
 function TeamCard({ team, isLeader, userId, busy, act }) {
   const [inviteEmail, setInviteEmail] = useState("");
   const [devpost, setDevpost] = useState(team.devpostUrl || "");
+  const [renaming, setRenaming] = useState(false);
+  const [name, setName] = useState(team.name);
+  // Which confirmation is open: "leave" or a member to remove.
+  const [confirming, setConfirming] = useState(null);
+  const seats = team.maxSize - team.members.length - team.invites.length;
+
   // Show the saved (normalized) link after a save.
   useEffect(() => {
     setDevpost(team.devpostUrl || "");
   }, [team.devpostUrl]);
-  const [renaming, setRenaming] = useState(false);
-  const [name, setName] = useState(team.name);
-  const seats = team.maxSize - team.members.length - team.invites.length;
+
+  const lastMember = team.members.length === 1;
 
   return (
-    <div className="card" style={{ padding: "1.25rem 1.5rem" }}>
-      <div
-        style={{
-          display: "flex",
-          alignItems: "center",
-          gap: "0.5rem",
-          marginBottom: "1rem",
-        }}
-      >
+    <Card>
+      <CardHeader>
         {renaming
           ? <form
-              style={{
-                display: "flex",
-                gap: "0.5rem",
-                flex: 1,
-                flexWrap: "wrap",
-              }}
+              className="flex flex-wrap gap-2"
               onSubmit={async (e) => {
                 e.preventDefault();
                 if (
@@ -273,268 +265,260 @@ function TeamCard({ team, isLeader, userId, busy, act }) {
                     { method: "PATCH", body: JSON.stringify({ name }) },
                     "Team renamed.",
                   )
-                )
+                ) {
                   setRenaming(false);
+                }
               }}
             >
-              <input
-                className="input"
+              <Input
                 aria-label="New team name"
                 value={name}
                 maxLength={60}
                 onChange={(e) => setName(e.target.value)}
-                style={{ flex: "1 1 200px" }}
+                className="min-w-48 flex-1"
               />
-              <button
-                type="submit"
-                className="btn btn-primary"
-                style={{ width: "auto" }}
-                disabled={busy === "rename"}
-              >
+              <Button type="submit" loading={busy === "rename"}>
                 Save
-              </button>
-              <button
+              </Button>
+              <Button
                 type="button"
-                className="btn btn-ghost"
-                style={{ width: "auto" }}
+                variant="outline"
                 onClick={() => setRenaming(false)}
               >
                 Cancel
-              </button>
+              </Button>
             </form>
-          : <>
-              <h2 style={{ fontSize: "1.2rem", fontWeight: 700, flex: 1 }}>
-                {team.name}
-              </h2>
+          : <div className="flex items-center justify-between gap-2">
+              <CardTitle className="text-lg">{team.name}</CardTitle>
               {isLeader
-                ? <button
+                ? <Button
                     type="button"
-                    className="btn btn-ghost"
-                    style={{ width: "auto", gap: "0.35rem" }}
-                    onClick={() => setRenaming(true)}
-                  >
-                    <Pencil size={14} aria-hidden="true" /> Rename
-                  </button>
-                : null}
-            </>}
-      </div>
-
-      <h3 className="field-label">Members</h3>
-      <ul
-        style={{
-          listStyle: "none",
-          padding: 0,
-          margin: "0 0 1rem",
-          display: "grid",
-          gap: "0.4rem",
-        }}
-      >
-        {team.members.map((m) => {
-          const leader = String(m._id) === String(team.leader?._id);
-          return (
-            <li
-              key={m._id}
-              style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}
-            >
-              <span style={{ flex: 1 }}>
-                <strong>{m.name}</strong>{" "}
-                <span className="muted">{m.email}</span>
-                {leader
-                  ? <span
-                      className="muted"
-                      style={{ marginLeft: 6, fontSize: "0.8rem" }}
-                    >
-                      <Crown
-                        size={13}
-                        aria-hidden="true"
-                        style={{ verticalAlign: "-2px" }}
-                      />{" "}
-                      leader
-                    </span>
-                  : null}
-              </span>
-              {isLeader && String(m._id) !== String(userId)
-                ? <button
-                    type="button"
-                    className="btn btn-ghost"
-                    aria-label={`Remove ${m.name}`}
-                    style={{ width: "auto", padding: "0.25rem 0.5rem" }}
-                    disabled={busy === `remove-${m._id}`}
+                    variant="outline"
+                    size="sm"
                     onClick={() => {
-                      if (window.confirm(`Remove ${m.name} from the team?`)) {
-                        act(
-                          `remove-${m._id}`,
-                          `/api/teams/me/members/${m._id}`,
-                          { method: "DELETE" },
-                        );
-                      }
+                      setName(team.name);
+                      setRenaming(true);
                     }}
                   >
-                    <Trash2 size={14} aria-hidden="true" />
-                  </button>
+                    <Pencil aria-hidden="true" />
+                    Rename
+                  </Button>
                 : null}
-            </li>
-          );
-        })}
-      </ul>
+            </div>}
+      </CardHeader>
 
-      {team.invites.length
-        ? <>
-            <h3 className="field-label">Waiting to accept</h3>
-            <ul
-              style={{
-                listStyle: "none",
-                padding: 0,
-                margin: "0 0 1rem",
-                display: "grid",
-                gap: "0.4rem",
-              }}
-            >
-              {team.invites.map((inv) => (
+      <CardContent className="space-y-6">
+        <section className="space-y-2">
+          <h2 className="text-sm font-medium">Members</h2>
+          <ul className="divide-y rounded-lg border">
+            {team.members.map((m) => {
+              const leader = String(m._id) === String(team.leader?._id);
+              return (
                 <li
-                  key={inv.email}
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: "0.5rem",
-                  }}
+                  key={m._id}
+                  className="flex min-h-11 items-center gap-2 px-3 py-1.5"
                 >
-                  <Mail size={14} aria-hidden="true" className="muted" />
-                  <span style={{ flex: 1 }}>{inv.email}</span>
-                  <button
-                    type="button"
-                    className="btn btn-ghost"
-                    style={{ width: "auto", padding: "0.25rem 0.6rem" }}
-                    disabled={busy === `cancel-${inv.email}`}
-                    onClick={() =>
-                      act(
-                        `cancel-${inv.email}`,
-                        `/api/teams/me/invites/${encodeURIComponent(inv.email)}`,
-                        {
-                          method: "DELETE",
-                        },
-                      )
-                    }
-                  >
-                    Cancel
-                  </button>
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-sm font-medium">{m.name}</p>
+                    <p className="truncate text-xs text-muted-foreground">
+                      {m.email}
+                    </p>
+                  </div>
+                  {leader
+                    ? <Badge variant="secondary">
+                        <Crown aria-hidden="true" />
+                        Leader
+                      </Badge>
+                    : null}
+                  {isLeader && String(m._id) !== String(userId)
+                    ? <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon-sm"
+                        aria-label={`Remove ${m.name}`}
+                        loading={busy === `remove-${m._id}`}
+                        onClick={() => setConfirming({ remove: m })}
+                      >
+                        <UserMinus aria-hidden="true" />
+                      </Button>
+                    : null}
                 </li>
-              ))}
-            </ul>
-          </>
-        : null}
+              );
+            })}
+          </ul>
+        </section>
 
-      <form
-        style={{
-          display: "flex",
-          gap: "0.5rem",
-          flexWrap: "wrap",
-          marginBottom: "1.25rem",
-        }}
-        onSubmit={async (e) => {
-          e.preventDefault();
-          if (
-            await act(
-              "invite",
-              "/api/teams/me/invites",
-              { method: "POST", body: JSON.stringify({ email: inviteEmail }) },
-              `Invite sent to ${inviteEmail.trim()}.`,
-            )
-          ) {
-            setInviteEmail("");
-          }
-        }}
-      >
-        <input
-          className="input"
-          type="email"
-          aria-label="Teammate's email"
-          placeholder="teammate@example.com"
-          value={inviteEmail}
-          onChange={(e) => setInviteEmail(e.target.value)}
-          disabled={seats <= 0}
-          style={{ flex: "1 1 240px" }}
-          required
-        />
-        <button
-          type="submit"
-          className="btn btn-ghost"
-          style={{ width: "auto", gap: "0.4rem" }}
-          disabled={seats <= 0 || busy === "invite" || !inviteEmail.trim()}
-        >
-          <UserPlus size={16} aria-hidden="true" />
-          {seats <= 0
-            ? "Team is full"
-            : busy === "invite"
-              ? "Sending…"
-              : "Invite"}
-        </button>
-      </form>
-
-      <form
-        style={{ marginBottom: "1.25rem" }}
-        onSubmit={(e) => {
-          e.preventDefault();
-          act(
-            "devpost",
-            "/api/teams/me",
-            { method: "PATCH", body: JSON.stringify({ devpostUrl: devpost }) },
-            devpost.trim() ? "Devpost link saved." : "Devpost link removed.",
-          );
-        }}
-      >
-        <label className="field-label" htmlFor="devpost-url">
-          Devpost project link
-        </label>
-        <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
-          <input
-            id="devpost-url"
-            className="input"
-            placeholder="https://devpost.com/software/your-project"
-            value={devpost}
-            onChange={(e) => setDevpost(e.target.value)}
-            style={{ flex: "1 1 280px" }}
-          />
-          <button
-            type="submit"
-            className="btn btn-ghost"
-            style={{ width: "auto", gap: "0.4rem" }}
-            disabled={
-              busy === "devpost" || devpost.trim() === (team.devpostUrl || "")
-            }
-          >
-            <Link2 size={16} aria-hidden="true" /> Save link
-          </button>
-        </div>
-        {team.devpostUrl
-          ? <p className="muted" style={{ fontSize: "0.82rem", marginTop: 4 }}>
-              Saved:{" "}
-              <a
-                className="link"
-                href={team.devpostUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-              >
-                {team.devpostUrl}
-              </a>
-            </p>
+        {team.invites.length
+          ? <section className="space-y-2">
+              <h2 className="text-sm font-medium">Waiting to accept</h2>
+              <ul className="divide-y rounded-lg border">
+                {team.invites.map((inv) => (
+                  <li
+                    key={inv.email}
+                    className="flex min-h-11 items-center gap-2 px-3 py-1.5"
+                  >
+                    <Mail
+                      className="size-4 shrink-0 text-muted-foreground"
+                      aria-hidden="true"
+                    />
+                    <span className="min-w-0 flex-1 truncate text-sm">
+                      {inv.email}
+                    </span>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      loading={busy === `cancel-${inv.email}`}
+                      onClick={() =>
+                        act(
+                          `cancel-${inv.email}`,
+                          `/api/teams/me/invites/${encodeURIComponent(inv.email)}`,
+                          { method: "DELETE" },
+                        )
+                      }
+                    >
+                      Cancel invite
+                    </Button>
+                  </li>
+                ))}
+              </ul>
+            </section>
           : null}
-      </form>
 
-      <button
-        type="button"
-        className="btn btn-ghost"
-        style={{ width: "auto", gap: "0.4rem", color: "var(--destructive)" }}
-        disabled={busy === "leave"}
-        onClick={() => {
-          const last = team.members.length === 1;
-          if (
-            window.confirm(
-              last
-                ? "You're the last member: leaving deletes the team. Continue?"
-                : "Leave this team?",
-            )
-          ) {
+        <form
+          className="space-y-1.5"
+          onSubmit={async (e) => {
+            e.preventDefault();
+            if (
+              await act(
+                "invite",
+                "/api/teams/me/invites",
+                {
+                  method: "POST",
+                  body: JSON.stringify({ email: inviteEmail }),
+                },
+                `Invite sent to ${inviteEmail.trim()}.`,
+              )
+            ) {
+              setInviteEmail("");
+            }
+          }}
+        >
+          <Label htmlFor="invite-email">Invite a teammate</Label>
+          <div className="flex flex-wrap gap-2">
+            <Input
+              id="invite-email"
+              type="email"
+              placeholder="teammate@example.com"
+              value={inviteEmail}
+              onChange={(e) => setInviteEmail(e.target.value)}
+              disabled={seats <= 0}
+              className="min-w-48 flex-1"
+            />
+            <Button
+              type="submit"
+              variant="outline"
+              loading={busy === "invite"}
+              disabled={seats <= 0 || !inviteEmail.trim()}
+            >
+              <UserPlus aria-hidden="true" />
+              {seats <= 0 ? "Team is full" : "Send invite"}
+            </Button>
+          </div>
+        </form>
+
+        <Separator />
+
+        <form
+          className="space-y-1.5"
+          onSubmit={(e) => {
+            e.preventDefault();
+            act(
+              "devpost",
+              "/api/teams/me",
+              {
+                method: "PATCH",
+                body: JSON.stringify({ devpostUrl: devpost }),
+              },
+              devpost.trim() ? "Devpost link saved." : "Devpost link removed.",
+            );
+          }}
+        >
+          <Label htmlFor="devpost-url">Devpost project link</Label>
+          <div className="flex flex-wrap gap-2">
+            <Input
+              id="devpost-url"
+              placeholder="https://devpost.com/software/your-project"
+              value={devpost}
+              onChange={(e) => setDevpost(e.target.value)}
+              className="min-w-48 flex-1"
+            />
+            <Button
+              type="submit"
+              variant="outline"
+              loading={busy === "devpost"}
+              disabled={devpost.trim() === (team.devpostUrl || "")}
+            >
+              <Link2 aria-hidden="true" />
+              Save link
+            </Button>
+          </div>
+          {team.devpostUrl
+            ? <p className="text-xs text-muted-foreground wrap-anywhere">
+                Saved:{" "}
+                <a
+                  className="font-medium text-link hover:underline"
+                  href={team.devpostUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
+                  {team.devpostUrl}
+                </a>
+              </p>
+            : null}
+        </form>
+
+        <Separator />
+
+        <Button
+          type="button"
+          variant="destructive"
+          loading={busy === "leave"}
+          onClick={() => setConfirming({ leave: true })}
+        >
+          <LogOut aria-hidden="true" />
+          Leave team
+        </Button>
+      </CardContent>
+
+      <ConfirmDialog
+        open={Boolean(confirming)}
+        onOpenChange={(open) => {
+          if (!open) setConfirming(null);
+        }}
+        title={
+          confirming?.remove
+            ? `Remove ${confirming.remove.name}?`
+            : lastMember
+              ? "Leave and delete this team?"
+              : "Leave this team?"
+        }
+        description={
+          confirming?.remove
+            ? "They will lose access to the team. You can invite them again later."
+            : lastMember
+              ? "You are the last member, so leaving deletes the team."
+              : "You can join another team or be invited back."
+        }
+        action={confirming?.remove ? "Remove" : "Leave team"}
+        onConfirm={() => {
+          if (confirming?.remove) {
+            act(
+              `remove-${confirming.remove._id}`,
+              `/api/teams/me/members/${confirming.remove._id}`,
+              { method: "DELETE" },
+            );
+          } else {
             act(
               "leave",
               "/api/teams/me/leave",
@@ -543,9 +527,7 @@ function TeamCard({ team, isLeader, userId, busy, act }) {
             );
           }
         }}
-      >
-        <LogOut size={16} aria-hidden="true" /> Leave team
-      </button>
-    </div>
+      />
+    </Card>
   );
 }

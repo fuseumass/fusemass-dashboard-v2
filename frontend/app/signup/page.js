@@ -59,7 +59,6 @@ export default function SignupPage() {
   return (
     <AuthShell
       title="Create your account"
-      subtitle="Sign up to start your application"
       footer={
         <>
           Already have an account?{" "}

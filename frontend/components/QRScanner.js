@@ -1,6 +1,9 @@
 "use client";
 
+import { Camera } from "lucide-react";
 import { useEffect, useId, useRef, useState } from "react";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Button } from "@/components/ui/button";
 
 // After a code is handled, the same code is ignored for this long. The camera
 // sees one QR on many consecutive frames; without this, holding a phone up
@@ -113,37 +116,37 @@ export default function QRScanner({ onScan }) {
   }, []);
 
   return (
-    <div>
+    <div className="space-y-3">
       <div
         id={elementId}
-        style={{
-          width: "100%",
-          maxWidth: 420,
-          borderRadius: 10,
-          overflow: "hidden",
-          marginBottom: running ? "0.75rem" : 0,
-        }}
+        className="w-full max-w-md overflow-hidden rounded-lg empty:-mb-3"
       />
 
       {error
-        ? <div
-            className="alert-error"
-            role="alert"
-            style={{ marginBottom: "0.75rem" }}
-          >
-            {error}
-          </div>
+        ? <Alert variant="destructive">
+            <AlertDescription>{error}</AlertDescription>
+          </Alert>
         : null}
 
-      <button
+      <Button
         type="button"
-        className={running ? "btn btn-ghost" : "btn btn-primary"}
-        style={{ width: "auto" }}
-        disabled={starting}
+        size="lg"
+        variant={running ? "outline" : "default"}
+        className="max-sm:w-full"
+        loading={starting}
         onClick={running ? stopScanner : startScanner}
       >
-        {starting ? "Opening camera…" : running ? "Stop camera" : "Open camera"}
-      </button>
+        {starting ? (
+          "Opening camera"
+        ) : running ? (
+          "Stop camera"
+        ) : (
+          <>
+            <Camera aria-hidden="true" />
+            Open camera
+          </>
+        )}
+      </Button>
     </div>
   );
 }

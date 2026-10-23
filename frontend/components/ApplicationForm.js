@@ -5,14 +5,33 @@
 //     status), at /dashboard/application.
 //   - "public": applying without an account (admin setting), on the home
 //     page. Adds an email field, has no drafts, and can't edit afterwards.
+import { CircleCheck } from "lucide-react";
 import Link from "next/link";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useId, useState } from "react";
+import ApplicationStatusBadge from "@/components/ApplicationStatusBadge";
 import Autocomplete from "@/components/Autocomplete";
+import FileDropzone from "@/components/FileDropzone";
 import RichText, { plainText } from "@/components/RichText";
 import SignedLinkButton from "@/components/SignedLinkButton";
+import { FormSkeleton } from "@/components/skeletons";
 import TagAutocomplete from "@/components/TagAutocomplete";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Separator } from "@/components/ui/separator";
+import { Textarea } from "@/components/ui/textarea";
 import { apiFetch, apiUpload } from "@/lib/api";
 import { config } from "@/lib/config";
+import { cn } from "@/lib/utils";
 
 const TSHIRT_SIZES = ["XS", "S", "M", "L", "XL", "XXL", "XXXL"];
 const EDUCATION_LEVELS = [
@@ -30,6 +49,9 @@ const GENDERS = [
   "Prefer to self-describe",
   "Prefer not to say",
 ];
+
+// Sentinel for "no answer" in a Select, since Radix items can't be "".
+const NONE = "__none__";
 
 // Empty form shape.
 function emptyForm() {
@@ -58,20 +80,27 @@ function emptyForm() {
   };
 }
 
+/**
+ * The application form, in "account" or "public" mode (see top of file).
+ * @param {object} props - `{ mode: "account" | "public" }`.
+ * @returns {JSX.Element}
+ */
 export default function ApplicationForm({ mode = "account" }) {
   const isPublic = mode === "public";
+  const uid = useId();
   const [form, setForm] = useState(emptyForm());
+  const [resumeFile, setResumeFile] = useState(null);
   const [round, setRound] = useState(null);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
+  const [fieldErrors, setFieldErrors] = useState({});
   const [submittedStatus, setSubmittedStatus] = useState(null);
   // Public mode: the address a finished submission was sent from, and whether
   // that address already has an account (then they should log in instead).
   const [submittedEmail, setSubmittedEmail] = useState("");
   const [accountExists, setAccountExists] = useState(false);
-  const resumeRef = useRef(null);
 
   useEffect(() => {
     if (isPublic) {
@@ -120,8 +149,18 @@ export default function ApplicationForm({ mode = "account" }) {
       .finally(() => setLoading(false));
   }, [isPublic]);
 
+  // Editing a field clears its error.
+  function clearFieldError(key) {
+    setFieldErrors((current) => {
+      if (!current[key]) return current;
+      const next = { ...current };
+      delete next[key];
+      return next;
+    });
+  }
   function setField(key, value) {
     setForm((f) => ({ ...f, [key]: value }));
+    clearFieldError(key);
   }
   function setSocial(key, value) {
     setForm((f) => ({ ...f, socials: { ...f.socials, [key]: value } }));
@@ -131,25 +170,84 @@ export default function ApplicationForm({ mode = "account" }) {
   }
   function setAnswer(key, value) {
     setForm((f) => ({ ...f, answers: { ...f.answers, [key]: value } }));
+    clearFieldError(`q_${key}`);
+  }
+  function setResume(file) {
+    setResumeFile(file);
+    for (const key of Object.keys(fieldErrors)) {
+      if (key.startsWith("q_")) clearFieldError(key);
+    }
+  }
+
+  // Required-field checks for a final submit. Returns { fieldKey: message }.
+  function validate() {
+    const errors = {};
+    const required = round?.profileFields?.required || [];
+    const text = (v) => String(v ?? "").trim();
+    if (isPublic) {
+      if (!text(form.email)) {
+        errors.email = "Enter your email address.";
+      } else if (!text(form.email).includes("@")) {
+        errors.email = "Enter a valid email address.";
+      }
+    }
+    if (!text(form.name)) {
+      errors.name = "Enter your full name.";
+    }
+    for (const key of required) {
+      if (key === "programmingSkills" || key === "hardwareSkills") {
+        if (form[key].length === 0) errors[key] = "Add at least one skill.";
+      } else if (key in form && !text(form[key])) {
+        errors[key] = "This field is required.";
+      }
+    }
+    for (const field of round?.formConfig || []) {
+      if (!field.required) continue;
+      const answer = form.answers[field.key];
+      let missing = false;
+      if (field.type === "resume") {
+        missing = !resumeFile && (isPublic || !form.hasResume);
+      } else if (field.type === "checkbox") {
+        missing = !answer;
+      } else if (field.type === "multiselect") {
+        missing = !Array.isArray(answer) || answer.length === 0;
+      } else {
+        missing = !text(answer);
+      }
+      if (missing) {
+        errors[`q_${field.key}`] =
+          field.type === "checkbox"
+            ? "Tick this box to continue."
+            : "This field is required.";
+      }
+    }
+    return errors;
   }
 
   async function submit(status) {
     setError("");
     setSuccess("");
     setAccountExists(false);
+
+    if (status === "pending") {
+      const errors = validate();
+      setFieldErrors(errors);
+      if (Object.keys(errors).length > 0) {
+        setError("Fix the highlighted fields and submit again.");
+        requestAnimationFrame(() => {
+          const first = document.querySelector('[aria-invalid="true"]');
+          if (first) {
+            first.scrollIntoView({ block: "center", behavior: "smooth" });
+            first.focus({ preventScroll: true });
+          }
+        });
+        return;
+      }
+    } else {
+      setFieldErrors({});
+    }
+
     setSubmitting(true);
-
-    if (status === "pending" && !form.name.trim()) {
-      setError("Full name is required.");
-      setSubmitting(false);
-      return;
-    }
-    if (isPublic && !form.email.trim()) {
-      setError("Email is required.");
-      setSubmitting(false);
-      return;
-    }
-
     try {
       const fd = new FormData();
       fd.append("status", status);
@@ -172,9 +270,8 @@ export default function ApplicationForm({ mode = "account" }) {
       fd.append("hardwareSkills", JSON.stringify(form.hardwareSkills));
       fd.append("answers", JSON.stringify(form.answers));
 
-      const file = resumeRef.current?.files[0];
-      if (file) {
-        fd.append("resume", file);
+      if (resumeFile) {
+        fd.append("resume", resumeFile);
       }
 
       if (isPublic) {
@@ -186,9 +283,15 @@ export default function ApplicationForm({ mode = "account" }) {
 
       const data = await apiUpload("/api/applications", fd);
       setSubmittedStatus(data.application.status);
-      setField("hasResume", Boolean(data.application.hasResume));
+      setForm((f) => ({
+        ...f,
+        hasResume: Boolean(data.application.hasResume),
+      }));
+      setResumeFile(null);
       setSuccess(
-        status === "draft" ? "Draft saved." : "Application submitted!",
+        status === "draft"
+          ? "Draft saved. You can come back and finish later."
+          : "Application submitted. We will email you when there is a decision.",
       );
     } catch (err) {
       setError(err.message);
@@ -204,297 +307,283 @@ export default function ApplicationForm({ mode = "account" }) {
   }
 
   if (loading) {
-    return <p className="muted">Loading…</p>;
+    return <FormSkeleton fields={6} />;
   }
 
   if (isPublic && submittedEmail) {
     return (
-      <div className="card" style={{ padding: "1.5rem" }}>
-        <h1
-          style={{
-            fontSize: "1.4rem",
-            fontWeight: 700,
-            marginBottom: "0.5rem",
-          }}
-        >
-          Application received!
-        </h1>
-        <p>
-          Thanks for applying to {config.orgName}. We sent a confirmation to{" "}
-          <strong>{submittedEmail}</strong>.
-        </p>
-        <p className="muted" style={{ marginTop: "0.5rem" }}>
-          If you&apos;re accepted, we&apos;ll email you a link to set up your
-          account, where you&apos;ll find your status and check-in QR code.
-        </p>
-      </div>
+      <Alert variant="success" className="p-4">
+        <CircleCheck aria-hidden="true" />
+        <AlertTitle className="text-base">Application received</AlertTitle>
+        <AlertDescription className="space-y-2">
+          <p>
+            Thanks for applying to {config.orgName}. We sent a confirmation to{" "}
+            <span className="font-medium">{submittedEmail}</span>.
+          </p>
+          <p>
+            If you are accepted, we will email you a link to set up your
+            account. Your status and check-in QR code will be there.
+          </p>
+        </AlertDescription>
+      </Alert>
     );
   }
 
   if (!round) {
     return (
-      <div>
-        <h1
-          style={{
-            fontSize: "1.5rem",
-            fontWeight: 700,
-            marginBottom: "0.5rem",
-          }}
-        >
-          Application
-        </h1>
-        <div className="card" style={{ padding: "1.5rem" }}>
-          <p className="muted">
-            Applications aren&apos;t open right now. Check back soon.
-          </p>
-        </div>
+      <div className="space-y-4">
+        <h1 className="text-2xl font-semibold tracking-tight">Application</h1>
+        {error
+          ? <Alert variant="destructive">
+              <AlertDescription>{error}</AlertDescription>
+            </Alert>
+          : <Alert>
+              <AlertDescription>
+                Applications are not open right now. Check back later.
+              </AlertDescription>
+            </Alert>}
       </div>
     );
   }
 
   // A resume question in the round's custom form replaces the built-in one.
-  const resumeField = (round.formConfig || []).find((f) => f.type === "resume");
+  const resumeQuestion = (round.formConfig || []).find(
+    (f) => f.type === "resume",
+  );
   // The round's settings for built-in questions: which are required, and
   // replacement choices for the education and gender selects.
   const profileFields = round.profileFields || {};
   const isRequired = (key) => (profileFields.required || []).includes(key);
   const genderOptions = profileFields.options?.gender || GENDERS;
   const educationOptions = profileFields.options?.education || EDUCATION_LEVELS;
+  const idOf = (key) => `${uid}-${key}`;
+  // Props every built-in field shares: id, label wiring and its error.
+  const fieldProps = (key, label) => ({
+    id: idOf(key),
+    label,
+    required: key === "name" || key === "email" || isRequired(key),
+    error: fieldErrors[key],
+  });
+  const invalid = (key) => Boolean(fieldErrors[key]) || undefined;
 
   return (
-    <div>
-      <h1
-        style={{ fontSize: "1.5rem", fontWeight: 700, marginBottom: "0.25rem" }}
-      >
-        {isPublic ? `Apply to ${config.orgName}` : "Application"}
-      </h1>
-      <p className="muted" style={{ marginBottom: "0.5rem" }}>
-        {round.name}
-        {submittedStatus ? ` · status: ${submittedStatus}` : ""}
-      </p>
-      {round.description
-        ? <p style={{ whiteSpace: "pre-wrap", marginBottom: "0.75rem" }}>
-            <RichText text={round.description} />
-          </p>
-        : null}
-      {isPublic
-        ? <p className="muted" style={{ marginBottom: "0.5rem" }}>
-            Already have an account?{" "}
-            <Link href="/login" className="link">
-              Log in
-            </Link>
-          </p>
-        : null}
-
-      <form
-        onSubmit={handleSubmit}
-        style={{ display: "flex", flexDirection: "column", gap: "1.25rem" }}
-      >
-        <Section title="Personal">
-          <Grid>
-            {isPublic
-              ? <Field label="Email" required>
-                  <input
-                    className="input"
-                    type="email"
-                    autoComplete="email"
-                    value={form.email}
-                    onChange={(e) => setField("email", e.target.value)}
-                    required
-                  />
-                </Field>
-              : null}
-            <Field label="Full name" required>
-              <input
-                className="input"
-                value={form.name}
-                onChange={(e) => setField("name", e.target.value)}
-                required
-              />
-            </Field>
-            <Field label="Phone" required={isRequired("phone")}>
-              <input
-                required={isRequired("phone")}
-                className="input"
-                type="tel"
-                value={form.phone}
-                onChange={(e) => setField("phone", e.target.value)}
-              />
-            </Field>
-            <Field label="Age" required={isRequired("age")}>
-              <input
-                required={isRequired("age")}
-                className="input"
-                type="number"
-                min="0"
-                value={form.age}
-                onChange={(e) => setField("age", e.target.value)}
-              />
-            </Field>
-            <Field label="Gender" required={isRequired("gender")}>
-              <select
-                required={isRequired("gender")}
-                className="select"
-                value={form.gender}
-                onChange={(e) => setField("gender", e.target.value)}
+    <form
+      onSubmit={handleSubmit}
+      noValidate
+      className="mx-auto w-full max-w-3xl"
+    >
+      <header className="space-y-2 pb-6">
+        <h1 className="text-2xl font-semibold tracking-tight">
+          {isPublic ? `Apply to ${config.orgName}` : "Application"}
+        </h1>
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-muted-foreground">
+          <span>{round.name}</span>
+          {submittedStatus
+            ? <ApplicationStatusBadge status={submittedStatus} />
+            : null}
+        </div>
+        {round.description
+          ? <p className="text-sm whitespace-pre-wrap">
+              <RichText text={round.description} />
+            </p>
+          : null}
+        {isPublic
+          ? <p className="text-sm text-muted-foreground">
+              Already have an account?{" "}
+              <Link
+                href="/login"
+                className="font-medium text-link hover:underline"
               >
-                <option value="">Select…</option>
-                {genderOptions.map((g) => (
-                  <option key={g} value={g}>
-                    {g}
-                  </option>
-                ))}
-              </select>
-            </Field>
-            <Field label="Pronouns" required={isRequired("pronouns")}>
-              <input
-                required={isRequired("pronouns")}
-                className="input"
-                value={form.pronouns}
-                onChange={(e) => setField("pronouns", e.target.value)}
-                placeholder="e.g. she/her"
-              />
-            </Field>
-          </Grid>
+                Log in
+              </Link>
+            </p>
+          : null}
+      </header>
+
+      <div className="space-y-8">
+        <Section title="Personal">
+          {isPublic
+            ? <Field {...fieldProps("email", "Email")}>
+                <Input
+                  id={idOf("email")}
+                  type="email"
+                  autoComplete="email"
+                  value={form.email}
+                  aria-invalid={invalid("email")}
+                  onChange={(e) => setField("email", e.target.value)}
+                />
+              </Field>
+            : null}
+          <Field {...fieldProps("name", "Full name")}>
+            <Input
+              id={idOf("name")}
+              autoComplete="name"
+              value={form.name}
+              aria-invalid={invalid("name")}
+              onChange={(e) => setField("name", e.target.value)}
+            />
+          </Field>
+          <Field {...fieldProps("phone", "Phone")}>
+            <Input
+              id={idOf("phone")}
+              type="tel"
+              autoComplete="tel"
+              value={form.phone}
+              aria-invalid={invalid("phone")}
+              onChange={(e) => setField("phone", e.target.value)}
+            />
+          </Field>
+          <Field {...fieldProps("age", "Age")}>
+            <Input
+              id={idOf("age")}
+              type="number"
+              min="0"
+              inputMode="numeric"
+              value={form.age}
+              aria-invalid={invalid("age")}
+              onChange={(e) => setField("age", e.target.value)}
+            />
+          </Field>
+          <Field {...fieldProps("gender", "Gender")}>
+            <ChoiceSelect
+              id={idOf("gender")}
+              value={form.gender}
+              options={genderOptions}
+              required={isRequired("gender")}
+              invalid={Boolean(fieldErrors.gender)}
+              onChange={(v) => setField("gender", v)}
+            />
+          </Field>
+          <Field {...fieldProps("pronouns", "Pronouns")}>
+            <Input
+              id={idOf("pronouns")}
+              value={form.pronouns}
+              placeholder="e.g. she/her"
+              aria-invalid={invalid("pronouns")}
+              onChange={(e) => setField("pronouns", e.target.value)}
+            />
+          </Field>
         </Section>
+
+        <Separator />
 
         <Section title="Education">
-          <Grid>
-            <Field label="Education level" required={isRequired("education")}>
-              <select
-                required={isRequired("education")}
-                className="select"
-                value={form.education}
-                onChange={(e) => setField("education", e.target.value)}
-              >
-                <option value="">Select…</option>
-                {educationOptions.map((l) => (
-                  <option key={l} value={l}>
-                    {l}
-                  </option>
-                ))}
-              </select>
-            </Field>
-            <Field
-              label="University / School"
-              required={isRequired("university")}
-            >
-              <Autocomplete
-                required={isRequired("university")}
-                value={form.university}
-                onChange={(v) => setField("university", v)}
-                endpoint="/api/meta/colleges"
-                placeholder="Start typing…"
-              />
-            </Field>
-            <Field
-              label="Major / Field of study"
-              required={isRequired("major")}
-            >
-              <input
-                required={isRequired("major")}
-                className="input"
-                value={form.major}
-                onChange={(e) => setField("major", e.target.value)}
-              />
-            </Field>
-          </Grid>
+          <Field {...fieldProps("education", "Education level")}>
+            <ChoiceSelect
+              id={idOf("education")}
+              value={form.education}
+              options={educationOptions}
+              required={isRequired("education")}
+              invalid={Boolean(fieldErrors.education)}
+              onChange={(v) => setField("education", v)}
+            />
+          </Field>
+          <Field {...fieldProps("university", "University or school")}>
+            <Autocomplete
+              id={idOf("university")}
+              value={form.university}
+              invalid={Boolean(fieldErrors.university)}
+              onChange={(v) => setField("university", v)}
+              endpoint="/api/meta/colleges"
+              placeholder="Start typing"
+            />
+          </Field>
+          <Field {...fieldProps("major", "Major or field of study")}>
+            <Input
+              id={idOf("major")}
+              value={form.major}
+              aria-invalid={invalid("major")}
+              onChange={(e) => setField("major", e.target.value)}
+            />
+          </Field>
         </Section>
 
+        <Separator />
+
         <Section title="Logistics">
-          <Grid>
-            <Field label="T-shirt size" required={isRequired("tshirtSize")}>
-              <select
-                required={isRequired("tshirtSize")}
-                className="select"
-                value={form.tshirtSize}
-                onChange={(e) => setField("tshirtSize", e.target.value)}
-              >
-                <option value="">Select…</option>
-                {TSHIRT_SIZES.map((s) => (
-                  <option key={s} value={s}>
-                    {s}
-                  </option>
-                ))}
-              </select>
-            </Field>
-            <Field
-              label="Dietary restrictions / allergies"
-              required={isRequired("allergies")}
-            >
-              <input
-                required={isRequired("allergies")}
-                className="input"
-                value={form.allergies}
-                onChange={(e) => setField("allergies", e.target.value)}
-                placeholder="e.g. peanuts, vegetarian"
-              />
-            </Field>
-          </Grid>
-          {resumeField
+          <Field {...fieldProps("tshirtSize", "T-shirt size")}>
+            <ChoiceSelect
+              id={idOf("tshirtSize")}
+              value={form.tshirtSize}
+              options={TSHIRT_SIZES}
+              required={isRequired("tshirtSize")}
+              invalid={Boolean(fieldErrors.tshirtSize)}
+              onChange={(v) => setField("tshirtSize", v)}
+            />
+          </Field>
+          <Field
+            {...fieldProps("allergies", "Dietary restrictions or allergies")}
+          >
+            <Input
+              id={idOf("allergies")}
+              value={form.allergies}
+              placeholder="e.g. peanuts, vegetarian"
+              aria-invalid={invalid("allergies")}
+              onChange={(e) => setField("allergies", e.target.value)}
+            />
+          </Field>
+          {resumeQuestion
             ? null
-            : <Field label="Resume (PDF or Word, max 5 MB)">
+            : <Field id={idOf("resume")} label="Resume" wide>
                 <ResumeInput
-                  inputRef={resumeRef}
+                  id={idOf("resume")}
+                  file={resumeFile}
+                  onChange={setResume}
                   hasResume={!isPublic && form.hasResume}
                 />
               </Field>}
         </Section>
 
+        <Separator />
+
         <Section title="Links">
-          <Grid>
-            <Field label="LinkedIn">
-              <input
-                className="input"
-                value={form.socials.linkedin}
-                onChange={(e) => setSocial("linkedin", e.target.value)}
-                placeholder="https://linkedin.com/in/…"
-              />
-            </Field>
-            <Field label="GitHub">
-              <input
-                className="input"
-                value={form.socials.github}
-                onChange={(e) => setSocial("github", e.target.value)}
-                placeholder="https://github.com/…"
-              />
-            </Field>
-            <Field label="Personal website">
-              <input
-                className="input"
-                value={form.socials.website}
-                onChange={(e) => setSocial("website", e.target.value)}
-                placeholder="https://…"
-              />
-            </Field>
-          </Grid>
+          <Field id={idOf("linkedin")} label="LinkedIn">
+            <Input
+              id={idOf("linkedin")}
+              value={form.socials.linkedin}
+              onChange={(e) => setSocial("linkedin", e.target.value)}
+              placeholder="https://linkedin.com/in/..."
+            />
+          </Field>
+          <Field id={idOf("github")} label="GitHub">
+            <Input
+              id={idOf("github")}
+              value={form.socials.github}
+              onChange={(e) => setSocial("github", e.target.value)}
+              placeholder="https://github.com/..."
+            />
+          </Field>
+          <Field id={idOf("website")} label="Personal website">
+            <Input
+              id={idOf("website")}
+              value={form.socials.website}
+              onChange={(e) => setSocial("website", e.target.value)}
+              placeholder="https://..."
+            />
+          </Field>
         </Section>
 
-        <Section title="Hackathon experience">
-          <label
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: "0.5rem",
-              marginBottom: "0.75rem",
-            }}
+        <Separator />
+
+        <Section title="Hackathon experience" single>
+          <CheckRow
+            id={idOf("attendedBefore")}
+            checked={form.experience.attendedBefore}
+            onChange={(v) => setExperience("attendedBefore", v)}
           >
-            <input
-              type="checkbox"
-              checked={form.experience.attendedBefore}
-              onChange={(e) =>
-                setExperience("attendedBefore", e.target.checked)
-              }
-            />
             I have attended a hackathon before
-          </label>
+          </CheckRow>
           {form.experience.attendedBefore
-            ? <Field label="How many hackathons have you attended?">
-                <input
-                  className="input"
+            ? <Field
+                id={idOf("hackathonsAttended")}
+                label="How many hackathons have you attended?"
+              >
+                <Input
+                  id={idOf("hackathonsAttended")}
                   type="number"
                   min="0"
-                  style={{ maxWidth: 160 }}
+                  inputMode="numeric"
+                  className="w-32"
                   value={form.experience.hackathonsAttended}
                   onChange={(e) =>
                     setExperience("hackathonsAttended", Number(e.target.value))
@@ -502,74 +591,69 @@ export default function ApplicationForm({ mode = "account" }) {
                 />
               </Field>
             : null}
-          <label
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: "0.5rem",
-              marginTop: "0.75rem",
-            }}
+          <CheckRow
+            id={idOf("attendedThisBefore")}
+            checked={form.experience.attendedThisBefore}
+            onChange={(v) => setExperience("attendedThisBefore", v)}
           >
-            <input
-              type="checkbox"
-              checked={form.experience.attendedThisBefore}
-              onChange={(e) =>
-                setExperience("attendedThisBefore", e.target.checked)
-              }
-            />
             I have attended {config.orgName} before
-          </label>
+          </CheckRow>
         </Section>
 
         {round.formConfig && round.formConfig.length > 0
-          ? <Section title="Additional questions">
-              <Grid>
+          ? <>
+              <Separator />
+              <Section title="Additional questions">
                 {round.formConfig.map((field) => (
-                  // Long questions and checkbox lists take the full width.
                   <div
                     key={field.key}
-                    style={isWide(field) ? { gridColumn: "1 / -1" } : undefined}
+                    // Long questions and checkbox lists take the full width.
+                    className={isWide(field) ? "sm:col-span-2" : undefined}
                   >
                     {field.type === "resume"
                       ? <Field
+                          id={idOf(`q_${field.key}`)}
                           label={field.label}
                           required={field.required}
                           description={field.description}
+                          error={fieldErrors[`q_${field.key}`]}
                         >
                           <ResumeInput
-                            inputRef={resumeRef}
+                            id={idOf(`q_${field.key}`)}
+                            file={resumeFile}
+                            onChange={setResume}
                             hasResume={!isPublic && form.hasResume}
-                            required={field.required && !form.hasResume}
+                            invalid={Boolean(fieldErrors[`q_${field.key}`])}
                           />
                         </Field>
                       : <DynamicField
+                          id={idOf(`q_${field.key}`)}
                           field={field}
+                          error={fieldErrors[`q_${field.key}`]}
                           value={form.answers[field.key]}
                           onChange={(v) => setAnswer(field.key, v)}
                         />}
                   </div>
                 ))}
-              </Grid>
-            </Section>
+              </Section>
+            </>
           : null}
 
-        <Section title="Skills">
-          <Field
-            label="Programming skills"
-            required={isRequired("programmingSkills")}
-          >
+        <Separator />
+
+        <Section title="Skills" single>
+          <Field {...fieldProps("programmingSkills", "Programming skills")}>
             <TagAutocomplete
+              id={idOf("programmingSkills")}
               values={form.programmingSkills}
               onChange={(v) => setField("programmingSkills", v)}
               endpoint="/api/meta/skills/programming"
               placeholder="Search skills, or type your own and press Enter"
             />
           </Field>
-          <Field
-            label="Hardware skills"
-            required={isRequired("hardwareSkills")}
-          >
+          <Field {...fieldProps("hardwareSkills", "Hardware skills")}>
             <TagAutocomplete
+              id={idOf("hardwareSkills")}
               values={form.hardwareSkills}
               onChange={(v) => setField("hardwareSkills", v)}
               endpoint="/api/meta/skills/hardware"
@@ -577,94 +661,89 @@ export default function ApplicationForm({ mode = "account" }) {
             />
           </Field>
         </Section>
+      </div>
 
+      <div className="sticky bottom-0 z-10 -mx-4 mt-8 space-y-3 border-t bg-background px-4 py-3 md:mx-0 md:px-0">
         {error
-          ? <div className="alert-error" role="alert">
-              {error}
-              {accountExists
-                ? <>
-                    {" "}
-                    <Link href="/login" className="link">
-                      Log in
-                    </Link>
-                  </>
-                : null}
-            </div>
+          ? <Alert variant="destructive">
+              <AlertDescription>
+                {error}
+                {accountExists
+                  ? <>
+                      {" "}
+                      <Link
+                        href="/login"
+                        className="font-medium underline underline-offset-4"
+                      >
+                        Log in
+                      </Link>
+                    </>
+                  : null}
+              </AlertDescription>
+            </Alert>
           : null}
-        {success ? <div className="alert-success">{success}</div> : null}
-
-        <div style={{ display: "flex", gap: "0.75rem", maxWidth: 420 }}>
+        {success
+          ? <Alert variant="success" aria-live="polite">
+              <AlertDescription>{success}</AlertDescription>
+            </Alert>
+          : null}
+        <div className="flex flex-wrap items-center justify-end gap-2">
           {isPublic
             ? null
-            : <button
+            : <Button
                 type="button"
-                className="btn btn-ghost"
+                variant="outline"
                 disabled={submitting}
                 onClick={() => submit("draft")}
               >
                 Save draft
-              </button>}
-          <button
-            type="submit"
-            className="btn btn-primary"
-            disabled={submitting}
-          >
-            {submitting ? "Submitting…" : "Submit application"}
-          </button>
+              </Button>}
+          <Button type="submit" loading={submitting}>
+            {submitting ? "Submitting" : "Submit application"}
+          </Button>
         </div>
-      </form>
-    </div>
+      </div>
+    </form>
   );
 }
 
-// The resume file picker, plus a link to the one already uploaded (logged-in
+// The resume picker, plus a link to the one already uploaded (logged-in
 // applicants only: viewing goes through their authenticated resume endpoint).
-function ResumeInput({ inputRef, hasResume, required }) {
+function ResumeInput({ id, file, onChange, hasResume, invalid }) {
   return (
-    <>
-      <input
-        ref={inputRef}
-        className="input"
-        type="file"
+    <div className="space-y-2">
+      <FileDropzone
+        id={id}
+        file={file}
+        onChange={onChange}
         accept=".pdf,.doc,.docx"
-        required={required}
+        invalid={invalid}
+        hint="PDF or Word, up to 5 MB"
       />
       {hasResume
-        ? <div className="muted" style={{ fontSize: "0.82rem", marginTop: 4 }}>
-            Current:{" "}
+        ? <p className="text-xs text-muted-foreground">
+            {file ? "Replaces your current resume. " : "Current: "}
             <SignedLinkButton path="/api/applications/me/resume">
               view uploaded resume
             </SignedLinkButton>
-          </div>
+          </p>
         : null}
-    </>
+    </div>
   );
 }
 
-function Section({ title, children }) {
+// A form section: a heading on the left, its fields on the right (stacked
+// above each other on phones). `single` keeps the fields in one column.
+function Section({ title, single = false, children }) {
   return (
-    <div className="card" style={{ padding: "1.25rem 1.5rem" }}>
-      <h2
-        style={{ fontSize: "1.02rem", fontWeight: 600, marginBottom: "1rem" }}
+    <section className="grid gap-4 md:grid-cols-[10rem_1fr] md:gap-8">
+      <h2 className="text-base font-semibold">{title}</h2>
+      <div
+        className={cn("grid gap-4", single ? "grid-cols-1" : "sm:grid-cols-2")}
       >
-        {title}
-      </h2>
-      {children}
-    </div>
-  );
-}
-
-function Grid({ children }) {
-  return (
-    <div
-      style={{
-        display: "grid",
-        gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
-        gap: "1rem",
-      }}
-    >
-      {children}
-    </div>
+        {children}
+      </div>
+    </section>
   );
 }
 
@@ -676,25 +755,77 @@ function isWide(field) {
   );
 }
 
-function DynamicField({ field, value, onChange }) {
+// A checkbox with its sentence, for yes/no statements.
+function CheckRow({ id, checked, onChange, invalid, children }) {
+  return (
+    <div className="flex items-start gap-2.5">
+      <Checkbox
+        id={id}
+        checked={checked}
+        aria-invalid={invalid || undefined}
+        onCheckedChange={(v) => onChange(v === true)}
+        className="mt-0.5"
+      />
+      <Label htmlFor={id} className="font-normal leading-snug">
+        <span>{children}</span>
+      </Label>
+    </div>
+  );
+}
+
+// A single-choice dropdown over a list of strings. Optional questions get a
+// "No answer" row so a choice can be taken back.
+function ChoiceSelect({ id, value, onChange, options, required, invalid }) {
+  return (
+    <Select
+      value={value || ""}
+      onValueChange={(v) => onChange(v === NONE ? "" : v)}
+    >
+      <SelectTrigger
+        id={id}
+        className="w-full"
+        aria-invalid={invalid || undefined}
+      >
+        <SelectValue placeholder="Select" />
+      </SelectTrigger>
+      <SelectContent position="popper">
+        {required ? null : <SelectItem value={NONE}>No answer</SelectItem>}
+        {options.map((opt) => (
+          <SelectItem key={opt} value={opt}>
+            {opt}
+          </SelectItem>
+        ))}
+      </SelectContent>
+    </Select>
+  );
+}
+
+function DynamicField({ id, field, value, onChange, error }) {
   if (field.type === "checkbox") {
     return (
-      <div>
-        <label style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
-          <input
-            type="checkbox"
+      <div className="space-y-1.5">
+        <div className="flex items-start gap-2.5">
+          <Checkbox
+            id={id}
             checked={Boolean(value)}
-            required={field.required}
-            onChange={(e) => onChange(e.target.checked)}
+            aria-invalid={Boolean(error) || undefined}
+            onCheckedChange={(v) => onChange(v === true)}
+            className="mt-0.5"
           />
-          <span>
-            <RichText text={field.label} />
-            {field.required
-              ? <span style={{ color: "var(--destructive)" }}> *</span>
-              : null}
-          </span>
-        </label>
+          <Label htmlFor={id} className="font-normal leading-snug">
+            <span>
+              <RichText text={field.label} />
+              {field.required
+                ? <span aria-hidden="true" className="text-destructive">
+                    {" "}
+                    *
+                  </span>
+                : null}
+            </span>
+          </Label>
+        </div>
         <Description text={field.description} />
+        <FieldError id={id} error={error} />
       </div>
     );
   }
@@ -702,7 +833,9 @@ function DynamicField({ field, value, onChange }) {
   if (field.type === "multiselect") {
     return (
       <ChoiceGroup
+        id={id}
         field={field}
+        error={error}
         value={Array.isArray(value) ? value : []}
         onChange={onChange}
       />
@@ -710,38 +843,43 @@ function DynamicField({ field, value, onChange }) {
   }
 
   if (field.type === "select" && field.allowOther) {
-    return <SelectWithOther field={field} value={value} onChange={onChange} />;
+    return (
+      <SelectWithOther
+        id={id}
+        field={field}
+        error={error}
+        value={value}
+        onChange={onChange}
+      />
+    );
   }
 
   return (
     <Field
+      id={id}
       label={field.label}
       required={field.required}
       description={field.description}
+      error={error}
     >
       {field.type === "select"
-        ? <select
-            className="select"
+        ? <ChoiceSelect
+            id={id}
             value={value || ""}
+            options={field.options || []}
             required={field.required}
-            onChange={(e) => onChange(e.target.value)}
-          >
-            <option value="">Select…</option>
-            {(field.options || []).map((opt) => (
-              <option key={opt} value={opt}>
-                {opt}
-              </option>
-            ))}
-          </select>
+            invalid={Boolean(error)}
+            onChange={onChange}
+          />
         : field.type === "textarea"
-          ? <textarea
-              className="textarea"
+          ? <Textarea
+              id={id}
               value={value || ""}
-              required={field.required}
+              aria-invalid={Boolean(error) || undefined}
               onChange={(e) => onChange(e.target.value)}
             />
-          : <input
-              className="input"
+          : <Input
+              id={id}
               type={
                 field.type === "number"
                   ? "number"
@@ -750,17 +888,17 @@ function DynamicField({ field, value, onChange }) {
                     : "text"
               }
               value={value || ""}
-              required={field.required}
+              aria-invalid={Boolean(error) || undefined}
               onChange={(e) => onChange(e.target.value)}
             />}
     </Field>
   );
 }
 
-// "Select all that apply": a checkbox per option, plus an "Other:" box with
+// "Select all that apply": a checkbox per option, plus an "Other" box with
 // free text when the question allows it. The answer is the list of choices,
 // with the Other text (if ticked and filled in) as the one extra entry.
-function ChoiceGroup({ field, value, onChange }) {
+function ChoiceGroup({ id, field, value, onChange, error }) {
   const options = field.options || [];
   const chosen = value.filter((v) => options.includes(v));
   const [otherOn, setOtherOn] = useState(() =>
@@ -777,58 +915,53 @@ function ChoiceGroup({ field, value, onChange }) {
   }
 
   return (
-    <fieldset style={{ border: "none", padding: 0, margin: 0 }}>
-      <legend className="field-label">
+    <fieldset className="space-y-2">
+      <legend className="text-sm leading-snug font-medium">
         <RichText text={field.label} />
         {field.required
-          ? <span style={{ color: "var(--destructive)" }}> *</span>
+          ? <span aria-hidden="true" className="text-destructive">
+              {" "}
+              *
+            </span>
           : null}
       </legend>
       <Description text={field.description} />
-      <div style={{ display: "grid", gap: "0.3rem" }}>
-        {options.map((opt) => (
-          <label
+      <div className="grid gap-2">
+        {options.map((opt, index) => (
+          <CheckRow
             key={opt}
-            style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}
+            id={`${id}-${index}`}
+            checked={chosen.includes(opt)}
+            invalid={Boolean(error) && index === 0}
+            onChange={(on) =>
+              emit(
+                on ? [...chosen, opt] : chosen.filter((v) => v !== opt),
+                otherOn,
+                otherText,
+              )
+            }
           >
-            <input
-              type="checkbox"
-              checked={chosen.includes(opt)}
-              onChange={(e) =>
-                emit(
-                  e.target.checked
-                    ? [...chosen, opt]
-                    : chosen.filter((v) => v !== opt),
-                  otherOn,
-                  otherText,
-                )
-              }
-            />
             {opt}
-          </label>
+          </CheckRow>
         ))}
         {field.allowOther
-          ? <div
-              style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}
-            >
-              <label
-                style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}
-              >
-                <input
-                  type="checkbox"
-                  checked={otherOn}
-                  onChange={(e) => {
-                    setOtherOn(e.target.checked);
-                    emit(chosen, e.target.checked, otherText);
-                  }}
-                />
-                Other:
-              </label>
-              <input
-                className="input"
+          ? <div className="flex items-center gap-2.5">
+              <Checkbox
+                id={`${id}-other`}
+                checked={otherOn}
+                onCheckedChange={(v) => {
+                  setOtherOn(v === true);
+                  emit(chosen, v === true, otherText);
+                }}
+              />
+              <Label htmlFor={`${id}-other`} className="font-normal">
+                Other
+              </Label>
+              <Input
                 aria-label={`${plainText(field.label)}: other`}
                 value={otherText}
                 maxLength={300}
+                className="h-8 max-w-60"
                 onChange={(e) => {
                   setOtherText(e.target.value);
                   setOtherOn(true);
@@ -838,13 +971,14 @@ function ChoiceGroup({ field, value, onChange }) {
             </div>
           : null}
       </div>
+      <FieldError id={id} error={error} />
     </fieldset>
   );
 }
 
-// A single-choice question with an "Other…" choice that reveals a text box.
+// A single-choice question with an "Other" choice that reveals a text box.
 // The answer is the chosen option, or the typed text.
-function SelectWithOther({ field, value, onChange }) {
+function SelectWithOther({ id, field, value, onChange, error }) {
   const options = field.options || [];
   const OTHER = "__other__";
   const [otherOn, setOtherOn] = useState(
@@ -856,37 +990,50 @@ function SelectWithOther({ field, value, onChange }) {
 
   return (
     <Field
+      id={id}
       label={field.label}
       required={field.required}
       description={field.description}
+      error={error}
     >
-      <select
-        className="select"
+      <Select
         value={otherOn ? OTHER : value || ""}
-        required={field.required}
-        onChange={(e) => {
-          const picked = e.target.value === OTHER;
+        onValueChange={(v) => {
+          if (v === NONE) {
+            setOtherOn(false);
+            onChange("");
+            return;
+          }
+          const picked = v === OTHER;
           setOtherOn(picked);
-          onChange(picked ? otherText : e.target.value);
+          onChange(picked ? otherText : v);
         }}
       >
-        <option value="">Select…</option>
-        {options.map((opt) => (
-          <option key={opt} value={opt}>
-            {opt}
-          </option>
-        ))}
-        <option value={OTHER}>Other…</option>
-      </select>
+        <SelectTrigger
+          id={id}
+          className="w-full"
+          aria-invalid={Boolean(error) || undefined}
+        >
+          <SelectValue placeholder="Select" />
+        </SelectTrigger>
+        <SelectContent position="popper">
+          {field.required
+            ? null
+            : <SelectItem value={NONE}>No answer</SelectItem>}
+          {options.map((opt) => (
+            <SelectItem key={opt} value={opt}>
+              {opt}
+            </SelectItem>
+          ))}
+          <SelectItem value={OTHER}>Other</SelectItem>
+        </SelectContent>
+      </Select>
       {otherOn
-        ? <input
-            className="input"
-            style={{ marginTop: 6 }}
+        ? <Input
             aria-label={`${plainText(field.label)}: other`}
             placeholder="Please specify"
             value={otherText}
             maxLength={300}
-            required={field.required}
             onChange={(e) => {
               setOtherText(e.target.value);
               onChange(e.target.value);
@@ -900,36 +1047,39 @@ function SelectWithOther({ field, value, onChange }) {
 function Description({ text }) {
   if (!text) return null;
   return (
-    <p
-      className="muted"
-      style={{
-        fontSize: "0.85rem",
-        whiteSpace: "pre-wrap",
-        overflowWrap: "anywhere",
-        margin: "0.15rem 0 0.4rem",
-      }}
-    >
+    <p className="text-[0.8rem] wrap-anywhere whitespace-pre-wrap text-muted-foreground">
       <RichText text={text} />
     </p>
   );
 }
 
-function Field({ label, required, description, children }) {
-  // `children` is always a form control here, wrapped by the label for
-  // association — but biome can't see that statically through the prop.
+function FieldError({ id, error }) {
+  if (!error) return null;
   return (
-    <>
-      {/* biome-ignore lint/a11y/noLabelWithoutControl: children is always the form control */}
-      <label style={{ display: "block" }}>
-        <span className="field-label">
+    <p id={`${id}-error`} className="text-[0.8rem] text-destructive">
+      {error}
+    </p>
+  );
+}
+
+// Label, optional help text, the control, and its error underneath.
+function Field({ id, label, required, description, error, wide, children }) {
+  return (
+    <div className={cn("grid content-start gap-1.5", wide && "sm:col-span-2")}>
+      <Label htmlFor={id} className="leading-snug">
+        <span>
           <RichText text={label} />
           {required
-            ? <span style={{ color: "var(--destructive)" }}> *</span>
+            ? <span aria-hidden="true" className="text-destructive">
+                {" "}
+                *
+              </span>
             : null}
         </span>
-        <Description text={description} />
-        {children}
-      </label>
-    </>
+      </Label>
+      <Description text={description} />
+      {children}
+      <FieldError id={id} error={error} />
+    </div>
   );
 }

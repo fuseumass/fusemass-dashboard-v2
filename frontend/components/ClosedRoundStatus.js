@@ -3,12 +3,12 @@
 import { CircleCheck } from "lucide-react";
 
 const STATUS_LINES = {
-  draft: "You started an application but didn't submit it.",
+  draft: "You started an application but have not submitted it.",
   pending:
-    "Your application is in review. We'll email you when there's a decision.",
-  rejected: "We couldn't offer you a spot this time.",
+    "Your application is in review. We will email you when there is a decision.",
+  rejected: "We could not offer you a spot this time.",
   waitlisted:
-    "You're on the waitlist. If a spot opens, we'll email you. You don't need to do anything.",
+    "You are on the waitlist. If a spot opens, we will email you. You do not need to do anything.",
 };
 
 // The home page's application card when there's nothing to apply to: no
@@ -19,7 +19,7 @@ export default function ClosedRoundStatus({ latest }) {
   if (!latest || latest.none || !latest.application) {
     return (
       <p className="text-muted-foreground">
-        Applications are closed right now.
+        Applications are closed.
       </p>
     );
   }
@@ -38,5 +38,5 @@ export default function ClosedRoundStatus({ latest }) {
       </p>
     );
   }
-  return <p>You're accepted. Bring the QR code below to check-in.</p>;
+  return <p>You are accepted. Show the QR code below at check-in.</p>;
 }

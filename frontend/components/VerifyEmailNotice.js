@@ -1,11 +1,18 @@
 "use client";
 
+import { MailCheck } from "lucide-react";
 import { useState } from "react";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { Button } from "@/components/ui/button";
 import { apiFetch } from "@/lib/api";
 
-// "Check your inbox" banner for accounts whose email isn't verified yet. The
-// backend refuses applications until it is, so this says why and lets people
-// ask for another link. Renders nothing for verified users.
+/**
+ * Banner for accounts whose email isn't verified yet. The backend refuses
+ * applications until it is, so this says why and lets people ask for another
+ * link. Renders nothing for verified users.
+ * @param {object} props - `{ user }` (the signed-in user).
+ * @returns {JSX.Element|null}
+ */
 export default function VerifyEmailNotice({ user }) {
   const [sending, setSending] = useState(false);
   const [message, setMessage] = useState("");
@@ -32,43 +39,34 @@ export default function VerifyEmailNotice({ user }) {
   }
 
   return (
-    <div
-      className="card"
-      aria-live="polite"
-      style={{ padding: "1rem 1.25rem", marginBottom: "1.25rem" }}
-    >
-      <p style={{ fontWeight: 600, marginBottom: "0.25rem" }}>
-        Check your inbox to verify your email
-      </p>
-      <p
-        className="muted"
-        style={{ fontSize: "0.9rem", marginBottom: "0.75rem" }}
-      >
-        We sent a link to {user.email}. You need to verify your email before you
-        can apply. Already did? Refresh this page.
-      </p>
-      <button
-        type="button"
-        className="btn btn-ghost"
-        onClick={resend}
-        disabled={sending}
-      >
-        {sending ? "Sending…" : "Resend verification email"}
-      </button>
-      {message
-        ? <div className="alert-success" style={{ marginTop: "0.75rem" }}>
-            {message}
-          </div>
-        : null}
-      {error
-        ? <div
-            className="alert-error"
-            role="alert"
-            style={{ marginTop: "0.75rem" }}
+    <Alert variant="warning" aria-live="polite" className="mb-6">
+      <MailCheck aria-hidden="true" />
+      <AlertTitle className="font-medium">Verify your email to apply</AlertTitle>
+      <AlertDescription className="space-y-3">
+        <p>
+          We sent a link to {user.email}. Open it, then refresh this page.
+        </p>
+        <div className="flex flex-wrap items-center gap-3">
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="text-foreground"
+            onClick={resend}
+            loading={sending}
           >
-            {error}
-          </div>
-        : null}
-    </div>
+            {sending ? "Sending" : "Resend email"}
+          </Button>
+          {message
+            ? <span className="text-xs text-success">{message}</span>
+            : null}
+          {error
+            ? <span role="alert" className="text-xs text-destructive">
+                {error}
+              </span>
+            : null}
+        </div>
+      </AlertDescription>
+    </Alert>
   );
 }
