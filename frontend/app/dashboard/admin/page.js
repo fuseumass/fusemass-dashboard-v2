@@ -1,15 +1,68 @@
 "use client";
 
-import { RefreshCw, X } from "lucide-react";
+import {
+  Check,
+  Clock,
+  Flag,
+  FlagOff,
+  Inbox,
+  MoreHorizontal,
+  PanelRightOpen,
+  RefreshCw,
+  X,
+} from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { FlagBadge, FlagPanel } from "@/components/ApplicationFlags";
 import ApplicationStatusBadge from "@/components/ApplicationStatusBadge";
+import DataTable from "@/components/DataTable";
+import EmptyState from "@/components/EmptyState";
+import PageHeader from "@/components/PageHeader";
 import { plainText } from "@/components/RichText";
+import SearchInput from "@/components/SearchInput";
 import SignedLinkButton from "@/components/SignedLinkButton";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Button } from "@/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetHeader,
+  SheetTitle,
+} from "@/components/ui/sheet";
+import { Switch } from "@/components/ui/switch";
 import { apiFetch } from "@/lib/api";
+import { notifySuccess } from "@/lib/notify";
 import { useUser } from "@/lib/userContext";
+import { cn } from "@/lib/utils";
 
-const STATUSES = ["", "draft", "pending", "accepted", "rejected", "waitlisted"];
+const STATUS_OPTIONS = [
+  ["all", "All statuses"],
+  ["draft", "Draft"],
+  ["pending", "Pending"],
+  ["accepted", "Accepted"],
+  ["rejected", "Rejected"],
+  ["waitlisted", "Waitlisted"],
+];
+const DECISIONS = [
+  ["accepted", "Accept", Check],
+  ["waitlisted", "Waitlist", Clock],
+  ["rejected", "Reject", X],
+];
 const STALE_MS = 5 * 60 * 1000;
 
 // Kept at module scope, so it survives navigating away and back: returning to
@@ -41,9 +94,10 @@ export default function AdminReviewPage() {
   const [fetchedAt, setFetchedAt] = useState(cache.fetchedAt);
   const [loading, setLoading] = useState(!cache.list);
   const [refreshing, setRefreshing] = useState(false);
-  const [status, setStatus] = useState("");
-  const [round, setRound] = useState("");
+  const [status, setStatus] = useState("all");
+  const [round, setRound] = useState("all");
   const [flaggedOnly, setFlaggedOnly] = useState(false);
+  const [search, setSearch] = useState("");
   const [error, setError] = useState("");
   const [selectedId, setSelectedId] = useState(null);
   const [deciding, setDeciding] = useState(null);
@@ -85,18 +139,25 @@ export default function AdminReviewPage() {
     return [...byId].map(([id, name]) => ({ _id: id, name }));
   }, [applications]);
 
-  const visible = useMemo(
-    () =>
-      applications.filter(
-        (app) =>
-          (!status || app.status === status) &&
-          (!round || app.round?._id === round) &&
-          (!flaggedOnly || app.flagged),
-      ),
-    [applications, status, round, flaggedOnly],
-  );
+  const visible = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    return applications.filter(
+      (app) =>
+        (status === "all" || app.status === status) &&
+        (round === "all" || app.round?._id === round) &&
+        (!flaggedOnly || app.flagged) &&
+        (!q ||
+          `${app.applicant?.name || ""} ${app.applicant?.email || ""} ${app.university || ""}`
+            .toLowerCase()
+            .includes(q)),
+    );
+  }, [applications, status, round, flaggedOnly, search]);
   const flaggedCount = useMemo(
     () => applications.filter((app) => app.flagged).length,
+    [applications],
+  );
+  const pendingCount = useMemo(
+    () => applications.filter((app) => app.status === "pending").length,
     [applications],
   );
 
@@ -121,6 +182,18 @@ export default function AdminReviewPage() {
     }
   }
 
+  async function clearFlag(id) {
+    setError("");
+    try {
+      const data = await apiFetch(`/api/admin/applications/${id}/flag`, {
+        method: "DELETE",
+      });
+      flagChanged(data.application);
+    } catch (err) {
+      setError(err.message);
+    }
+  }
+
   async function decide(id, decision) {
     setError("");
     setDeciding(id);
@@ -141,6 +214,7 @@ export default function AdminReviewPage() {
       });
       const detail = cache.details.get(id);
       if (detail) cache.details.set(id, { ...detail, status: updated.status });
+      notifySuccess(`Marked as ${updated.status}`);
     } catch (err) {
       setError(err.message);
     } finally {
@@ -150,175 +224,224 @@ export default function AdminReviewPage() {
 
   const selected = applications.find((app) => app._id === selectedId) || null;
 
-  return (
-    <div>
-      <h1
-        style={{ fontSize: "1.5rem", fontWeight: 700, marginBottom: "0.25rem" }}
-      >
-        Applications
-      </h1>
-      <p className="muted" style={{ marginBottom: "1.25rem" }}>
-        Review and decide on submitted applications.
-      </p>
-
-      <div
-        style={{
-          display: "flex",
-          gap: "0.75rem",
-          marginBottom: "1rem",
-          flexWrap: "wrap",
-          alignItems: "center",
-        }}
-      >
-        <select
-          className="select"
-          style={{ maxWidth: 200 }}
-          value={status}
-          onChange={(e) => setStatus(e.target.value)}
-        >
-          {STATUSES.map((s) => (
-            <option key={s || "all"} value={s}>
-              {s ? s : "All statuses"}
-            </option>
-          ))}
-        </select>
-        {rounds.length > 1
-          ? <select
-              className="select"
-              style={{ maxWidth: 220 }}
-              value={round}
-              onChange={(e) => setRound(e.target.value)}
-            >
-              <option value="">All rounds</option>
-              {rounds.map((r) => (
-                <option key={r._id} value={r._id}>
-                  {r.name}
-                </option>
+  const columns = [
+    {
+      id: "applicant",
+      header: "Applicant",
+      accessorFn: (app) => app.applicant?.name || "",
+      cell: ({ row }) => {
+        const app = row.original;
+        return (
+          <div className="min-w-0">
+            <div className="flex items-center gap-1.5">
+              <span className="font-medium text-foreground">
+                {app.applicant ? app.applicant.name : "Unknown"}
+              </span>
+              {app.flagged ? <FlagBadge /> : null}
+            </div>
+            <div className="truncate text-xs text-muted-foreground md:hidden">
+              {app.applicant?.email}
+            </div>
+          </div>
+        );
+      },
+    },
+    {
+      id: "email",
+      header: "Email",
+      accessorFn: (app) => app.applicant?.email || "",
+      meta: { className: "hidden text-muted-foreground md:table-cell" },
+    },
+    {
+      accessorKey: "university",
+      header: "University",
+      meta: { className: "hidden text-muted-foreground lg:table-cell" },
+    },
+    {
+      id: "round",
+      header: "Round",
+      accessorFn: (app) => app.round?.name || "",
+      meta: { className: "hidden text-muted-foreground lg:table-cell" },
+    },
+    {
+      accessorKey: "status",
+      header: "Status",
+      cell: ({ row }) => (
+        <ApplicationStatusBadge status={row.original.status} />
+      ),
+    },
+    {
+      id: "actions",
+      header: () => <span className="sr-only">Actions</span>,
+      enableSorting: false,
+      meta: { className: "w-10 text-right" },
+      cell: ({ row }) => {
+        const app = row.original;
+        const name = app.applicant?.name || "applicant";
+        // The menu renders in a portal, but React events still bubble to the
+        // row, which would open the drawer. Keep clicks inside the menu.
+        const keep = (event) => event.stopPropagation();
+        return (
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon-xs"
+                aria-label={`Actions for ${name}`}
+                disabled={deciding === app._id}
+                onClick={keep}
+              >
+                <MoreHorizontal aria-hidden="true" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" onClick={keep}>
+              {DECISIONS.map(([decision, label, Icon]) => (
+                <DropdownMenuItem
+                  key={decision}
+                  disabled={deciding === app._id || app.status === decision}
+                  onSelect={() => decide(app._id, decision)}
+                >
+                  <Icon aria-hidden="true" />
+                  {label}
+                </DropdownMenuItem>
               ))}
-            </select>
-          : null}
-        <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
-          <input
-            type="checkbox"
-            checked={flaggedOnly}
-            onChange={(e) => setFlaggedOnly(e.target.checked)}
-          />
-          Flagged only ({flaggedCount})
-        </label>
-        <button
+              <DropdownMenuSeparator />
+              {app.flagged
+                ? <DropdownMenuItem onSelect={() => clearFlag(app._id)}>
+                    <FlagOff aria-hidden="true" />
+                    Clear flag
+                  </DropdownMenuItem>
+                : <DropdownMenuItem onSelect={() => setSelectedId(app._id)}>
+                    <Flag aria-hidden="true" />
+                    Flag
+                  </DropdownMenuItem>}
+              <DropdownMenuItem onSelect={() => setSelectedId(app._id)}>
+                <PanelRightOpen aria-hidden="true" />
+                Open
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        );
+      },
+    },
+  ];
+
+  const toolbar = (
+    <div className="flex flex-wrap items-center gap-2">
+      <SearchInput
+        label="Search applications"
+        placeholder="Search applicants"
+        value={search}
+        onChange={(e) => setSearch(e.target.value)}
+        className="sm:w-48"
+      />
+      <Select value={status} onValueChange={setStatus}>
+        <SelectTrigger size="sm" aria-label="Status" className="w-32">
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent>
+          {STATUS_OPTIONS.map(([value, label]) => (
+            <SelectItem key={value} value={value}>
+              {label}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+      {rounds.length > 1
+        ? <Select value={round} onValueChange={setRound}>
+            <SelectTrigger size="sm" aria-label="Round" className="w-36">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All rounds</SelectItem>
+              {rounds.map((r) => (
+                <SelectItem key={r._id} value={r._id}>
+                  {r.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        : null}
+      <div className="flex items-center gap-2 px-1">
+        <Switch
+          id="flagged-only"
+          size="sm"
+          checked={flaggedOnly}
+          onCheckedChange={setFlaggedOnly}
+        />
+        <Label htmlFor="flagged-only" className="text-sm font-normal">
+          Flagged only
+          <span className="ml-1.5 tabular-nums text-muted-foreground">
+            {flaggedCount}
+          </span>
+        </Label>
+      </div>
+      <div className="ml-auto flex items-center gap-2">
+        <span className="text-xs text-muted-foreground tabular-nums">
+          {loading
+            ? ""
+            : `${visible.length} of ${applications.length}` +
+              (fetchedAt
+                ? `, updated ${fetchedAt.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}`
+                : "")}
+        </span>
+        <Button
           type="button"
-          className="btn btn-ghost"
-          style={{ width: "auto", gap: "0.4rem" }}
+          variant="ghost"
+          size="sm"
           disabled={refreshing}
           onClick={refresh}
         >
           <RefreshCw
-            size={16}
+            className={cn(refreshing && "animate-spin")}
             aria-hidden="true"
-            style={
-              refreshing ? { animation: "spin 1s linear infinite" } : undefined
-            }
           />
-          {refreshing ? "Refreshing…" : "Refresh"}
-        </button>
-        <span className="muted" style={{ fontSize: "0.82rem" }}>
-          {loading
-            ? ""
-            : `Showing ${visible.length} of ${applications.length}` +
-              (fetchedAt
-                ? ` · updated ${fetchedAt.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}`
-                : "")}
-        </span>
+          Refresh
+        </Button>
       </div>
+    </div>
+  );
+
+  return (
+    <div>
+      <PageHeader
+        title="Applications"
+        description={
+          loading
+            ? undefined
+            : `${applications.length} applications, ${pendingCount} waiting for a decision.`
+        }
+      />
 
       {error
-        ? <div className="alert-error" style={{ marginBottom: "1rem" }}>
-            {error}
-          </div>
+        ? <Alert variant="destructive" className="mb-4">
+            <AlertDescription>{error}</AlertDescription>
+          </Alert>
         : null}
 
-      {loading
-        ? <p className="muted">Loading…</p>
-        : visible.length === 0
-          ? <div className="card" style={{ padding: "1.5rem" }}>
-              <p className="muted">No applications match.</p>
-            </div>
-          : <div className="card" style={{ overflowX: "auto" }}>
-              <table
-                style={{
-                  width: "100%",
-                  borderCollapse: "collapse",
-                  fontSize: "0.9rem",
-                }}
-              >
-                <thead>
-                  <tr
-                    style={{
-                      textAlign: "left",
-                      borderBottom: "1px solid var(--border)",
-                    }}
-                  >
-                    <Th>Applicant</Th>
-                    <Th>University</Th>
-                    <Th>Round</Th>
-                    <Th>Status</Th>
-                    <Th>Actions</Th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {visible.map((app) => (
-                    <tr
-                      key={app._id}
-                      style={{ borderBottom: "1px solid var(--border)" }}
-                    >
-                      <Td>
-                        <button
-                          type="button"
-                          className="link"
-                          onClick={() => setSelectedId(app._id)}
-                          style={{
-                            background: "none",
-                            border: "none",
-                            cursor: "pointer",
-                            padding: 0,
-                          }}
-                        >
-                          {app.applicant ? app.applicant.name : "Unknown"}
-                        </button>
-                        {app.flagged ? <FlagBadge /> : null}
-                        <div className="muted" style={{ fontSize: "0.78rem" }}>
-                          {app.applicant ? app.applicant.email : ""}
-                        </div>
-                      </Td>
-                      <Td>{app.university || "—"}</Td>
-                      <Td>{app.round ? app.round.name : "—"}</Td>
-                      <Td>
-                        <ApplicationStatusBadge status={app.status} />
-                      </Td>
-                      <Td>
-                        <div style={{ display: "flex", gap: 6 }}>
-                          {[
-                            ["accepted", "Accept"],
-                            ["waitlisted", "Waitlist"],
-                            ["rejected", "Reject"],
-                          ].map(([decision, label]) => (
-                            <SmallBtn
-                              key={decision}
-                              disabled={
-                                deciding === app._id || app.status === decision
-                              }
-                              onClick={() => decide(app._id, decision)}
-                            >
-                              {label}
-                            </SmallBtn>
-                          ))}
-                        </div>
-                      </Td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>}
+      <DataTable
+        columns={columns}
+        data={visible}
+        loading={loading}
+        dense
+        getRowId={(app) => app._id}
+        onRowClick={(app) => setSelectedId(app._id)}
+        toolbar={toolbar}
+        emptyState={
+          <EmptyState
+            icon={Inbox}
+            title={
+              applications.length ? "No applications match" : "No applications"
+            }
+            description={
+              applications.length
+                ? "Change the filters or the search."
+                : "Submitted applications show up here."
+            }
+          />
+        }
+      />
 
       {selected
         ? <ApplicationDrawer
@@ -332,55 +455,13 @@ export default function AdminReviewPage() {
   );
 }
 
-function Th({ children }) {
-  return (
-    <th style={{ padding: "0.75rem 1rem", fontWeight: 600 }}>{children}</th>
-  );
-}
-function Td({ children }) {
-  return (
-    <td style={{ padding: "0.75rem 1rem", verticalAlign: "top" }}>
-      {children}
-    </td>
-  );
-}
-function SmallBtn({ children, onClick, disabled }) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      disabled={disabled}
-      style={{
-        padding: "0.3rem 0.6rem",
-        fontSize: "0.8rem",
-        borderRadius: 8,
-        border: "1px solid var(--border)",
-        background: "var(--card)",
-        cursor: disabled ? "default" : "pointer",
-        opacity: disabled ? 0.5 : 1,
-        color: "var(--foreground)",
-      }}
-    >
-      {children}
-    </button>
-  );
-}
-
 // Detail drawer for one application. The list only has the table's columns,
 // so the full application (answers, its round's form) is fetched on open and
-// cached; reopening it costs nothing. The backdrop is a real <button>
-// (accessible) and Escape also closes it.
+// cached; reopening it costs nothing. Escape, the scrim and the close button
+// all close it (Sheet).
 function ApplicationDrawer({ summary, cache, onClose, onFlagChanged }) {
   const [app, setApp] = useState(() => cache.details.get(summary._id) || null);
   const [error, setError] = useState("");
-
-  useEffect(() => {
-    function onKey(e) {
-      if (e.key === "Escape") onClose();
-    }
-    document.addEventListener("keydown", onKey);
-    return () => document.removeEventListener("keydown", onKey);
-  }, [onClose]);
 
   useEffect(() => {
     const cached = cache.details.get(summary._id);
@@ -404,95 +485,50 @@ function ApplicationDrawer({ summary, cache, onClose, onFlagChanged }) {
   }, [cache, summary._id]);
 
   return (
-    <div
-      style={{
-        position: "fixed",
-        inset: 0,
-        zIndex: 40,
-        display: "flex",
-        justifyContent: "flex-end",
-      }}
-    >
-      <button
-        type="button"
-        aria-label="Close"
-        onClick={onClose}
-        style={{
-          position: "absolute",
-          inset: 0,
-          background: "var(--overlay)",
-          border: "none",
-          cursor: "pointer",
-        }}
-      />
-      <div
-        className="card"
-        style={{
-          position: "relative",
-          width: 420,
-          maxWidth: "100%",
-          height: "100%",
-          borderRadius: 0,
-          padding: "1.5rem",
-          overflowY: "auto",
-        }}
-      >
-        <div
-          style={{
-            display: "flex",
-            justifyContent: "space-between",
-            alignItems: "center",
-            marginBottom: "1rem",
-          }}
-        >
-          <h2 style={{ fontSize: "1.15rem", fontWeight: 700 }}>
+    <Sheet open onOpenChange={(open) => (open ? null : onClose())}>
+      <SheetContent className="w-full gap-0 overflow-y-auto sm:max-w-md">
+        <SheetHeader className="gap-1 border-b p-4 pr-12">
+          <SheetTitle className="text-base font-semibold">
             {summary.name || summary.applicant?.name}
-          </h2>
-          <button
-            type="button"
-            aria-label="Close"
-            onClick={onClose}
-            style={{
-              border: "none",
-              background: "none",
-              cursor: "pointer",
-              color: "var(--muted-foreground)",
-              display: "inline-flex",
-              padding: 4,
-            }}
-          >
-            <X size={20} aria-hidden="true" />
-          </button>
+          </SheetTitle>
+          <SheetDescription className="flex flex-wrap items-center gap-x-3 gap-y-1">
+            <span>{summary.applicant?.email}</span>
+            <ApplicationStatusBadge status={summary.status} />
+          </SheetDescription>
+        </SheetHeader>
+        <div className="space-y-4 p-4">
+          {error
+            ? <Alert variant="destructive">
+                <AlertDescription>{error}</AlertDescription>
+              </Alert>
+            : !app
+              ? <p className="text-sm text-muted-foreground">
+                  Loading the application
+                </p>
+              : <>
+                  <FlagPanel
+                    app={app}
+                    onChanged={(updated) => {
+                      setApp((prev) => ({
+                        ...prev,
+                        flagged: updated.flagged,
+                        flagReasons: updated.flagReasons,
+                        flaggedBy: updated.flaggedBy,
+                      }));
+                      onFlagChanged(updated);
+                    }}
+                  />
+                  <ApplicationDetails app={app} />
+                </>}
         </div>
-        <Detail label="Email" value={summary.applicant?.email} />
-        <Detail label="Status" value={summary.status} />
-        {error
-          ? <div className="alert-error">{error}</div>
-          : !app
-            ? <p className="muted">Loading the application…</p>
-            : <>
-                <FlagPanel
-                  app={app}
-                  onChanged={(updated) => {
-                    setApp((prev) => ({
-                      ...prev,
-                      flagged: updated.flagged,
-                      flagReasons: updated.flagReasons,
-                      flaggedBy: updated.flaggedBy,
-                    }));
-                    onFlagChanged(updated);
-                  }}
-                />
-                <ApplicationDetails app={app} />
-              </>}
-      </div>
-    </div>
+      </SheetContent>
+    </Sheet>
   );
 }
 
 function ApplicationDetails({ app }) {
   return (
-    <>
+    <dl className="divide-y text-sm">
       <Detail label="Phone" value={app.phone} />
       <Detail label="Age" value={app.age} />
       <Detail label="Gender" value={app.gender} />
@@ -516,20 +552,20 @@ function ApplicationDetails({ app }) {
               app.socials.website,
             ]
               .filter(Boolean)
-              .join(" · ")}
+              .join(", ")}
           />
         : null}
       <CustomAnswers app={app} />
       {app.hasResume
-        ? <div style={{ marginTop: "0.75rem" }}>
+        ? <DetailRow label="Resume">
             <SignedLinkButton
               path={`/api/admin/applications/${app._id}/resume`}
             >
               View resume
             </SignedLinkButton>
-          </div>
+          </DetailRow>
         : null}
-    </>
+    </dl>
   );
 }
 
@@ -539,39 +575,34 @@ function CustomAnswers({ app }) {
   const answers = app.answers || {};
   if (!fields.length) return null;
 
-  return (
-    <div style={{ marginTop: "0.75rem" }}>
-      {fields.map((field) => {
-        const value = answers[field.key];
-        if (field.type === "resume") {
-          // Uploaded resumes open through "View resume" below. Imported
-          // applications may carry an external link instead; only https
-          // links are made clickable.
-          if (app.hasResume || !isHttpsUrl(value)) return null;
-          return (
-            <div key={field.key} style={{ marginBottom: "0.6rem" }}>
-              <DetailLabel>{plainText(field.label)}</DetailLabel>
-              <a
-                className="link"
-                href={value}
-                target="_blank"
-                rel="noopener noreferrer"
-              >
-                Open resume (external link)
-              </a>
-            </div>
-          );
-        }
-        return (
-          <Detail
-            key={field.key}
-            label={plainText(field.label)}
-            value={formatAnswer(field, value)}
-          />
-        );
-      })}
-    </div>
-  );
+  return fields.map((field) => {
+    const value = answers[field.key];
+    if (field.type === "resume") {
+      // Uploaded resumes open through "View resume" below. Imported
+      // applications may carry an external link instead; only https
+      // links are made clickable.
+      if (app.hasResume || !isHttpsUrl(value)) return null;
+      return (
+        <DetailRow key={field.key} label={plainText(field.label)}>
+          <a
+            className="text-link hover:underline"
+            href={value}
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            Open resume (external link)
+          </a>
+        </DetailRow>
+      );
+    }
+    return (
+      <Detail
+        key={field.key}
+        label={plainText(field.label)}
+        value={formatAnswer(field, value)}
+      />
+    );
+  });
 }
 
 function isHttpsUrl(value) {
@@ -585,27 +616,16 @@ function formatAnswer(field, value) {
   return String(value);
 }
 
-function DetailLabel({ children }) {
+function DetailRow({ label, children }) {
   return (
-    <div
-      className="muted"
-      style={{
-        fontSize: "0.75rem",
-        textTransform: "uppercase",
-        letterSpacing: "0.03em",
-      }}
-    >
-      {children}
+    <div className="grid grid-cols-[7rem_1fr] gap-3 py-2">
+      <dt className="text-muted-foreground">{label}</dt>
+      <dd className="min-w-0 break-words whitespace-pre-wrap">{children}</dd>
     </div>
   );
 }
 
 function Detail({ label, value }) {
   if (value === undefined || value === null || value === "") return null;
-  return (
-    <div style={{ marginBottom: "0.6rem" }}>
-      <DetailLabel>{label}</DetailLabel>
-      <div>{String(value)}</div>
-    </div>
-  );
+  return <DetailRow label={label}>{String(value)}</DetailRow>;
 }

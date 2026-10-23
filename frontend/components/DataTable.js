@@ -50,6 +50,8 @@ const PAGE_SIZES = [10, 25, 50, 100];
 //   meta: { className }  classes for that column's header and cells
 //   enableSorting: false to turn the sort button off for a column
 //
+// `dense` trims the cell padding for 40 px rows (staff tables).
+//
 // Pass `onRowClick` to make rows clickable; rows then take focus and open on
 // Enter. Keep a real button or link in the row too, for touch and screen
 // readers that skip row semantics.
@@ -63,6 +65,7 @@ export default function DataTable({
   getRowId,
   pageSize: initialPageSize = 25,
   hidePagination = false,
+  dense = false,
   pageCount,
   rowCount,
   pagination: paginationProp,
@@ -206,6 +209,7 @@ export default function DataTable({
                         key={cell.id}
                         className={cn(
                           "px-3",
+                          dense && "py-1.5",
                           cell.column.columnDef.meta?.className,
                         )}
                       >

@@ -2,25 +2,17 @@
 
 import { Flag } from "lucide-react";
 import { useState } from "react";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { apiFetch } from "@/lib/api";
 
 // A small marker for flagged applications in the review table.
 export function FlagBadge() {
   return (
-    <span
-      title="Flagged for a closer look"
-      style={{
-        display: "inline-flex",
-        alignItems: "center",
-        gap: 3,
-        marginLeft: 6,
-        color: "#d97706",
-        fontSize: "0.75rem",
-        fontWeight: 600,
-      }}
-    >
-      <Flag size={12} aria-hidden="true" />
-      Flagged
+    <span title="Flagged for a closer look" className="inline-flex">
+      <Flag className="size-3.5 text-warning" aria-hidden="true" />
+      <span className="sr-only">Flagged</span>
     </span>
   );
 }
@@ -51,68 +43,60 @@ export function FlagPanel({ app, onChanged }) {
   }
 
   return (
-    <div
-      style={{
-        border: "1px solid var(--border)",
-        borderRadius: 8,
-        padding: "0.75rem",
-        margin: "0.75rem 0",
-      }}
-    >
+    <div className="space-y-3 rounded-lg border p-3 text-sm">
       {app.flagged
-        ? <>
-            <div style={{ fontWeight: 600, color: "#d97706" }}>
-              <Flag size={14} aria-hidden="true" /> Flagged
-              {app.flaggedBy?.name ? ` by ${app.flaggedBy.name}` : ""}
+        ? <div className="space-y-2">
+            <div className="flex items-center justify-between gap-2">
+              <p className="flex items-center gap-1.5 font-medium">
+                <Flag className="size-3.5 text-warning" aria-hidden="true" />
+                Flagged
+                {app.flaggedBy?.name ? ` by ${app.flaggedBy.name}` : ""}
+              </p>
+              <Button
+                type="button"
+                variant="ghost"
+                size="xs"
+                disabled={busy}
+                onClick={() => send("DELETE")}
+              >
+                Clear flag
+              </Button>
             </div>
-            <ul
-              style={{ margin: "0.4rem 0 0.6rem 1.1rem", fontSize: "0.9rem" }}
-            >
+            <ul className="list-disc space-y-0.5 pl-5 text-muted-foreground">
               {(app.flagReasons || []).map((r) => (
                 <li key={r}>{r}</li>
               ))}
             </ul>
-            <button
-              type="button"
-              className="btn btn-ghost"
-              style={{ width: "auto" }}
-              disabled={busy}
-              onClick={() => send("DELETE")}
-            >
-              Clear flag
-            </button>
-          </>
-        : <div className="muted" style={{ fontSize: "0.85rem" }}>
-            Not flagged.
-          </div>}
+          </div>
+        : <p className="text-muted-foreground">Not flagged.</p>}
       <form
         onSubmit={(e) => {
           e.preventDefault();
           if (reason.trim()) send("POST", JSON.stringify({ reason }));
         }}
-        style={{ display: "flex", gap: 6, marginTop: "0.6rem" }}
+        className="flex gap-2"
       >
-        <input
-          className="input"
+        <Input
+          className="h-8"
           value={reason}
           maxLength={300}
           placeholder={app.flagged ? "Add another reason" : "Reason to flag"}
           aria-label="Reason to flag"
           onChange={(e) => setReason(e.target.value)}
         />
-        <button
+        <Button
           type="submit"
-          className="btn btn-ghost"
-          style={{ width: "auto" }}
+          variant="outline"
+          size="sm"
           disabled={busy || !reason.trim()}
         >
           Flag
-        </button>
+        </Button>
       </form>
       {error
-        ? <div className="alert-error" style={{ marginTop: "0.5rem" }}>
-            {error}
-          </div>
+        ? <Alert variant="destructive">
+            <AlertDescription>{error}</AlertDescription>
+          </Alert>
         : null}
     </div>
   );
