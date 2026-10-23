@@ -147,7 +147,7 @@ export default function AutoAcceptSettings() {
   const lastRun = status.enabled ? status.lastRun : null;
 
   return (
-    <Card>
+    <Card className="mb-6 [--card-spacing:--spacing(6)]">
       <CardHeader>
         <CardTitle>Auto-accept by email domain</CardTitle>
         <CardDescription>
