@@ -91,13 +91,15 @@ were presumably tracked in spreadsheets, so B33–B37 are a new design.
 
 | Old feature | Status | Task |
 | ----------- | ------ | ---- |
-| Inventory CRUD (name, category, location, link, count) | 📋 | B22, F20 |
-| Search by item id / name | 📋 | B23, F20 |
-| Checkout / return, per-item history log | 📋 (old had no permission check) | B22 |
-| "All checked out" list | 📋 | B22, F20 |
-| Barcode label CSV | 📋 as printable QR labels | B22 |
-| Slack reminders to return hardware | 📋 as email | B22, B26 |
-| Facilities page (makerspace tools list, `hum-xii`) | 📋 | B23, F20 |
+| Inventory CRUD (name, category, location, link, count) | ✅ | B22, F20 |
+| Search by item id / name | ✅ | B23, F20 |
+| Checkout / return, per-item history log | ✅ staff-only, atomic stock and retained history | B22 |
+| "All checked out" list | ✅ | B22, F20 |
+| Barcode label CSV | ✅ printable item QR labels | B22 |
+| Slack reminders to return hardware | ✅ background email reminders | B22, B26 |
+| Facilities page (makerspace tools list, `hum-xii`) | ✅ | B23, F20 |
+
+Individual unit tracking and the optional reserve/request queue are deferred.
 
 ## Mentorship
 
@@ -142,6 +144,6 @@ were presumably tracked in spreadsheets, so B33–B37 are a new design.
 | ----------- | ------ | ---- |
 | Feature flags per module | 🟡 backend ✅ (`OrgSettings.features`, `requireFeature`, gates meals; each new module must mount it); nav hides meals items; full nav config is F13 | B25, F13 |
 | Per-hackathon config repo (names, texts, branding) | 🟡 backend ✅ runtime branding API (`GET /api/meta/branding`, admin settings, logo upload) + admin card; the site still needs to apply it (colour flags fix) | B28, F12 |
-| CSV exports (applications, events, judging, projects) | 🟡 applications, check-ins, meals done; workshops, hardware, judging, projects pending | B29 |
+| CSV exports (applications, events, judging, projects) | 🟡 applications, check-ins, meals done; hardware done; workshops, judging, projects pending | B29 |
 | Resume bulk download (`download_resumes.py`) | ✅ ZIP of consenting accepted applicants | B29 |
 | Error reporting (Sentry/Raven) | 📋 | B46 |

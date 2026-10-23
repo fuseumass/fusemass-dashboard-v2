@@ -6,6 +6,21 @@ var Schema = mongoose.Schema;
 
 var DEFAULT_TEMPLATES = [
   {
+    key: "hardware_checkout",
+    subject: "Hardware checkout: {{itemName}}",
+    body: "Hi {{name}},\n\nYou checked out {{itemName}} at {{eventTime}}.\nReturn deadline: {{dueTime}}",
+  },
+  {
+    key: "hardware_return",
+    subject: "Hardware returned: {{itemName}}",
+    body: "Hi {{name}},\n\nYour return of {{itemName}} was recorded at {{eventTime}}.",
+  },
+  {
+    key: "hardware_reminder",
+    subject: "Please return {{itemName}}",
+    body: "Hi {{name}},\n\nPlease bring {{itemName}} back to the hardware desk.\nReturn deadline: {{dueTime}}",
+  },
+  {
     key: "application_received",
     subject: "Thanks for applying to {{orgName}}",
     body:

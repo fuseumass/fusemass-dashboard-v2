@@ -75,6 +75,23 @@ function row(method, path, level, options) {
 }
 
 var MATRIX = [
+  row("GET", "/api/hardware", "authenticated"),
+  row("GET", "/api/hardware/mine", "authenticated"),
+  row("GET", "/api/staff/hardware", "moderator"),
+  row("GET", "/api/staff/hardware/checkouts", "moderator"),
+  row("POST", "/api/staff/hardware/checkouts", "moderator"),
+  row("POST", "/api/staff/hardware/checkouts/:id/return", "moderator"),
+  row("GET", "/api/staff/hardware/export.csv", "moderator"),
+  row("POST", "/api/staff/hardware/reminders", "moderator"),
+  row("GET", "/api/admin/hardware", "admin"),
+  row("POST", "/api/admin/hardware/items", "admin"),
+  row("PATCH", "/api/admin/hardware/items/:id", "admin"),
+  row("DELETE", "/api/admin/hardware/items/:id", "admin"),
+  row("POST", "/api/admin/hardware/import", "admin"),
+  row("GET", "/api/admin/hardware/labels", "admin"),
+  row("POST", "/api/admin/hardware/facilities", "admin"),
+  row("PATCH", "/api/admin/hardware/facilities/:id", "admin"),
+  row("DELETE", "/api/admin/hardware/facilities/:id", "admin"),
   // ---- Public ------------------------------------------------------------
   row("GET", "/api/health", "public"),
   row("GET", "/api/health/db", "public"),

@@ -63,6 +63,8 @@ app.use(
     exposedHeaders: ["Content-Disposition"],
   })
 );
+// The inventory import accepts up to 500 KB of CSV inside a JSON body.
+app.use("/api/admin/hardware/import", express.json({ limit: "1mb" }));
 app.use(express.json());
 app.use(cookieParser());
 
@@ -90,6 +92,10 @@ app.use("/api/admin", adminRoutes);
 app.use("/api/meta", metaRoutes);
 app.use("/api/staff", staffRoutes);
 app.use("/api/teams", teamRoutes);
+var hardwareRoutes = require("./routes/hardware");
+app.use("/api/hardware", hardwareRoutes.attendee);
+app.use("/api/staff/hardware", hardwareRoutes.staff);
+app.use("/api/admin/hardware", hardwareRoutes.admin);
 
 // --- Fallback error handler (Express 4 signature: err, req, res, next) ------
 app.use(function errorHandler(err, req, res, _next) {

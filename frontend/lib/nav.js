@@ -7,6 +7,7 @@ import {
   House,
   LifeBuoy,
   Mail,
+  Package,
   Sandwich,
   ScanLine,
   Settings,
@@ -54,6 +55,30 @@ export const NAV_ITEMS = [
     group: "me",
   },
   { href: "/dashboard/team", label: "Team", icon: UsersRound, group: "me" },
+  {
+    href: "/dashboard/hardware",
+    label: "Hardware lab",
+    icon: Package,
+    group: "me",
+    feature: "hardware",
+  },
+  {
+    href: "/dashboard/staff/hardware",
+    label: "Hardware station",
+    icon: Package,
+    group: "event",
+    roles: STAFF,
+    feature: "hardware",
+    kiosk: true,
+  },
+  {
+    href: "/dashboard/admin/hardware",
+    label: "Hardware inventory",
+    icon: Package,
+    group: "admin",
+    roles: ADMIN,
+    feature: "hardware",
+  },
 
   {
     href: "/dashboard/admin",
