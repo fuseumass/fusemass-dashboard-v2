@@ -405,7 +405,7 @@ Raffles happen **after** a Top Hat-style attendance check-in at each workshop:
 
 ## Hardware
 
-### B22. Hardware inventory + checkout (replaces B10)
+### B22. Hardware inventory + checkout (replaces B10) - Noah claimed 10/24
 Port the old dashboard's hardware lab. Staff (mods + admins) check items out
 by scanning the attendee's QR (the same code as check-in and meals) and
 check them back in on return.
