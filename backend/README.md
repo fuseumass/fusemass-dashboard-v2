@@ -723,8 +723,8 @@ All routes below require `judging` enabled (404 otherwise). Judge access uses
 | DELETE | `/api/admin/judging/assignments/judges/:judgeId` | Admin. Remove judge from active queues, preserve scores and profile. Role demotion and judge removal also prune the queue. |
 | POST | `/api/admin/judging/projects/:id/withdraw` | Admin. Mark withdrawn and remove from every active queue, skips and slots. Existing project PATCH withdrawal does the same. Scores remain. |
 | POST | `/api/admin/judging/close` | Admin. Freeze score writes and skips (409). |
-| POST | `/api/admin/judging/open` | Admin. Allow score writes and skips. |
-| GET | `/api/judging/queue` | Judge. Safe project details, current project, positions, slot numbers, full assignments, skipped/done lists, own scores/comments, rubric, timer duration and closed state. |
+| POST | `/api/admin/judging/open` | Admin. Allow score writes and skips. Records `JudgingSettings.judgingOpenedAt` on first open and preserves it on reopen. |
+| GET | `/api/judging/queue` | Judge. Safe project details, current project, positions, slot numbers, full assignments, skipped/done lists, own scores/comments, rubric, `slotMinutes`, `judgingOpenedAt` (first opening, null before opening) and closed state. Assignment status is current/upcoming/skipped/done. |
 | POST | `/api/judging/scores` | Judge. `{ projectId, scores: { criterionKey: integer }, comments? }`. Complete rubric required, comments up to 10000 chars. Upserts on judge/project; scoring current advances, scoring skipped unskips, rescoring done does not advance. Upcoming projects must wait (409). |
 | POST | `/api/judging/skip` | Judge. `{ projectId? }`. Skip only the current project (409 for another assigned project). Omitted id means current. Clients should send id to reject stale actions. |
 

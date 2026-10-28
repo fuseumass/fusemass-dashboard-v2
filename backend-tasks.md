@@ -684,6 +684,7 @@ will walk to.
 - **Depends on:** B24a, B24c, B47.
 
 ### B24f. Judge queue and scoring
+- [x] Persist first `JudgingSettings.judgingOpenedAt` through both opening paths, preserve on reopen, return with `slotMinutes` for schedule estimates.
 - [x] Rubric in `JudgingSettings.criteria: [{ key, label, help, min, max,
       weight, kind: "general" | "category" }]`, seeded with the 2025 six (see
       "How it works") and editable by admins until judging starts.

@@ -122,7 +122,10 @@ async function patchSettings(req, res) {
     }
     var before = settings.toObject();
     var changes = Object.assign({}, body);
-    if (body.judgingOpen) changes.criteriaLocked = true;
+    if (body.judgingOpen) {
+      changes.criteriaLocked = true;
+      if (!settings.judgingOpenedAt) changes.judgingOpenedAt = new Date();
+    }
     // The conditional update prevents an editor racing with opening judging.
     var filter = { _id: settings._id, __v: settings.__v };
     if (configuration) {

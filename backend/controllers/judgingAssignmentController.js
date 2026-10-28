@@ -163,7 +163,10 @@ async function setOpen(req, res) {
     await control.locked(async function change() {
       // Opening judging also locks the rubric and calibration setup for good.
       var changes = open ? { judgingOpen: true, criteriaLocked: true } : { judgingOpen: false };
-      await Settings.updateOne({ key: "default" }, { $set: changes }, { upsert: true });
+      // Plain updates (no aggregation pipeline) so this runs the same on Cosmos.
+      await Settings.updateOne({ key: "default" }, { $set: changes, $inc: { __v: 1 } }, { upsert: true });
+      // Keep the first opening time for schedule estimates; reopening keeps it.
+      if (open) await Settings.updateOne({ key: "default", judgingOpenedAt: null }, { $set: { judgingOpenedAt: new Date() } });
     });
     res.json({ judgingOpen: open });
   } catch (err) { fail(res, err); }
