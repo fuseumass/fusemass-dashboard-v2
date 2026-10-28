@@ -9,6 +9,13 @@ var upload = multer({
   limits: { fileSize: 2 * 1024 * 1024, files: 1, fields: 0 },
 });
 router.use(requireFeature("judging"));
+var reports = require("../controllers/judgingResultsController");
+var isModerator = require("../utils/isModerator");
+router.get("/progress", isModerator, reports.progress);
+router.get("/results", isAdmin, reports.results);
+router.get("/progress.csv", isModerator, reports.exportCsv);
+router.get("/results.csv", isAdmin, reports.exportCsv);
+router.get("/scores.csv", isAdmin, reports.exportCsv);
 var assignments = require("../controllers/judgingAssignmentController");
 router.get("/assignments", isAdmin, assignments.list);
 router.post("/assignments", isAdmin, assignments.generate);

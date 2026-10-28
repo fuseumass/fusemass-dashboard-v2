@@ -78,6 +78,11 @@ function row(method, path, level, options) {
 }
 
 var MATRIX = [
+  row("GET", "/api/admin/judging/progress", "moderator"),
+  row("GET", "/api/admin/judging/results", "admin"),
+  row("GET", "/api/admin/judging/progress.csv", "moderator"),
+  row("GET", "/api/admin/judging/results.csv", "admin"),
+  row("GET", "/api/admin/judging/scores.csv", "admin"),
   row("GET", "/api/judging/queue", "judge"),
   row("POST", "/api/judging/scores", "judge"),
   row("POST", "/api/judging/skip", "judge"),

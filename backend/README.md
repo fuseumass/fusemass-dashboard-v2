@@ -757,3 +757,39 @@ confirm it has stopped and inspect the affected data before clearing
 do not expire into overlapping writes. Multi-document writes are retryable but
 not transactions: a failed response can have persisted a score or withdrawal;
 queue reads derive done state from scores and exclude withdrawn projects.
+
+## Judging progress, results and exports (B24g)
+
+Every route below requires the `judging` feature flag. JSON and downloads use
+`Cache-Control: no-store`.
+
+| Method | Route | Access and response |
+| --- | --- | --- |
+| GET | `/api/admin/judging/progress` | Moderator/admin. `{ activeVersion, judgingOpen, judgingsPerProject, projects, judges, missingProjects }`. Projects expose name, category, table, scoresIn, assigned and missingScores; judges expose name, email, done and total. |
+| GET | `/api/admin/judging/results` | Admin. `{ results, judgingOpen }`. Each project includes scoreCount, rawGeneral, adjustedGeneral, rawCategory, adjustedCategory, overallRank, categoryRank, flags and uncalibratedJudges. |
+| GET | `/api/admin/judging/scores.csv` | Admin. Judge name/email, project/table, every live criterion, comments and last saved time (ISO). All retained scores, including outside active queues. |
+| GET | `/api/admin/judging/results.csv` | Admin. Project totals, counts, both ranks, withdrawal and warning flags. |
+| GET | `/api/admin/judging/progress.csv` | Moderator/admin. Per-judge done/total and active version. |
+
+Progress counts distinct judge/project pairs in the active version, ignoring
+withdrawn/deleted projects. Scores from other versions only count when the pair
+also appears in the active queue. Missing coverage means scores in is below the
+larger of assigned count and configured judgingsPerProject (default 3 without an
+active version), so underassigned projects remain visible. No active version
+returns empty judge progress and zero assigned counts.
+
+Results use all retained scores. For each judge/project, general total is
+`sum(criterion.weight * score)` over general criteria; category total uses category
+criteria. Raw totals average those judge totals. Adjusted totals subtract the
+judge's stored general/category bias once before averaging. Bias retains the
+calibration module's units, with no rescaling, normalization or clamping. Missing
+or incomplete bias contributes zero and raises `flags.noCalibration`; fewer than
+the configured target raises `flags.missingScores`. Empty projects have null totals
+and ranks. Overall ranks use adjusted general totals; per-category ranks use
+adjusted category totals. Exact ties share competition rank (1, 1, 3). Withdrawn
+projects retain audit totals but receive no rank. The UI also supports raw ranks.
+
+Downloads use the shared CSV writer, UTF-8 BOM, RFC quoting and formula escaping.
+Staff progress refreshes every 15 seconds at `/dashboard/staff/judging/progress`;
+admins also have Progress and Results tabs in the judging console. Results are
+staff-only working data; this does not publish winners or prizes (B24h).
