@@ -14,6 +14,13 @@ import { getNavGroups, isKioskPath } from "@/lib/nav";
 import { UserContext } from "@/lib/userContext";
 import { cn } from "@/lib/utils";
 
+const JUDGE_PATHS = [
+  "/dashboard/judging",
+  "/dashboard/judging/score",
+  "/dashboard/judging/skipped",
+  "/dashboard/judging/demo",
+];
+
 // Shared shell for every logged-in page: auth guard + navigation. Fetches the
 // current user once and shares it via context so child pages don't refetch.
 export default function DashboardLayout({ children }) {
@@ -43,7 +50,7 @@ export default function DashboardLayout({ children }) {
   }, [router]);
 
   useEffect(() => {
-    if (user?.role === "judge" && pathname !== "/dashboard/judging") {
+    if (user?.role === "judge" && !JUDGE_PATHS.includes(pathname)) {
       router.replace("/dashboard/judging");
     }
   }, [user, pathname, router]);
@@ -69,7 +76,7 @@ export default function DashboardLayout({ children }) {
     );
   }
 
-  if (!user || (user.role === "judge" && pathname !== "/dashboard/judging")) {
+  if (!user || (user.role === "judge" && !JUDGE_PATHS.includes(pathname))) {
     return null;
   }
 

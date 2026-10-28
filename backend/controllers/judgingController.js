@@ -30,10 +30,10 @@ async function queue(req, res) {
       var id = String(p._id);
       var score = ctx.scores.find(function same(s) { return String(s.project) === id; });
       return Object.assign({}, p, { position: i + 1, slot: ctx.queue.slots.findIndex(function same(s) { return String(s) === id; }) + 1,
-        status: ctx.done.has(id) ? "done" : ctx.skipped.has(id) ? "skipped" : "upcoming",
+        status: ctx.done.has(id) ? "done" : ctx.skipped.has(id) ? "skipped" : ctx.current && String(ctx.current._id) === id ? "current" : "upcoming",
         scores: score ? score.scores : null, comments: score ? score.comments : "" });
     });
-    res.json({ judgingOpen: state.judgingOpen, version: state.activeVersion, criteria: await getCriteria(),
+    res.json({ judgingOpenedAt: state.judgingOpenedAt, judgingOpen: state.judgingOpen, version: state.activeVersion, criteria: await getCriteria(),
       slotMinutes: ctx.assignment ? ctx.assignment.params.slotMinutes : null,
       current: assignments.find(function same(p) { return ctx.current && String(p._id) === String(ctx.current._id); }) || null,
       total: assignments.length, assignments: assignments,

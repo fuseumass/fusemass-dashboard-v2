@@ -6,12 +6,14 @@ var mongoose = require("mongoose");
  * @property {Array<object>} calibrationProjects - Ordered practice projects.
  * @property {Array<object>} criteria - Scoring rubric, with one category criterion.
  * @property {boolean} judgingOpen - Locks rubric configuration once opened.
+ * @property {Date|null} judgingOpenedAt - First opening time, retained on reopen.
  * @property {boolean} criteriaLocked - Remembers that judging has started.
  */
 var schema = new mongoose.Schema(
   {
     key: { type: String, default: "default", unique: true, enum: ["default"] },
     judgingOpen: { type: Boolean, default: false },
+    judgingOpenedAt: { type: Date, default: null },
     criteriaLocked: { type: Boolean, default: false },
     calibrationProjects: {
       type: [
