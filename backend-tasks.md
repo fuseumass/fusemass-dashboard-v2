@@ -704,19 +704,21 @@ will walk to.
 Implementation notes: generation is inactive until explicitly activated. Regular and hardware judges form separate pools. Late additions use explicit eligible project ids and append slots after the existing schedule; additions/removals can change coverage and the stored report describes the original generation. Scores survive all assignment changes. Demotion/removal also prunes the active queue. Database writes and freeze share a singleton lock; see backend/README.md for recovery after a process crash.
 
 ### B24g. Progress board, results and exports
-- [ ] **Progress** (the 2025 "leaderboard"): `GET /api/admin/judging/progress`,
+- [x] **Progress** (the 2025 "leaderboard"): `GET /api/admin/judging/progress`,
       per project scores in / assigned, per judge done / total, and the
       projects still missing scores. Visible to moderators and admins.
-- [ ] **Results** (missing in 2025): `GET /api/admin/judging/results`, admin
+- [x] **Results** (missing in 2025): `GET /api/admin/judging/results`, admin
       only. Per project: number of scores; the raw general total (weighted
       sum of the `general` criteria); the **bias-adjusted** total (subtract
       each judge's general bias before averaging); the category score raw and
       bias-adjusted; and flags (fewer scores than `judgingsPerProject`, judges
       without calibration). Rank overall and per category. Implement in
       `utils/judging/results.js` (pure) so it can be tested.
-- [ ] CSV exports: all scores (the dump 2025 had commented out), results,
+- [x] CSV exports: all scores (the dump 2025 had commented out), results,
       per-judge progress.
 - **Depends on:** B24d, B24f.
+
+B24g implemented: active-version progress, retained-score weighted results, competition ranks, warning flags and formula-safe CSV exports. Withdrawn projects retain audit totals but are unranked. Syntax/lint checks run; MongoDB integration tests and browser screenshots remain unverified in this offline environment.
 
 ### B24h. Prizes and winners
 The old Rails dashboard had prizes as data; 2025 handled them outside the app.

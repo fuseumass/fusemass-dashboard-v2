@@ -9,6 +9,7 @@ import AdminJudgingCalibration from "@/components/AdminJudgingCalibration";
 import DataTable from "@/components/DataTable";
 import EmptyState from "@/components/EmptyState";
 import JudgingAssignments from "@/components/JudgingAssignments";
+import JudgingReports from "@/components/JudgingReports";
 import PageHeader from "@/components/PageHeader";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import {
@@ -475,12 +476,20 @@ export default function JudgingAdminPage() {
       )}
       <Tabs defaultValue="rooms">
         <TabsList className="h-auto flex-wrap">
+          <TabsTrigger value="progress">Progress</TabsTrigger>
+          <TabsTrigger value="results">Results</TabsTrigger>
           <TabsTrigger value="rooms">Rooms</TabsTrigger>
           <TabsTrigger value="projects">Projects</TabsTrigger>
           <TabsTrigger value="import">Import</TabsTrigger>
           <TabsTrigger value="assignments">Assignments</TabsTrigger>
           <TabsTrigger value="calibration">Calibration</TabsTrigger>
         </TabsList>
+        <TabsContent value="progress">
+          <JudgingReports />
+        </TabsContent>
+        <TabsContent value="results">
+          <JudgingReports results />
+        </TabsContent>
         <TabsContent value="assignments">
           <JudgingAssignments projects={projects} onChange={load} />
         </TabsContent>

@@ -467,18 +467,20 @@ Schedule, scoring, skipped and Demo routes are implemented. Drafts persist per u
 - [x] **Rubric:** Calibration section edits label, guiding questions, min/max, weight,
       general/category and ordered calibration projects; locked after judging starts.
 - [x] **Calibration bias:** completion status, Compute bias and stored bias table.
-      Assignment progress remains pending B24g.
+      Assignment progress is available in the Progress tab (B24g).
 - [ ] **Judges:** list with hardware flag, invite status, calibration done,
       bias, progress; invite and bulk-invite (F27).
 - [x] **Assignments:** parameters (judgings per project) → Generate → show the
       verifier report and per-judge queues → Activate. Version history; add
       or remove a judge; withdraw a project.
-- [ ] **Progress** (the 2025 "leaderboard"): per project scores in / assigned,
-      per judge done / total, missing scores first; auto-refresh; a lobby
-      screen version.
-- [ ] **Results:** ranking overall and per category, with a raw vs
+- [x] **Progress** (the 2025 "leaderboard"): per project scores in / assigned,
+      per judge done / total, missing scores first; auto-refresh every 15 seconds.
+      Read-only staff page at `/dashboard/staff/judging/progress`.
+- [ ] Separate lobby screen version.
+- [x] **Results:** ranking overall and per category, with a raw vs
       bias-adjusted toggle, score counts and warning badges (too few scores,
-      uncalibrated judges); freeze scoring; CSV exports.
+      uncalibrated judges); CSV exports. Scoring freeze remains in the Assignments tab.
+      Light, dark and 375 px screenshots and keyboard walkthrough remain unverified.
 - [ ] **Prizes:** CRUD, suggested winners from the category ranking, assign
       and publish (B24h).
 - Every action is a button that POSTs, with a confirmation where it's

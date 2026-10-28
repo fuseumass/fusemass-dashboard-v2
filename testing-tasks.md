@@ -163,9 +163,13 @@ fixed.
       bias compared with the pure formula over completed judges only, configuration
       reset/locking, role permissions and feature gates in `judgingCalibration.test.js`.
       Written but not executed in the offline environment without MongoDB.
-- [ ] **Results (pure):** the bias-adjusted ranking flips the order of two
+- [x] **Results (pure):** the bias-adjusted ranking flips the order of two
       projects where a strict judge saw one and a generous judge the other;
       projects with fewer than k scores are flagged.
+      Written in `backend/test/judgingResults.test.js`: hand calculations, weighted
+      averages, ties, missing calibration, empty/withdrawn projects, active-version
+      progress, retained scores, role permissions, feature gates and formula-safe
+      CSV content. Tests not run here as requested (no MongoDB).
 - [ ] **Devpost import:** a fixture CSV with the real repeated `TeamMem1*`
       headers keeps all 4 members with full names (2025 kept one first name);
       an empty hardware column doesn't crash; re-import updates instead of

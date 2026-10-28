@@ -50,6 +50,14 @@ export const NAV_GROUPS = [
 
 export const NAV_ITEMS = [
   {
+    href: "/dashboard/staff/judging/progress",
+    label: "Judging progress",
+    icon: ClipboardList,
+    group: "event",
+    roles: STAFF,
+    feature: "judging",
+  },
+  {
     href: "/dashboard/staff/judging",
     label: "Judging desk",
     icon: ScanLine,
