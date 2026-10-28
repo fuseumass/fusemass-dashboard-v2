@@ -99,6 +99,7 @@ function createApp() {
   // Readiness: also pings the database (503 when it's unreachable).
   app.get("/api/health/db", healthController.databaseHealth);
 
+  app.use("/api/judging", require("./routes/judging"));
   app.use("/api/auth", authRoutes);
   app.use("/api/applications", applicationRoutes);
   app.use("/api/admin", adminRoutes);

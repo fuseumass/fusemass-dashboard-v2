@@ -17,7 +17,7 @@ var limiter = rateLimit({
   },
   message: { error: "Too many attempts. Wait a minute before trying again." },
 });
-router.use(isAuthenticated);
+router.use(isAuthenticated, require("../utils/currentRole").requireRole(["applicant", "moderator", "admin"], "Judges cannot access attendee workshops."));
 router.get("/manageable", raffle.manageable);
 router.post("/:id/attendance/open", manager, raffle.session);
 router.post("/:id/attendance/extend", manager, raffle.session);

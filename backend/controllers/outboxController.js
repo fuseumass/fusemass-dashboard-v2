@@ -16,7 +16,7 @@ var RETRY_ALL_LIMIT = 500;
 // A second identical bulk send within this long is refused (a double click).
 var DUPLICATE_BATCH_MS = 2 * 60 * 1000;
 // Never bulk-send these: they need per-person values (a single-use link).
-var NOT_BULK_SENDABLE = ["account_setup", "verify_email"];
+var NOT_BULK_SENDABLE = ["judge_invite", "account_setup", "verify_email"];
 
 /**
  * Escape a string for use inside a RegExp.
@@ -46,6 +46,9 @@ function resendMode(row) {
     return { mode: "none", note: "Cancelled emails aren't sent. Start a new send instead." };
   }
   if (row.redacted) {
+    if (row.templateKey === "judge_invite") {
+      return { mode: "none", note: "Invite links cannot be stored. Resend a fresh invite from the Judges page." };
+    }
     if (isSetupLink) {
       return { mode: "reissue" };
     }

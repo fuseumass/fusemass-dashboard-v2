@@ -531,6 +531,32 @@ only the caller's wins (`prize`, `claimed`), and organizerRoom.
 Calendar emails use stable workshop UIDs and increasing sequences. Organizer
 assignment, waitlists and subscription feeds are deferred.
 
+## Judge accounts (B47)
+
+Admin routes below require `requireFeature("judging")` and `isAdmin`:
+
+| Method | Route | Body / response |
+| --- | --- | --- |
+| GET | `/api/admin/judges` | `{ judges }`: name, email, hardware, inviteStatus, calibrationDone |
+| POST | `/api/admin/judges` | `{ name, email, hardware }`, creates or promotes and emails one invite |
+| POST | `/api/admin/judges/preview` | `{ csv }`, returns `{ rows }` with row validation errors; no writes or emails |
+| POST | `/api/admin/judges/bulk` | `{ csv, confirm: true }`, revalidates then sends; returns per-row results |
+| POST | `/api/admin/judges/:id/resend` | Rotates token and sends a fresh seven-day invite |
+| DELETE | `/api/admin/judges/:id` | Demotes to applicant, deactivates profile, invalidates invite |
+
+`POST /api/auth/judge/accept { token, password }` is public and atomically consumes
+the hashed invite token, returning `{ token, user }`. It works even while judging
+is disabled. Invalid, expired and used tokens return 400. Passwords need at least
+eight characters. `GET /api/auth/me` includes `user.judgeProfile` with `hardware`,
+`calibrationDone` and `active` for judges, independent of the feature flag.
+
+`GET /api/judging` is an `isJudge` placeholder (judges and admins). The guard
+reads the current database role, so demotion revokes access immediately with the
+same JWT. It is available independently of the feature flag. Future judging
+features remain in B24. Judges cannot submit applications or obtain attendee QR
+codes. Invite emails use the built-in `judge_invite` template and `{{inviteUrl}}`;
+links are credentials, never persisted in the outbox or retried there.
+
 ## Judging rooms and projects
 
 These routes require an admin and return 404 while `judging` is disabled.

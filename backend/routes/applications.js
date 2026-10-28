@@ -9,6 +9,7 @@ var isEmailVerified = require("../utils/isEmailVerified");
 var authRateLimit = require("../utils/authRateLimit");
 
 var router = express.Router();
+var isParticipant = require("../utils/currentRole").requireRole(["applicant", "moderator", "admin"], "Judges cannot apply or access attendee QR codes.");
 
 // Keep the uploaded resume in memory; the controller streams it to Azure Blob.
 // Cap at 5 MB and only accept common resume formats.
@@ -72,13 +73,14 @@ router.post(
 router.post(
   "/",
   isAuthenticated,
+  isParticipant,
   isEmailVerified,
   upload.single("resume"),
   handleUploadError,
   applicationController.apply
 );
 router.get("/me", isAuthenticated, applicationController.getMine);
-router.get("/me/qr", isAuthenticated, applicationController.getMyQr);
+router.get("/me/qr", isAuthenticated, isParticipant, applicationController.getMyQr);
 router.get("/me/resume", isAuthenticated, resumeController.getMyResume);
 
 module.exports = router;

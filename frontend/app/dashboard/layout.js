@@ -42,6 +42,12 @@ export default function DashboardLayout({ children }) {
       .finally(() => setLoading(false));
   }, [router]);
 
+  useEffect(() => {
+    if (user?.role === "judge" && pathname !== "/dashboard/judging") {
+      router.replace("/dashboard/judging");
+    }
+  }, [user, pathname, router]);
+
   const groups = useMemo(() => getNavGroups(user, features), [user, features]);
 
   if (loading) {
@@ -63,7 +69,7 @@ export default function DashboardLayout({ children }) {
     );
   }
 
-  if (!user) {
+  if (!user || (user.role === "judge" && pathname !== "/dashboard/judging")) {
     return null;
   }
 

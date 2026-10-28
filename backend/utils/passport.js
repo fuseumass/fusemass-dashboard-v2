@@ -54,6 +54,12 @@ function findOrCreateGoogleUser(profile) {
     }
 
     var changed = false;
+    if (user.role === "judge" && user.judgeInvitePending) {
+      user.judgeInvitePending = false;
+      user.resetPasswordToken = undefined;
+      user.resetPasswordExpires = undefined;
+      changed = true;
+    }
     // Link the Google id to an existing (e.g. password) account.
     if (!user.googleId) {
       user.googleId = profile.id;

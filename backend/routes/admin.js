@@ -22,6 +22,7 @@ var applicationStatus = require("../utils/applicationStatus");
 var workshopController = require("../controllers/workshopController");
 var workshopRaffleController = require("../controllers/workshopRaffleController");
 var router = express.Router();
+router.use("/judges", require("./judges"));
 router.use("/judging", require("./adminJudging"));
 router.get("/raffles", requireFeature("workshops"), isAdmin, workshopRaffleController.history);
 router.use("/workshops", requireFeature("workshops"));
@@ -90,7 +91,7 @@ router.patch(
   "/users/:id/role",
   isAdmin,
   validateBody({
-    role: { required: true, type: "string", enum: ["applicant", "moderator", "admin"] },
+    role: { required: true, type: "string", enum: ["applicant", "moderator", "judge", "admin"] },
   }),
   adminController.setRole
 );

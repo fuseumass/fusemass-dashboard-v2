@@ -43,6 +43,7 @@ export const EXPIRED_MESSAGE = "Your session has expired. Please log in again.";
 // These endpoints answer 401 for bad credentials, not for an expired session —
 // a 401 from /api/auth/login means "wrong password" and must stay on the page.
 const AUTH_ENTRY_PATHS = [
+  "/api/auth/judge/accept",
   "/api/auth/login",
   "/api/auth/register",
   "/api/auth/forgot-password",

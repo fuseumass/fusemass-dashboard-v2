@@ -176,6 +176,35 @@ holding the token.
 
 ---
 
+### Roles
+
+| Role | Access |
+| --- | --- |
+| `applicant` | Apply and use attendee features when accepted |
+| `judge` | Judging only, invited by an admin |
+| `moderator` | Application review and event staff tools |
+| `admin` | All tools and organization setup |
+
+### Judge role review notes (B47 / F27)
+
+`isJudge` uses the shared `currentRole` guard to read the user's current role
+from MongoDB by indexed `_id` on every request. A demoted judge loses judging
+access immediately, even with the same unexpired JWT. Admins pass this guard.
+
+Judge invites reuse hashed, single-use password tokens with a seven-day expiry.
+Resending rotates the token. Invite emails are redacted in the outbox and cannot
+be retried or bulk-sent there; use the Judges page to issue a fresh link. CSV
+preview writes nothing and sends nothing; confirmation revalidates the CSV.
+Inviting existing applicants promotes them. Existing staff must have their role
+changed explicitly through Users first. Password acceptance consumes tokens
+atomically, including through the shared reset-password endpoint so it cannot
+reuse an invitation concurrently. Matching Google accounts can also sign in from the acceptance page or normal login;
+Google sign-in invalidates their pending invite token.
+
+The judging page is a placeholder. Calibration, progress, queues, scoring and
+removal from active assignments remain in B24d–B24g. Profiles are retained on
+removal; B24e has a TODO to remove demoted judges from active assignments.
+
 ## 6. Data & schema conventions (Mongoose)
 
 - One schema per file in `Backend/schemas/`, exporting the compiled model.

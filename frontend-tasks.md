@@ -481,18 +481,22 @@ floor: build the judge screens mobile-first, in the kiosk layout (F13).**
 - **Depends on:** B24b–B24h.
 
 ### F27. Judge role in the UI
-- [ ] Judges get their own nav: **Judging** only (calibration, current
-      project, skipped, my assignments). No Application, QR card, workshops,
-      meals or schedule items. The home page for a judge is the judging card.
-- [ ] Users page: add `judge` to the role list; admins can't demote themselves
+- [x] Judges get their own nav: **Judging** only, with a placeholder showing
+      hardware and calibration status. No Application, QR card, workshops,
+      meals or schedule items. Judge home redirects to the judging page.
+- [x] Users page: add `judge` to the role list; admins can't demote themselves
       (existing rule).
-- [ ] Judge invite acceptance: `/judge/accept?token=…` → set a password (or
+- [x] Judge invite acceptance: `/judge/accept?token=…` → set a password (or
       continue with Google) → land on `/dashboard/judging`. Expired or used
       token → a clear message and "ask an organizer to resend".
-- [ ] Admin → Judging → Judges: invite one, bulk-invite from CSV (preview,
+- [x] Admin → Judges: invite one, bulk-invite from CSV (preview,
       then send), resend invite, remove judge.
-- [ ] Client guards on every judging page (judges + admins only); the API
+- [x] Client guards on every judging page (judges + admins only); the API
       enforces it anyway (B47).
+
+Judging page is a guarded placeholder. Calibration, current project, skipped
+and assignments await F21/B24. Password invite acceptance is available; matching
+Google accounts use the existing sign-in flow.
 - **Depends on:** B47. **Related:** F13 (nav config with `roles`).
 
 ### F5. Hardware data view (moderators)

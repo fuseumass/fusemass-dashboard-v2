@@ -33,7 +33,7 @@ were presumably tracked in spreadsheets, so B33–B37 are a new design.
 | Google sign-in | ➕ ✅ | — |
 | Roles: admin / organizer / attendee | ✅ as admin / moderator / applicant | — |
 | Mentor role | ✖ mentorship runs on Discord | B31 |
-| Judge role (judging app used a CSV of logins) | 📋 | B47 |
+| Judge role (judging app used a CSV of logins) | ✅ role, single-use invites, CSV preview/send, judge-only nav and admin management; judging placeholder | B47, F27 |
 | Workshop organizer role | ➕ 📋 | B17 |
 | Admin role management (`pages#permissions`) | ✅ Users page | — |
 | "Redeem code" to upgrade your own role | ✖ security hole (let anyone become admin) | B17 |
@@ -121,7 +121,7 @@ Individual unit tracking and the optional reserve/request queue are deferred.
 | Printed judging forms (`paper_judging`) | 🟡 printable table signs only | B24c |
 | Judging results + CSV | 📋 (the 2025 app never computed results) | B24g |
 | **2025 judging:** two-step desk → table check-in | 📋 | B24c |
-| **2025 judging:** calibration rounds + judge bias | 🟡 pure bias formula ported and tested; calibration flow pending | B24d |
+| **2025 judging:** calibration rounds + judge bias | 🟡 pure bias formula ported and tested; judge profile and calibration status ready (B47); calibration flow pending | B24d, B47 |
 | **2025 judging:** time-slotted assignments + verifier | 🟡 pure generator/verifier ported and tested; API integration pending | B24a, B24e |
 | **2025 judging:** one-at-a-time scoring, skip, rejudge, assignment sheet | 📋 | B24f |
 | **2025 judging:** progress board ("leaderboard") | 📋 | B24g |

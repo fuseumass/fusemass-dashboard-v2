@@ -6,6 +6,11 @@ var Schema = mongoose.Schema;
 
 var DEFAULT_TEMPLATES = [
   {
+    key: "judge_invite",
+    subject: "Your invitation to judge at {{orgName}}",
+    body: "Hi {{name}},\n\nYou have been invited to judge at {{orgName}}. Set your password here:\n{{inviteUrl}}\n\nThis link works for 7 days. If it expires, ask an organizer to resend your invite.",
+  },
+  {
     // Sent when an attendee signs up for a workshop, with a calendar invite.
     key: "workshop_signup",
     subject: "You're signed up: {{title}}",
