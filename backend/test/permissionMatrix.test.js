@@ -51,6 +51,7 @@ var ROLES = ["none", "applicant", "moderator", "judge", "admin"];
 // "the guard lets it through" (any answer except 401, 403 or a crash; what the
 // handler does with an empty request is tested elsewhere).
 var LEVELS = {
+  sheet: { none: 401, applicant: 403, moderator: "ok", judge: 403, admin: "ok" },
   participant: { none: 401, applicant: "ok", moderator: "ok", judge: 403, admin: "ok" },
   judge: { none: 401, applicant: 403, moderator: 403, judge: "ok", admin: "ok" },
   accepted: { judge: 403, none: 401, applicant: 403, moderator: 403, admin: 403 },
@@ -78,6 +79,13 @@ function row(method, path, level, options) {
 }
 
 var MATRIX = [
+  row("GET", "/api/judging/sheet", "sheet"),
+  row("POST", "/api/staff/teams/lookup", "moderator"),
+  row("POST", "/api/staff/teams/:id/invites", "moderator"),
+  row("DELETE", "/api/staff/teams/:id/invites/:email", "moderator"),
+  row("POST", "/api/staff/teams/:id/members", "moderator"),
+  row("DELETE", "/api/staff/teams/:id/members/:userId", "moderator"),
+  row("POST", "/api/admin/teams/:id/unlock", "admin"),
   row("GET", "/api/admin/judging/progress", "moderator"),
   row("GET", "/api/admin/judging/results", "admin"),
   row("GET", "/api/admin/judging/progress.csv", "moderator"),

@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { formatTime } from "@/components/CheckInStation";
 import PageHeader from "@/components/PageHeader";
+import StaffTeamManager from "@/components/StaffTeamManager";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -132,6 +133,7 @@ export default function AttendeeHelpPage() {
       />
 
       <div className="space-y-4">
+        <StaffTeamManager attendeeId={attendee?.id} />
         <form onSubmit={lookUp} className="flex flex-wrap gap-2">
           <Input
             type="email"

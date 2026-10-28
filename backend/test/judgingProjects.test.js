@@ -63,16 +63,11 @@ test("preview matching and repeated columns without a database", async function 
       },
     };
   });
-  t.mock.method(Team, "findOne", function findOne() {
-    return {
-      select: function select() {
-        return {
-          lean: async function lean() {
-            return { members: [teamId] };
-          },
-        };
-      },
-    };
+  t.mock.method(Team, "find", function find() {
+    return { lean: async function lean() { return [{ _id: "000000000000000000000003", name: "Matched team", devpostUrl: "https://devpost.com/software/test-app", members: [teamId] }]; } };
+  });
+  t.mock.method(Project, "find", function find() {
+    return { select: function select() { return { lean: async function lean() { return []; } }; } };
   });
   var projectFindOne = t.mock.method(Project, "findOne", function findOne() {
     return {

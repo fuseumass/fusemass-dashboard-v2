@@ -596,3 +596,10 @@ Drop real `public/logo.png` and `public/logo-v2.png`, set the
 to the org name text until then. (After F12/B28, logos are uploaded in Admin →
 Branding instead.)
 - **Depends on:** none.
+
+### Judging team management extension (B24b/B24c/B24g)
+- [x] Team lock banner, disabled membership controls and judging sheet link.
+- [x] Attendee help QR/email team lookup, lock/project/table details, staff invite/cancel/remove/direct scan addition and admin unlock.
+- [x] Admin project team selection/clearing and import team/warning preview columns.
+- [x] Participant judging sheet navigation in Me, separate software/hardware sections, own-team progress and 30-second polling.
+- [ ] Light, dark and 375 px screenshots, keyboard walkthrough and physical QR scanning verification in a running environment.

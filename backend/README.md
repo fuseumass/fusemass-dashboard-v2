@@ -793,3 +793,51 @@ Downloads use the shared CSV writer, UTF-8 BOM, RFC quoting and formula escaping
 Staff progress refreshes every 15 seconds at `/dashboard/staff/judging/progress`;
 admins also have Progress and Results tabs in the judging console. Results are
 staff-only working data; this does not publish winners or prizes (B24h).
+
+## Judging teams and participant sheet
+
+`Project.team` is a sparse unique Team reference. Import previews match by
+Devpost URL first, then the first matching member email in CSV order. Existing
+links survive re-import. Every row reports `matchedTeam` (or null) and warnings
+listing teams when emails span multiple teams. All submissions colliding on a
+team are errors and skipped; existing submissions at another URL also conflict.
+Matched team members and other matched users are combined. Confirmation refreshes
+team membership, preserving the preview's matched-user accounts and current
+admin overrides. Project PATCH accepts `team: "<id>"` or null/empty to clear;
+invalid or already-linked teams are rejected.
+
+Desk and bulk check-in lock the linked team before allocation. Self-service
+membership, invitations, name and Devpost changes return 423 with the help-desk
+message while locked. Team reads still work. Admin table undo unlocks the team.
+On standalone MongoDB an allocation failure can leave the team locked; staff can
+retry allocation or an admin can explicitly unlock it. Membership changes,
+allocation, undo, staff changes and import row writes share the existing judging
+lease. As elsewhere in judging, multi-document standalone writes are not a
+transaction; inspect and retry partial failures.
+
+All routes below require the judging feature. Staff access uses current-role
+`isModerator`; unlock uses `isAdmin`; sheet uses authentication plus a database
+role/acceptance check. No response includes attendee QR credentials.
+
+| Method | Route | Request / response |
+| --- | --- | --- |
+| POST | `/api/staff/teams/lookup` | Staff. `{ qrId }`, `{ userId }` or `{ email }`. Safe attendee summary and team with members, pending invites, lock, project and table/room. Attendee help can look up unaccepted accounts. |
+| POST | `/api/staff/teams/:id/invites` | Staff. `{ email }`. Same team invite template, staff inviter, pending invites count toward max size. Works while locked. |
+| DELETE | `/api/staff/teams/:id/invites/:email` | Staff. Cancel a pending invite, including while locked. |
+| POST | `/api/staff/teams/:id/members` | Staff. `{ qrId }` or `{ userId }`. Accepted participant on no team; respects capacity including remaining invites. Consumes that attendee's invite. |
+| DELETE | `/api/staff/teams/:id/members/:userId` | Staff. Remove a member while locked. Transfer leadership to the first remaining member; retain an empty team for its audit/project, and give the next direct addition leadership. |
+| POST | `/api/admin/teams/:id/unlock` | Admin. Explicit unlock, logged on the team. |
+| GET | `/api/judging/sheet` | Accepted participants and staff; judges get 403. Closed: `{ open: false }`. Open: `{ open: true, software, hardware, ownTeam }`. |
+
+Staff actions append `staffChanges` (actor, time, action, user/email), synchronize
+the linked project's members with the team, and notify the hardware team-change
+helper for membership changes. Invite email is queued in the background.
+
+The participant sheet lists rooms in configured order within separate software
+and hardware arrays. Each room has `name`, `judgeCount` and `judges` with only
+`label` and current `table`. Current means the first unscored, unskipped,
+non-withdrawn project, matching the judge queue. Completed judges are absent.
+Anonymous ordinal labels are stored per version and survive room moves and
+queue removals. Labels use no names, emails or identity-derived values.
+`ownTeam` contains only `table`, `room`, `done` and `assigned`, or null. Responses
+are not cached; `/dashboard/judging-sheet` polls every 30 seconds.

@@ -8,7 +8,7 @@ var ProjectImport = require("../schemas/projectImport");
 var Team = require("../schemas/team");
 var User = require("../schemas/user");
 var normalizeUrl = require("./teamController").normalizeDevpostUrl;
-var overrideFields = ["category", "hardware", "needsPower", "withdrawn"];
+var overrideFields = ["category", "hardware", "needsPower", "withdrawn", "team"];
 
 function fail(res, err) {
   var bad = err.name === "ValidationError" || err.name === "CastError";
@@ -18,7 +18,7 @@ function fail(res, err) {
         ? "That project or table already exists."
         : bad
           ? "Check the submitted values."
-          : "Could not save judging data. Try again.",
+          : err.status ? err.message : "Could not save judging data. Try again.",
   });
 }
 function validId(req, res) {
@@ -155,6 +155,7 @@ async function updateProject(req, res) {
   if (!validId(req, res)) return;
   var values = {};
   for (var field of overrideFields) {
+    if (field === "team") continue;
     if (req.body && req.body[field] !== undefined) {
       if (
         typeof req.body[field] !== (field === "category" ? "string" : "boolean")
@@ -168,14 +169,34 @@ async function updateProject(req, res) {
   try {
     var control = require("../utils/judging/state");
     var project = await control.locked(async function update(state) {
+      if (req.body && req.body.team !== undefined) {
+        if (req.body.team === null || req.body.team === "") values.team = null;
+        else {
+          if (!mongoose.isValidObjectId(req.body.team)) throw control.problem(400, "Invalid team.");
+          var selectedTeam = await Team.findById(req.body.team);
+          if (!selectedTeam) throw control.problem(400, "Team not found.");
+          values.team = selectedTeam._id;
+          values.members = selectedTeam.members;
+        }
+      }
+      var previous = await Project.findById(req.params.id);
+      if (!previous) return null;
+      if (values.team && await Project.exists({ team: values.team, _id: { $ne: previous._id } })) throw control.problem(409, "This team already has a project.");
+      var clearTeam = values.team === null;
+      if (clearTeam) delete values.team;
       var updated = await Project.findByIdAndUpdate(
         req.params.id,
         {
           $set: values,
-          $addToSet: { overriddenFields: { $each: Object.keys(values) } },
+          ...(clearTeam ? { $unset: { team: 1 } } : {}),
+          $addToSet: { overriddenFields: { $each: Object.keys(values).filter(function override(key) { return overrideFields.includes(key); }).concat(clearTeam ? ["team"] : []) } },
         },
         { new: true, runValidators: true },
       );
+      if (updated && req.body && req.body.team !== undefined && previous.deskCheckedInAt) {
+        if (previous.team && String(previous.team) !== String(updated.team)) await Team.updateOne({ _id: previous.team }, { $unset: { lockedAt: 1, lockedBy: 1 } });
+        if (updated.team) await Team.updateOne({ _id: updated.team, lockedAt: null }, { $set: { lockedAt: previous.deskCheckedInAt, lockedBy: req.user.id } });
+      }
       if (updated && updated.withdrawn) await control.removeProject(updated._id, state);
       return updated;
     });
@@ -284,6 +305,9 @@ async function previewImport(req, res) {
       unrecognizedColumns: csv.unrecognizedColumns,
     };
     var seen = Object.create(null);
+    var teams = await Team.find({}).lean();
+    var teamRows = new Map();
+    var linkedProjects = await Project.find({ team: { $exists: true } }).select("team devpostUrl name").lean();
     for (var record of csv.records) {
       var data = {};
       var people = [];
@@ -323,26 +347,27 @@ async function previewImport(req, res) {
         last: data.last,
         email: data.submitterEmail,
       });
-      var team = await Team.findOne({ devpostUrl: url })
-        .select("members")
-        .lean();
-      var members = team ? team.members.map(String) : [];
+      var existing = await Project.findOne({ devpostUrl: url }).lean();
+      var members = [];
       var unmatched = [];
       var emails = Object.create(null);
       people.forEach(function match(p) {
-        var email = String(p.email || "")
-          .trim()
-          .toLowerCase();
+        var email = String(p.email || "").trim().toLowerCase();
         if (!email || emails[email]) return;
         emails[email] = true;
         if (byEmail[email]) {
           if (!members.includes(byEmail[email])) members.push(byEmail[email]);
-        } else
-          unmatched.push({
-            name: [p.first, p.last].filter(Boolean).join(" "),
-            email: email,
-          });
+        } else unmatched.push({ name: [p.first, p.last].filter(Boolean).join(" "), email: email });
       });
+      var emailTeams = teams.filter(function contains(t) {
+        return t.members.some(function member(id) { return members.includes(String(id)); });
+      });
+      var team = teams.find(function linked(t) { return t.devpostUrl === url; }) || members.map(function memberTeam(id) { return emailTeams.find(function includes(t) { return t.members.map(String).includes(id); }); }).find(Boolean);
+      if (existing && existing.team) team = teams.find(function linked(t) { return String(t._id) === String(existing.team); });
+      if (existing && (existing.overriddenFields || []).includes("team") && !existing.team) team = null;
+      var warnings = emailTeams.length > 1 ? ["Member emails belong to multiple teams: " + emailTeams.map(function name(t) { return t.name; }).join(", ")] : [];
+      var matchedUsers = members.slice();
+      if (team) members = Array.from(new Set(team.members.map(String).concat(members)));
       var values = {
         name: data.name,
         devpostUrl: url,
@@ -355,7 +380,7 @@ async function previewImport(req, res) {
         hardware: bool(data.hardware),
         needsPower: bool(data.needsPower),
       };
-      var existing = await Project.findOne({ devpostUrl: url }).lean();
+      if (team) values.team = String(team._id);
       var effective = Object.assign({}, values);
       if (existing)
         (existing.overriddenFields || []).forEach(function preserve(key) {
@@ -370,14 +395,44 @@ async function previewImport(req, res) {
           ? "updated"
           : "unchanged";
       preview.counts[status]++;
-      preview.rows.push({
+      var previewRow = {
+        matchedUsers: matchedUsers,
+        matchedTeam: team ? { id: team._id, name: team.name } : null,
+        warnings: warnings,
         rowNumber: rowNumber,
         status: status,
         project: effective,
         values: values,
         unmatchedMembers: unmatched,
-      });
+      };
+      var conflict = team && linkedProjects.find(function other(p) { return String(p.team) === String(team._id) && p.devpostUrl !== url; });
+      if (conflict) {
+        preview.counts[status]--;
+        previewRow.status = "error";
+        preview.counts.errors++;
+        preview.errors.push({ rowNumber: rowNumber, reason: "Team " + team.name + " has two submissions: " + conflict.name + " and " + data.name });
+      }
+      preview.rows.push(previewRow);
+      if (team) {
+        var key = String(team._id);
+        if (!teamRows.has(key)) teamRows.set(key, []);
+        teamRows.get(key).push(previewRow);
+      }
     }
+    teamRows.forEach(function duplicates(rows) {
+      if (rows.length < 2) return;
+      var reason = "Team " + rows[0].matchedTeam.name + " has two submissions: " + rows.map(function title(row) { return row.project.name; }).join(" and ");
+      rows.forEach(function reject(row) {
+        if (row.status !== "error") {
+          preview.counts[row.status]--;
+          row.status = "error";
+          preview.counts.errors++;
+        }
+        var existingError = preview.errors.find(function same(error) { return error.rowNumber === row.rowNumber; });
+        if (existingError) existingError.reason = reason;
+        else preview.errors.push({ rowNumber: row.rowNumber, reason: reason });
+      });
+    });
     var stored = await ProjectImport.create({
       createdBy: req.user.id,
       expiresAt: new Date(Date.now() + 30 * 60 * 1000),
@@ -412,42 +467,55 @@ async function confirmImport(req, res) {
       return;
     }
     for (var row of stored.preview.rows) {
-      var values = row.values;
-      // Pipeline evaluates overrides atomically, including edits since preview.
-      var set = {};
-      Object.keys(values).forEach(function field(key) {
-        set[key] = overrideFields.includes(key)
-          ? {
-              $cond: [
-                { $in: [key, { $ifNull: ["$overriddenFields", []] }] },
-                "$" + key,
-                { $literal: values[key] },
-              ],
-            }
-          : {
-              $literal:
-                key === "members"
-                  ? values[key].map(function id(v) {
-                      return new mongoose.Types.ObjectId(v);
-                    })
-                  : values[key],
-            };
-      });
-      set.updatedAt = new Date();
-      await Project.updateOne(
-        { devpostUrl: values.devpostUrl },
-        [
-          {
-            $set: {
-              withdrawn: { $ifNull: ["$withdrawn", false] },
-              overriddenFields: { $ifNull: ["$overriddenFields", []] },
-              createdAt: { $ifNull: ["$createdAt", new Date()] },
+      if (row.status === "error") continue;
+      await require("../utils/judging/state").locked(async function applyRow() {
+        var values = Object.assign({}, row.values);
+        var live = await Project.findOne({ devpostUrl: values.devpostUrl }).lean();
+        if (live && live.team) values.team = live.team;
+        if (live && !live.team && (live.overriddenFields || []).includes("team")) delete values.team;
+        if (values.team) {
+          var currentTeam = await Team.findById(values.team).lean();
+          if (!currentTeam) throw new Error("Team no longer exists.");
+          values.members = Array.from(new Set(currentTeam.members.map(String).concat(row.matchedUsers || values.members)));
+          values.team = new mongoose.Types.ObjectId(values.team);
+          if (live && live.deskCheckedInAt) await Team.updateOne({ _id: values.team, lockedAt: null }, { $set: { lockedAt: live.deskCheckedInAt, lockedBy: req.user.id } });
+        }
+        // Pipeline evaluates overrides atomically, including edits since preview.
+        var set = {};
+        Object.keys(values).forEach(function field(key) {
+          set[key] = overrideFields.includes(key)
+            ? {
+                $cond: [
+                  { $in: [key, { $ifNull: ["$overriddenFields", []] }] },
+                  "$" + key,
+                  { $literal: values[key] },
+                ],
+              }
+            : {
+                $literal:
+                  key === "members"
+                    ? values[key].map(function id(v) {
+                        return new mongoose.Types.ObjectId(v);
+                      })
+                    : values[key],
+              };
+        });
+        set.updatedAt = new Date();
+        await Project.updateOne(
+          { devpostUrl: values.devpostUrl },
+          [
+            {
+              $set: {
+                withdrawn: { $ifNull: ["$withdrawn", false] },
+                overriddenFields: { $ifNull: ["$overriddenFields", []] },
+                createdAt: { $ifNull: ["$createdAt", new Date()] },
+              },
             },
-          },
-          { $set: set },
-        ],
-        { upsert: true },
-      );
+            { $set: set },
+          ],
+          { upsert: true },
+        );
+      });
     }
     res.json({ ok: true, counts: stored.preview.counts });
   } catch (err) {

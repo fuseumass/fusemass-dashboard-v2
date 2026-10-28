@@ -86,4 +86,15 @@ router.post(
 
 router.post("/judging/desk-checkin", requireFeature("judging"), isAuthenticated, isModerator,
     require("../controllers/judgingCheckinController").deskCheckin);
+var teams = require("../controllers/staffTeamController");
+router.use("/teams", requireFeature("judging"), isAuthenticated, isModerator);
+router.post("/teams/lookup", teams.lookup);
+/** @param {string} action - Staff action. @returns {function} Action middleware. */
+function teamAction(action) {
+  return function chooseAction(req, res, next) { req.teamAction = action; next(); };
+}
+router.post("/teams/:id/invites", teamAction("invite"), teams.change);
+router.delete("/teams/:id/invites/:email", teamAction("cancelInvite"), teams.change);
+router.post("/teams/:id/members", teamAction("add"), teams.change);
+router.delete("/teams/:id/members/:userId", teamAction("remove"), teams.change);
 module.exports = router;

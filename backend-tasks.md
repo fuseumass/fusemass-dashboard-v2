@@ -651,6 +651,13 @@ will walk to.
 - Integration tests written but not run here (no MongoDB). Light/dark/mobile screenshots and device scanning remain to verify in a running environment.
 - **Depends on:** B24b; check-in from `feature/qr-checkin`.
 
+### B24c team management extension
+- [x] Combine Devpost submissions by dashboard team, report duplicate team submissions and cross-team email warnings, preserve links and validate admin overrides.
+- [x] Lock teams before desk/bulk allocation; refuse self-service changes with 423; undo and explicit admin unlock reopen teams.
+- [x] Staff lookup, invite, cancel, remove and direct QR addition, audit trail, project member synchronization and hardware membership notifications.
+- [x] Accepted participant/staff anonymous sheet, separate software/hardware rooms, stable version labels, current locations and own-team progress.
+- Tests written in `backend/test/judgingTeams.test.js`, not run (no MongoDB). Browser screenshots and keyboard/device verification remain outstanding.
+
 ### B24d. Judge calibration (tutorial) and bias
 - [x] `JudgingSettings.calibrationProjects` (default 3, matching 2025): each
       has a title and an optional description or link. All judges score the
