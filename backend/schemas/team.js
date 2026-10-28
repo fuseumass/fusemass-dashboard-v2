@@ -22,6 +22,9 @@ var Schema = mongoose.Schema;
  * @property {mongoose.Types.ObjectId[]} members - Everyone on the team, leader included.
  * @property {Array<{email: string, invitedBy: mongoose.Types.ObjectId, invitedAt: Date}>} invites
  *   Pending invites, by email (the invitee may not have logged in yet).
+ * @property {Date} lockedAt - Judging membership lock.
+ * @property {object} lockedBy - Staff actor.
+ * @property {object[]} staffChanges - Staff membership audit.
  * @property {string} [devpostUrl] - Normalized https://devpost.com/software/<slug>.
  */
 
@@ -48,6 +51,9 @@ var teamSchema = new Schema(
     },
     devpostUrl: { type: String, trim: true },
     devpostUpdatedAt: { type: Date },
+    lockedAt: Date,
+    lockedBy: { type: Schema.Types.ObjectId, ref: "User" },
+    staffChanges: [{ _id: false, by: { type: Schema.Types.ObjectId, ref: "User" }, at: Date, action: String, user: { type: Schema.Types.ObjectId, ref: "User" }, email: String }],
   },
   { timestamps: true }
 );

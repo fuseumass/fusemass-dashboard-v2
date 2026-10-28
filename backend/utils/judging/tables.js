@@ -19,9 +19,12 @@ function problem(message) {
   err.status = 409;
   return err;
 }
-async function allocate(id, session, both) {
+async function allocate(id, session, both, actor) {
   var project = await Project.findById(id).session(session);
   if (!project || project.withdrawn) throw problem("Project not found or withdrawn.");
+  if (project.team) {
+    await require("../../schemas/team").updateOne({ _id: project.team, lockedAt: null }, { $set: { lockedAt: new Date(), lockedBy: actor } }, { session: session });
+  }
   var changed = !project.deskCheckedInAt;
   var values = {};
   if (!project.tableNumber) {
@@ -40,16 +43,16 @@ async function allocate(id, session, both) {
   if (!updated) throw Object.assign(new Error("Assignment changed. Retry."), { code: 11000 });
   return { project: updated, changed: changed };
 }
-/** @param {object|string} id - Project id. @param {boolean} both - Complete both steps. @returns {Promise<object>} Assignment and email claim. */
-async function assign(id, both) {
+/** @param {object|string} id - Project id. @param {boolean} both - Complete both steps. @param {object|string} actor - Staff id. @returns {Promise<object>} Assignment and email claim. */
+async function assignLocked(id, both, actor) {
   var transactions = true;
   for (var attempt = 0; attempt < 60; attempt++) {
     var session = transactions ? await mongoose.startSession() : null;
     try {
       var result;
       if (session) {
-        await session.withTransaction(async function write() { result = await allocate(id, session, both); });
-      } else result = await allocate(id, null, both);
+        await session.withTransaction(async function write() { result = await allocate(id, session, both, actor); });
+      } else result = await allocate(id, null, both, actor);
       return result;
     } catch (err) {
       if (transactions && (err.code === 20 || /Transaction numbers are only allowed|does not support transactions/i.test(err.message))) {
@@ -63,5 +66,9 @@ async function assign(id, both) {
     }
   }
   throw problem("Tables are busy. Scan again.");
+}
+/** @param {object|string} id - Project. @param {boolean} both - Both check-ins. @param {object|string} actor - Staff. @returns {Promise<object>} Allocation. */
+function assign(id, both, actor) {
+  return require("./state").locked(function allocateLocked() { return assignLocked(id, both, actor); });
 }
 module.exports = { layout: layout, assign: assign };

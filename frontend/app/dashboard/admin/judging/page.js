@@ -57,6 +57,7 @@ import { useUser } from "@/lib/userContext";
 const root = "/api/admin/judging";
 const roomDefaults = { name: "", order: 0, capacity: 0, hardware: false };
 const projectDefaults = {
+  team: "",
   category: "",
   hardware: false,
   needsPower: false,
@@ -69,17 +70,19 @@ const roomSchema = z.object({
   hardware: z.boolean(),
 });
 const projectSchema = z.object({
+  team: z.string(),
   category: z.string(),
   hardware: z.boolean(),
   needsPower: z.boolean(),
   withdrawn: z.boolean(),
 });
 
-function Fields({ form, room }) {
+function Fields({ form, room, teams }) {
   const fields = room
     ? ["name", "order", "capacity", "hardware"]
-    : ["category", "hardware", "needsPower", "withdrawn"];
+    : ["team", "category", "hardware", "needsPower", "withdrawn"];
   const labels = {
+    team: "Dashboard team",
     name: "Name",
     order: "Order",
     capacity: "Capacity",
@@ -97,18 +100,37 @@ function Fields({ form, room }) {
         <FormItem>
           <FormLabel>{labels[name]}</FormLabel>
           <FormControl>
-            {["hardware", "needsPower", "withdrawn"].includes(name)
-              ? <Checkbox
-                  checked={field.value}
-                  onCheckedChange={field.onChange}
-                />
-              : <Input
-                  {...field}
-                  type={
-                    ["order", "capacity"].includes(name) ? "number" : "text"
+            {name === "team"
+              ? <Select
+                  value={field.value || "none"}
+                  onValueChange={(value) =>
+                    field.onChange(value === "none" ? "" : value)
                   }
-                  min={0}
-                />}
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">No team</SelectItem>
+                    {teams.map((team) => (
+                      <SelectItem key={team._id} value={team._id}>
+                        {team.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              : ["hardware", "needsPower", "withdrawn"].includes(name)
+                ? <Checkbox
+                    checked={field.value}
+                    onCheckedChange={field.onChange}
+                  />
+                : <Input
+                    {...field}
+                    type={
+                      ["order", "capacity"].includes(name) ? "number" : "text"
+                    }
+                    min={0}
+                  />}
           </FormControl>
           <FormMessage />
         </FormItem>
@@ -148,6 +170,7 @@ export default function JudgingAdminPage() {
   const [checkinAction, setCheckinAction] = useState(null);
   const [confirmation, setConfirmation] = useState("");
   const [rooms, setRooms] = useState([]);
+  const [teams, setTeams] = useState([]);
   const [projects, setProjects] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -172,12 +195,14 @@ export default function JudgingAdminPage() {
     setLoading(true);
     setError("");
     try {
-      const [r, p] = await Promise.all([
+      const [r, p, t] = await Promise.all([
         apiFetch(`${root}/rooms`),
         apiFetch(`${root}/projects`),
+        apiFetch("/api/admin/teams"),
       ]);
       setRooms(r.rooms);
       setProjects(p.projects);
+      setTeams(t.teams);
     } catch (err) {
       setError(err.message);
     } finally {
@@ -626,6 +651,17 @@ export default function JudgingAdminPage() {
                 columns={[
                   { accessorKey: "rowNumber", header: "Row" },
                   { accessorKey: "project.name", header: "Project" },
+                  {
+                    id: "team",
+                    header: "Dashboard team",
+                    cell: ({ row }) => row.original.matchedTeam?.name || "None",
+                  },
+                  {
+                    id: "warnings",
+                    header: "Warnings",
+                    cell: ({ row }) =>
+                      row.original.warnings?.join(". ") || "None",
+                  },
                   { accessorKey: "status", header: "Change" },
                   {
                     id: "unmatched",
@@ -670,7 +706,11 @@ export default function JudgingAdminPage() {
           </DialogHeader>
           <Form {...form}>
             <form onSubmit={form.handleSubmit(save)} className="space-y-4">
-              <Fields form={form} room={editing?.kind !== "project"} />
+              <Fields
+                form={form}
+                room={editing?.kind !== "project"}
+                teams={teams}
+              />
               {form.formState.errors.root?.server && (
                 <Alert variant="destructive">
                   <AlertDescription>

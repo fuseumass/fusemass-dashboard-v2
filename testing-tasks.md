@@ -170,7 +170,7 @@ fixed.
       averages, ties, missing calibration, empty/withdrawn projects, active-version
       progress, retained scores, role permissions, feature gates and formula-safe
       CSV content. Tests not run here as requested (no MongoDB).
-- [ ] **Devpost import:** a fixture CSV with the real repeated `TeamMem1*`
+- [x] **Devpost import:** a fixture CSV with the real repeated `TeamMem1*`
       headers keeps all 4 members with full names (2025 kept one first name);
       an empty hardware column doesn't crash; re-import updates instead of
       duplicating; unmatched emails are reported.
@@ -278,3 +278,11 @@ Prompted by the judging repo committing judge passwords and participant data
       keys and for the secret values. It caught `qrId` leaking through admin
       user search, role changes and setup-admin (fixed in `schemas/user.js`).
 - **Depends on:** none.
+
+### Judging teams regression coverage
+- [x] Write `backend/test/judgingTeams.test.js`: team combination, URL/email matching, duplicate-team errors, cross-team warnings, preserved links and unique admin overrides.
+- [x] Cover lock-before-table-write, self-service 423 paths, readable locked teams, undo/unlock, bulk locking, staff locked-team actions, capacity, project synchronization and audit actors.
+- [x] Cover participant sheet pool separation, current-location counts, own-team completion, stable anonymous labels, identity exclusion, closed response and judge denial.
+- [x] Add every new route to the permission matrix; adapt existing import/allocation mocks.
+- [ ] Run backend tests with MongoDB. Not attempted in this offline environment, as requested.
+- [ ] Browser screenshots, keyboard and physical scanner checks.

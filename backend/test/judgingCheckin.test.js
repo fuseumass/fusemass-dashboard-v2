@@ -30,6 +30,7 @@ test("table layout uses global continuous numbering and room pools", function ()
 });
 
 test("unsupported transactions fall back to conditional unique-index allocation", async function (t) {
+  t.mock.method(require("../utils/judging/state"), "locked", async function locked(work) { return work({}); });
   var mongoose = require("mongoose");
   var ended = 0;
   var sessions = 0;

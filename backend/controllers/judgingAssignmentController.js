@@ -18,6 +18,20 @@ async function active(state) {
   if (!version) throw control.problem(409, "Activate an assignment version first.");
   return version;
 }
+/**
+ * Give every judge in a version a stable anonymous label ("Judge 3") for the
+ * participant judging sheet. Runs where queues change (activation, late
+ * additions), under the judging lock, so the sheet itself never writes.
+ * @param {object} assignment - JudgingAssignment document (mutated).
+ * @returns {void}
+ */
+function labelJudges(assignment) {
+  assignment.queues.forEach(function label(q) {
+    if (!assignment.sheetLabels.some(function same(entry) { return String(entry.judge) === String(q.judge); })) {
+      assignment.sheetLabels.push({ judge: q.judge, label: "Judge " + (assignment.sheetLabels.length + 1) });
+    }
+  });
+}
 /** @param {object} req - Request. @param {object} res - Response. @returns {Promise<void>} */
 async function generate(req, res) {
   var body = req.body || {};
@@ -106,6 +120,7 @@ async function activate(req, res) {
         q.slots = q.slots.map(function allowed(p) { return p && allowedProjects.has(String(p)) ? p : null; });
         q.skipped = q.skipped.filter(function allowed(p) { return allowedProjects.has(String(p)); });
       });
+      labelJudges(assignment);
       await assignment.save();
       await State.updateOne({ _id: "judging" }, { $set: { activeVersion: version } });
       return { activeVersion: version };
@@ -131,6 +146,7 @@ async function addJudge(req, res) {
       // Append after existing slots: late judges cannot collide with the schedule.
       var offset = Math.max(0, ...assignment.queues.map(function length(q) { return q.slots.length; }));
       assignment.queues.push({ judge: body.judgeId, projects: body.projectIds, skipped: [], slots: Array(offset).fill(null).concat(body.projectIds) });
+      labelJudges(assignment);
       await assignment.save();
     });
     res.json({ updated: true });

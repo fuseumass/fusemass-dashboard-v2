@@ -82,6 +82,7 @@ router.delete("/applications/:id/flag", isModerator, adminController.unflagAppli
 // Resumes live in a private container; this hands out a short-lived signed link.
 router.get("/applications/:id/resume", isModerator, resumeController.getApplicationResume);
 // Every team with members and Devpost links (staff view, judging matching).
+router.post("/teams/:id/unlock", requireFeature("judging"), isAdmin, require("../controllers/staffTeamController").unlock);
 router.get("/teams", isModerator, teamController.listAllTeams);
 
 // ---- Admin-only routes: organization setup ---------------------------------

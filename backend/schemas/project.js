@@ -3,6 +3,7 @@ var mongoose = require("mongoose");
 var Schema = mongoose.Schema;
 /**
  * @typedef {object} ProjectAttrs
+ * @property {object} team - Linked dashboard team.
  * @property {string} name - Imported project title.
  * @property {string} devpostUrl - Normalized unique project URL.
  * @property {string} submitterEmail - Submitter email.
@@ -25,6 +26,7 @@ var schema = new Schema(
   {
     name: { type: String, required: true },
     devpostUrl: { type: String, required: true, unique: true },
+    team: { type: Schema.Types.ObjectId, ref: "Team" },
     submitterEmail: { type: String, default: "" },
     members: [{ type: Schema.Types.ObjectId, ref: "User" }],
     unmatchedMembers: [{ _id: false, name: String, email: String }],
@@ -49,6 +51,7 @@ var schema = new Schema(
   },
   { timestamps: true },
 );
+schema.index({ team: 1 }, { unique: true, sparse: true });
 schema.index(
   { room: 1, tableNumber: 1 },
   {

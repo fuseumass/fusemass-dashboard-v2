@@ -40,7 +40,7 @@ async function deskCheckin(req, res) {
     if (!id && projects.length > 1) return res.status(409).json({ error: "Choose a project.", projects: projects.map(function summary(p) { return { _id: p._id, name: p.name }; }) });
     var project = projects.find(function match(p) { return !id || String(p._id) === String(id); });
     if (!project) return res.status(400).json({ error: "Choose one of this attendee's projects." });
-    var result = await tables.assign(project._id, false);
+    var result = await tables.assign(project._id, false, req.user.id);
     if (result.changed) email(result.project);
     await result.project.populate("room", "name");
     await result.project.populate("members", "name email");
@@ -98,7 +98,7 @@ async function bulkAssign(req, res) {
     if (req.body.confirm !== true || req.body.count !== projects.length) return res.status(409).json({ error: "Confirm assigning and completing both check-ins for " + projects.length + " projects.", count: projects.length });
     var completed = [];
     for (var project of projects) {
-      var result = await tables.assign(project._id, true);
+      var result = await tables.assign(project._id, true, req.user.id);
       completed.push(project._id);
       if (result.changed) email(result.project);
     }
@@ -109,10 +109,13 @@ async function bulkAssign(req, res) {
 async function undo(req, res) {
   try {
     if (!mongoose.isValidObjectId(req.params.id)) return res.status(404).json({ error: "Project not found." });
-    var project = await Project.findById(req.params.id);
-    if (!project) return res.status(404).json({ error: "Project not found." });
-    if (project.tableNumber) await Project.updateOne({ _id: project._id, tableNumber: project.tableNumber }, { $push: { tableUndoLog: { by: req.user.id, at: new Date(), tableNumber: project.tableNumber, room: project.room } }, $unset: { room: 1, tableNumber: 1, deskCheckedInAt: 1, tableCheckedInAt: 1 } });
-    res.json({ cleared: true });
+    return await require("../utils/judging/state").locked(async function undoLocked() {
+      var project = await Project.findById(req.params.id);
+      if (!project) return res.status(404).json({ error: "Project not found." });
+      if (project.tableNumber) await Project.updateOne({ _id: project._id, tableNumber: project.tableNumber }, { $push: { tableUndoLog: { by: req.user.id, at: new Date(), tableNumber: project.tableNumber, room: project.room } }, $unset: { room: 1, tableNumber: 1, deskCheckedInAt: 1, tableCheckedInAt: 1 } });
+      if (project.team) await require("../schemas/team").updateOne({ _id: project.team }, { $unset: { lockedAt: 1, lockedBy: 1 } });
+      res.json({ cleared: true });
+    });
   } catch (err) { fail(res, err); }
 }
 module.exports = { deskCheckin: deskCheckin, myProjects: myProjects, tableCheckin: tableCheckin, tableSigns: tableSigns, bulkAssign: bulkAssign, undo: undo };

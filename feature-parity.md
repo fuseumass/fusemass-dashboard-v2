@@ -112,7 +112,7 @@ Individual unit tracking and the optional reserve/request queue are deferred.
 
 | Old feature | Status | Task |
 | ----------- | ------ | ---- |
-| Project submission with team members | ✅ dashboard teams (B15), Devpost CSV preview/confirm, URL and email matching, admin project overrides | B24b |
+| Project submission with team members | ✅ dashboard teams (B15), Devpost CSV preview/confirm, team URL/email matching, duplicate-team errors, cross-team warnings, preserved unique team links and admin overrides | B24b |
 | Judging rooms and capacities | ✅ admin CRUD, hardware rooms, deletion protection | B24b |
 | Public project gallery | ✖ Devpost hosts it | — |
 | Power-outlet needs per project | ✅ admin override preserved on import | B24b |
@@ -120,7 +120,8 @@ Individual unit tracking and the optional reserve/request queue are deferred.
 | Judge assignments (old Rails: tags, mass assign) | ✖ replaced by the 2025 judging platform's slotted generator | B24a, B24e |
 | Printed judging forms (`paper_judging`) | ✅ printable table signs with persistent random QR tokens | B24c |
 | Judging results + CSV | ✅ weighted raw/adjusted totals, overall/category competition ranks, flags, three formula-safe CSV exports; integration verification pending | B24g |
-| **2025 judging:** two-step desk → table check-in | ✅ desk station, participant table scan, table email, admin fallback and audited undo | B24c |
+| **2025 judging:** two-step desk → table check-in | ✅ desk station, participant table scan, table email, admin fallback, team membership locks, audited undo/unlock and staff team management | B24c |
+| Participant judging sheet | ✅ anonymous stable version labels, current room/table counts, separate software/hardware sections, own-team progress and polling; integration verification pending | B24c, B24g |
 | **2025 judging:** calibration rounds + judge bias | ✅ ordered calibration flow, editable projects/rubric, completion status and stored bias over completed judges; results apply stored bias (B24g) | B24d, B47 |
 | **2025 judging:** time-slotted assignments + verifier | ✅ versioned generation with verifier, explicit activation, late changes and optional timer | B24a, B24e |
 | **2025 judging:** one-at-a-time scoring, skip, rejudge, assignment sheet | ✅ rubric validation, separate schedule/scoring/skipped screens, first-open slot estimates, skip/unskip, score upsert, rescoring and freeze | B24f |

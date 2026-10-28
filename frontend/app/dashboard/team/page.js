@@ -9,6 +9,7 @@ import {
   UserMinus,
   UserPlus,
 } from "lucide-react";
+import Link from "next/link";
 import { useEffect, useState } from "react";
 import JudgingTableCard from "@/components/JudgingTableCard";
 import PageHeader from "@/components/PageHeader";
@@ -80,6 +81,23 @@ export default function TeamPage() {
   return (
     <div className="mx-auto w-full max-w-2xl">
       <JudgingTableCard />
+      <Link
+        href="/dashboard/judging-sheet"
+        className="text-sm text-link hover:underline"
+      >
+        View judging sheet
+      </Link>
+      {team?.lockedAt && (
+        <Alert>
+          <AlertDescription>
+            <strong>Checked in for judging: team locked</strong>
+            <p>
+              Your team is checked in for judging. Ask at the help desk to
+              change your team.
+            </p>
+          </AlertDescription>
+        </Alert>
+      )}
       <PageHeader
         title="Team"
         description={`Teams of up to ${data?.maxSize || 4}. Add your Devpost link after you submit so judges can find your project.`}
@@ -104,13 +122,18 @@ export default function TeamPage() {
           : null}
 
         {team
-          ? <TeamCard
-              team={team}
-              isLeader={isLeader}
-              userId={user._id}
-              busy={busy}
-              act={act}
-            />
+          ? <fieldset
+              disabled={Boolean(team.lockedAt) || Boolean(busy)}
+              className="min-w-0"
+            >
+              <TeamCard
+                team={team}
+                isLeader={isLeader}
+                userId={user._id}
+                busy={busy}
+                act={act}
+              />
+            </fieldset>
           : data
             ? <CreateTeam busy={busy} act={act} />
             : null}
@@ -146,7 +169,7 @@ function Invites({ invites, busy, act, onTeam }) {
             <Button
               type="button"
               size="sm"
-              disabled={onTeam}
+              disabled={onTeam || Boolean(inv.lockedAt)}
               loading={busy === `accept-${inv.teamId}`}
               onClick={() =>
                 act(

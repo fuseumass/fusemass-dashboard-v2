@@ -69,6 +69,7 @@ function teamView(team, maxSize) {
       return { email: i.email, invitedAt: i.invitedAt, invitedBy: i.invitedBy ? i.invitedBy.name : null };
     }),
     devpostUrl: team.devpostUrl || "",
+    lockedAt: team.lockedAt || null,
     maxSize: maxSize,
   };
 }
@@ -91,7 +92,7 @@ function sendMine(req, res, status) {
     var maxSize = results[2];
     var email = me ? me.email : "";
     return Team.find({ "invites.email": email })
-      .select("name members invites")
+      .select("name members invites lockedAt")
       .populate("invites.invitedBy", "name")
       .then(function afterInvites(teams) {
         res.status(status || 200).json({
@@ -103,6 +104,7 @@ function sendMine(req, res, status) {
             return {
               teamId: t._id,
               teamName: t.name,
+              lockedAt: t.lockedAt || null,
               members: t.members.length,
               invitedBy: invite && invite.invitedBy ? invite.invitedBy.name : null,
               invitedAt: invite ? invite.invitedAt : null,
@@ -226,7 +228,7 @@ function updateMine(req, res) {
       if (!Object.keys(update).length) {
         return sendMine(req, res);
       }
-      return Team.updateOne({ _id: team._id, members: req.user.id }, update).then(function afterUpdate() {
+      return Team.updateOne({ _id: team._id, members: req.user.id, lockedAt: null }, update).then(function afterUpdate() {
         return sendMine(req, res);
       });
     })
@@ -270,7 +272,7 @@ function invite(req, res) {
       // Atomic: only adds the invite while there's room and it isn't a duplicate.
       var room = {};
       room["invites." + Math.max(0, maxSize - team.members.length - 1)] = { $exists: false };
-      var filter = Object.assign({ _id: team._id, members: req.user.id, "invites.email": { $ne: email } }, room);
+      var filter = Object.assign({ _id: team._id, lockedAt: null, members: req.user.id, "invites.email": { $ne: email } }, room);
       if (team.members.length >= maxSize) {
         res.status(400).json({ error: "Your team is full (" + maxSize + " people)." });
         return undefined;
@@ -315,7 +317,7 @@ function invite(req, res) {
  */
 function cancelInvite(req, res) {
   var email = String(req.params.email || "").trim().toLowerCase();
-  return Team.updateOne({ members: req.user.id }, { $pull: { invites: { email: email } } })
+  return Team.updateOne({ members: req.user.id, lockedAt: null }, { $pull: { invites: { email: email } } })
     .then(function afterPull(result) {
       if (!result.matchedCount) {
         res.status(404).json({ error: "You're not on a team." });
@@ -356,7 +358,7 @@ function acceptInvite(req, res) {
       var full = {};
       full["members." + (maxSize - 1)] = { $exists: false };
       return Team.findOneAndUpdate(
-        Object.assign({ _id: req.params.teamId, "invites.email": me.email }, full),
+        Object.assign({ _id: req.params.teamId, lockedAt: null, "invites.email": me.email }, full),
         { $push: { members: me._id }, $pull: { invites: { email: me.email } } },
         { new: true }
       ).then(function afterJoin(team) {
@@ -364,7 +366,7 @@ function acceptInvite(req, res) {
           hardwareTeamChange(req.user.id);
           return sendMine(req, res);
         }
-        return Team.findOne({ _id: req.params.teamId, "invites.email": me.email }).then(function why(stillInvited) {
+        return Team.findOne({ _id: req.params.teamId, lockedAt: null, "invites.email": me.email }).then(function why(stillInvited) {
           res.status(stillInvited ? 400 : 404).json({
             error: stillInvited ? "That team is full." : "That invite doesn't exist anymore.",
           });
@@ -410,7 +412,7 @@ function declineInvite(req, res) {
  * @returns {Promise<void>}
  */
 function leave(req, res) {
-  return Team.findOneAndUpdate({ members: req.user.id }, { $pull: { members: req.user.id } }, { new: true })
+  return Team.findOneAndUpdate({ members: req.user.id, lockedAt: null }, { $pull: { members: req.user.id } }, { new: true })
     .then(function afterPull(team) {
       if (!team) {
         res.status(404).json({ error: "You're not on a team." });
@@ -460,7 +462,7 @@ function removeMember(req, res) {
         res.status(403).json({ error: "Only the team leader can remove members." });
         return undefined;
       }
-      return Team.updateOne({ _id: team._id }, { $pull: { members: req.params.userId } }).then(function afterPull(result) {
+      return Team.updateOne({ _id: team._id, lockedAt: null }, { $pull: { members: req.params.userId } }).then(function afterPull(result) {
         if (!result.modifiedCount) {
           res.status(404).json({ error: "They're not on your team." });
           return undefined;
@@ -532,16 +534,34 @@ function listAllTeams(_req, res) {
     });
 }
 
+var LOCKED_MESSAGE = "Your team is checked in for judging. Ask at the help desk to change your team.";
+/** @param {function} handler - Self-service mutation. @returns {function} Serialized handler that refuses checked-in teams. */
+function guarded(handler) {
+  return async function unlockedTeam(req, res) {
+    try {
+      return await require("../utils/judging/state").locked(async function mutateTeam() {
+        var ids = [{ members: req.user.id }];
+        if (mongoose.isValidObjectId(req.params.teamId)) ids.push({ _id: req.params.teamId });
+        if (await Team.exists({ $or: ids, lockedAt: { $ne: null } })) return res.status(423).json({ error: LOCKED_MESSAGE });
+        return await handler(req, res);
+      });
+    } catch (err) {
+      if (res.headersSent) return;
+      if (err.status) return res.status(err.status).json({ error: err.message });
+      sendError(res, "team lock", err);
+    }
+  };
+}
 module.exports = {
   normalizeDevpostUrl: normalizeDevpostUrl,
   getMine: getMine,
-  createTeam: createTeam,
-  updateMine: updateMine,
-  invite: invite,
-  cancelInvite: cancelInvite,
-  acceptInvite: acceptInvite,
-  declineInvite: declineInvite,
-  leave: leave,
-  removeMember: removeMember,
+  createTeam: guarded(createTeam),
+  updateMine: guarded(updateMine),
+  invite: guarded(invite),
+  cancelInvite: guarded(cancelInvite),
+  acceptInvite: guarded(acceptInvite),
+  declineInvite: guarded(declineInvite),
+  leave: guarded(leave),
+  removeMember: guarded(removeMember),
   listAllTeams: listAllTeams,
 };
