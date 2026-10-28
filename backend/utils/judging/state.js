@@ -29,6 +29,7 @@ async function getState() {
 async function withOpen(state) {
   var settings = await Settings.getSingleton();
   state.judgingOpen = Boolean(settings.judgingOpen);
+  state.judgingOpenedAt = settings.judgingOpenedAt || null;
   return state;
 }
 /**

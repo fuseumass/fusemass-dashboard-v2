@@ -417,13 +417,11 @@ floor: build the judge screens mobile-first, in the kiosk layout (F13).**
 | `landing.ejs`, `emails/*.ejs` | Not needed (dashboard home; email templates) | — |
 
 ### F21a. Judge screens
-Calibration flow implemented with progress and editing earlier rounds. Current-project routing,
-real project scoring, shared scoring form and offline recovery remain B24e/B24f.
-- [ ] `/dashboard/judging` routes the judge to calibration until it's done,
-      then to their current project.
+- [x] Judge-only sidebar: Schedule, Judging, Skipped and Demo. Schedule is home with next-table guidance and ordered slots, statuses and estimated times. Other dashboard URLs redirect home; account/theme/sign-out controls remain available.
+- [x] Separate scoring, skipped and calibration pages. Shared queue hook, schedule table and scoring form; direct project links support skipped scoring and rescoring without consuming the current table.
 - [x] **Calibration:** one round at a time, progress, rubric help and range-checked
       number inputs, a short explainer and "Calibration done"; edit earlier rounds.
-      Uses the kiosk layout. Reusing the form for real judging remains B24f.
+      Demo explains the shared practice rounds before real judging.
 - [x] **Current project:** a large table number + room, then project name,
       category, Devpost link; progress "4 of 12"; the rubric with each
       criterion's **guiding questions** (from the rubric's `help`), entered as
@@ -440,7 +438,7 @@ real project scoring, shared scoring form and offline recovery remain B24e/B24f.
       reconnect, since venue Wi-Fi drops.
 - **Depends on:** B24d, B24f, F27.
 
-Queue and scoring are implemented with the existing calibration status placeholder intact for B24d. Drafts persist per user/project on this device and can be retried manually; automatic reconnect retry and calibration routing remain unfinished. Visual screenshots and keyboard walkthrough remain to be captured with a browser.
+Schedule, scoring, skipped and Demo routes are implemented. Drafts persist per user/project and can be retried manually; automatic reconnect retry remains unfinished. Visual screenshots and keyboard walkthrough remain to verify with a browser.
 
 ### F21b. Team check-in screens (desk → table)
 - [x] **Judging desk** (`/dashboard/staff/judging`, kiosk layout, reusing
@@ -490,9 +488,8 @@ Queue and scoring are implemented with the existing calibration status placehold
 - **Depends on:** B24b–B24h.
 
 ### F27. Judge role in the UI
-- [x] Judges get their own nav: **Judging** only, with a placeholder showing
-      hardware and calibration status. No Application, QR card, workshops,
-      meals or schedule items. Judge home redirects to the judging page.
+- [x] Judges get their own nav: **Schedule, Judging, Skipped and Demo** only. No Application, QR card, workshops,
+      meals or participant schedule items. Judge home redirects to the judging page.
 - [x] Users page: add `judge` to the role list; admins can't demote themselves
       (existing rule).
 - [x] Judge invite acceptance: `/judge/accept?token=…` → set a password (or
@@ -503,7 +500,7 @@ Queue and scoring are implemented with the existing calibration status placehold
 - [x] Client guards on every judging page (judges + admins only); the API
       enforces it anyway (B47).
 
-Judging page now includes current project, skipped/done lists and assignments. Calibration routing awaits B24d. Password invite acceptance is available; matching
+Judge home now shows the full schedule and next table. Demo holds calibration; Judging handles current, skipped and done project scores. Password invite acceptance is available; matching
 Google accounts use the existing sign-in flow.
 - **Depends on:** B47. **Related:** F13 (nav config with `roles`).
 

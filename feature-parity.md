@@ -33,7 +33,7 @@ were presumably tracked in spreadsheets, so B33–B37 are a new design.
 | Google sign-in | ➕ ✅ | — |
 | Roles: admin / organizer / attendee | ✅ as admin / moderator / applicant | — |
 | Mentor role | ✖ mentorship runs on Discord | B31 |
-| Judge role (judging app used a CSV of logins) | ✅ role, single-use invites, CSV preview/send, judge-only nav and admin management; judge queue with calibration status placeholder | B47, F27 |
+| Judge role (judging app used a CSV of logins) | ✅ role, single-use invites, CSV preview/send, judge-only nav and admin management; Schedule, Judging, Skipped and Demo screens | B47, F27 |
 | Workshop organizer role | ➕ 📋 | B17 |
 | Admin role management (`pages#permissions`) | ✅ Users page | — |
 | "Redeem code" to upgrade your own role | ✖ security hole (let anyone become admin) | B17 |
@@ -124,7 +124,7 @@ Individual unit tracking and the optional reserve/request queue are deferred.
 | Participant judging sheet | ✅ anonymous stable version labels, current room/table counts, separate software/hardware sections, own-team progress and polling; integration verification pending | B24c, B24g |
 | **2025 judging:** calibration rounds + judge bias | ✅ ordered calibration flow, editable projects/rubric, completion status and stored bias over completed judges; results apply stored bias (B24g) | B24d, B47 |
 | **2025 judging:** time-slotted assignments + verifier | ✅ versioned generation with verifier, explicit activation, late changes and optional timer | B24a, B24e |
-| **2025 judging:** one-at-a-time scoring, skip, rejudge, assignment sheet | ✅ rubric validation, queue, skip/unskip, score upsert, rescoring and freeze | B24f |
+| **2025 judging:** one-at-a-time scoring, skip, rejudge, assignment sheet | ✅ rubric validation, separate schedule/scoring/skipped screens, first-open slot estimates, skip/unskip, score upsert, rescoring and freeze | B24f |
 | **2025 judging:** progress board ("leaderboard") | ✅ active-version project/judge counts, missing coverage, staff read-only page and auto-refresh | B24g |
 
 ## Finance

@@ -55,7 +55,11 @@ test("judging assignments and scoring", async function (t) {
   var absent = await project(room, 6, { deskCheckedInAt: null });
   var withdrawn = await project(room, 7, { withdrawn: true });
   // Judging starts closed (JudgingSettings.judgingOpen); open it like an admin would.
+  assert.equal((await queue(regular)).body.judgingOpenedAt, null);
   await post(admin, adminRoot + "/open").expect(200);
+  var firstOpenedAt = (await JudgingSettings.getSingleton()).judgingOpenedAt.toISOString();
+  assert.ok(Number.isFinite(Date.parse(firstOpenedAt)));
+  assert.equal((await queue(regular)).body.judgingOpenedAt, firstOpenedAt);
   assert.equal((await JudgingSettings.getSingleton()).criteriaLocked, true);
   criteria = await getCriteria();
 
@@ -97,13 +101,17 @@ test("judging assignments and scoring", async function (t) {
 
   // An explicit schedule makes the advancing regression independent of RNG.
   await Assignment.create({ version: 2, createdBy: admin.user._id,
-    params: { judgingsPerProject: 1, slotMinutes: null }, verifierReport: [{ success: true }],
+    params: { judgingsPerProject: 1, slotMinutes: 5 }, verifierReport: [{ success: true }],
     queues: [{ judge: regular.user._id, projects: [a._id, b._id, c._id], slots: [a._id, null, b._id, c._id], skipped: [] }] });
   await post(admin, adminRoot + "/assignments/2/activate").expect(200);
   await t.test("queue includes first project, slot gaps, safe project fields and position", async function () {
     var result = (await queue(regular)).body;
     assert.equal(result.current._id, a.id);
     assert.equal(result.current.position, 1);
+    assert.equal(result.current.status, "current");
+    assert.equal(result.assignments[0]._id, a.id);
+    assert.equal(result.slotMinutes, 5);
+    assert.equal(result.judgingOpenedAt, firstOpenedAt);
     assert.equal(result.assignments[1].slot, 3);
     assert.equal(result.total, 3);
     assert.equal(result.current.room.name, "Regular");
@@ -131,12 +139,15 @@ test("judging assignments and scoring", async function (t) {
   });
   await t.test("skip, score skipped, rescore done never consume the current project", async function () {
     await post(regular, "/api/judging/skip", { projectId: a.id }).expect(200);
-    assert.equal((await queue(regular)).body.current._id, b.id);
+    var skipped = (await queue(regular)).body;
+    assert.equal(skipped.current._id, b.id);
+    assert.deepEqual(skipped.skipped.map(function id(p) { return p._id; }), [a.id]);
+    assert.equal(skipped.assignments[0].status, "skipped");
     await score(regular, a.id).expect(200);
     var after = (await queue(regular)).body;
     assert.equal(after.current._id, b.id);
     assert.equal(after.skipped.length, 0);
-    assert.equal(after.done.length, 1);
+    assert.deepEqual(after.done.map(function id(p) { return p._id; }), [a.id]);
     await score(regular, a.id, Object.assign(rubric(), { innovation: 2 })).expect(200);
     assert.equal((await queue(regular)).body.current._id, b.id);
     assert.equal(await Score.countDocuments({ judge: regular.user._id, project: a._id }), 1);
@@ -150,7 +161,13 @@ test("judging assignments and scoring", async function (t) {
     await score(regular, a.id).expect(409);
     await score(regular, c.id).expect(409);
     await post(regular, "/api/judging/skip", { projectId: c.id }).expect(409);
+    assert.equal((await queue(regular)).body.judgingOpenedAt, firstOpenedAt);
     await post(admin, adminRoot + "/open/").expect(200);
+    assert.equal((await JudgingSettings.getSingleton()).judgingOpenedAt.toISOString(), firstOpenedAt);
+    assert.equal((await queue(regular)).body.judgingOpenedAt, firstOpenedAt);
+    await request(app).patch(adminRoot + "/settings").set(auth(admin)).send({ judgingOpen: false }).expect(200);
+    await request(app).patch(adminRoot + "/settings").set(auth(admin)).send({ judgingOpen: true }).expect(200);
+    assert.equal((await queue(regular)).body.judgingOpenedAt, firstOpenedAt);
     await score(regular, c.id).expect(200);
     assert.equal((await queue(regular)).body.current, null);
   });

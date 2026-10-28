@@ -74,13 +74,25 @@ export const NAV_ITEMS = [
     feature: "judging",
     kiosk: true,
   },
+  ...[
+    ["/dashboard/judging", "Schedule", CalendarDays],
+    ["/dashboard/judging/score", "Judging", ClipboardList],
+    ["/dashboard/judging/skipped", "Skipped", ClipboardList],
+    ["/dashboard/judging/demo", "Demo", ClipboardList],
+  ].map(([href, label, icon]) => ({
+    href,
+    label,
+    icon,
+    group: "me",
+    roles: ["judge"],
+    exact: true,
+  })),
   {
     href: "/dashboard/judging",
-    kiosk: true,
     label: "Judging",
     icon: ClipboardList,
     group: "me",
-    roles: ["judge", "admin"],
+    roles: ADMIN,
   },
   {
     href: "/dashboard/admin/judges",
@@ -279,6 +291,7 @@ export const NAV_ITEMS = [
  */
 export function canSee(item, user, features) {
   const role = user?.role ? user.role : "applicant";
+  if (role === "judge" && !item.roles?.includes("judge")) return false;
   if (item.roles && !item.roles.includes(role)) {
     return false;
   }

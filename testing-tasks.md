@@ -184,6 +184,7 @@ fixed.
       row per judge and project); **scoring a skipped project doesn't advance
       the queue** (2025 bug); unknown project → 404, not a hang; after freeze →
       409; the assignment sheet includes the first project.
+- [x] **Judge navigation regressions:** API tests pin first item after activation, skip-first/current-second, scoring skipped leaves current-second and moves first to done. First opening timestamp is returned with slot duration and retained through close/reopen and settings opening. Written, not run without MongoDB. Browser navigation/screenshots remain pending.
 - [x] **Versions:** activating a regenerated version keeps existing scores;
       removing a judge takes them out of the active queues.
       Written in `backend/test/judgingScoring.test.js`, including hardware pools, vacancies, verifier failures, late changes, withdrawal, freeze, rubric validation and feature gates. New routes are in the permission matrix. Not run here: no MongoDB.
