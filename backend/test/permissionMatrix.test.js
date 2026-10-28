@@ -38,6 +38,7 @@ var app = require("../server");
 var signToken = require("../utils/signToken");
 var Application = require("../schemas/application");
 var ApplicationRound = require("../schemas/applicationRound");
+var EmailLog = require("../schemas/emailLog");
 var EmailTemplate = require("../schemas/emailTemplate");
 var MealService = require("../schemas/mealService");
 var ScheduleEvent = require("../schemas/scheduleEvent");
@@ -395,6 +396,24 @@ function assertDecision(r, role, res) {
 }
 
 /**
+ * Wait for the email outbox to finish what the allowed requests queued (the
+ * bulk send starts a background worker that keeps updating its rows after
+ * the HTTP response), so a before/after snapshot isn't racing it.
+ * @returns {Promise<void>}
+ */
+async function settleOutbox() {
+  var pending = 1;
+  while (pending > 0) {
+    pending = await EmailLog.countDocuments({ status: "queued" });
+    if (pending > 0) {
+      await new Promise(function pause(resolve) {
+        setTimeout(resolve, 25);
+      });
+    }
+  }
+}
+
+/**
  * Every collection's contents, as one string, to compare before and after.
  * @returns {Promise<string>}
  */
@@ -428,10 +447,12 @@ test("T12: role x route permission matrix", async function permissionMatrix(t) {
         assertDecision(r, ROLES[i], res);
       });
     }
+    await settleOutbox();
   });
 
   await t.test("denied requests change nothing: no data written, no email sent", async function (t2) {
     var mail = mailMock.mockTransport(t2);
+    await settleOutbox();
     var before = await snapshotDatabase();
     var denied = 0;
 

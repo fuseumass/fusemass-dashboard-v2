@@ -51,4 +51,27 @@ if (process.env.EMAIL_MIN_INTERVAL_MS === undefined) {
 }
 process.env.MAIL_FROM = process.env.MAIL_FROM || "Test Org <no-reply@test.local>";
 
+// supertest starts a server per request with `listen(0)`, which binds the
+// wildcard address, then connects to 127.0.0.1:<port>. On a machine that runs
+// other local servers, one of them can already hold that very port on
+// 127.0.0.1 (a specific address wins over the wildcard, and the OS lets both
+// bind), so the request is answered by a stranger: a stray 404 / 400 / 401 on
+// a random test. Binding to 127.0.0.1 makes the OS hand out a port that is
+// really free there. supertest reads server.address() right after listen(),
+// so the bind has to be synchronous; listen(0, "127.0.0.1") is not (it does a
+// DNS lookup first), hence the lower-level _listen2 that it ends up calling.
+var http = require("node:http");
+var originalListen = http.Server.prototype.listen;
+http.Server.prototype.listen = function listenOnLoopback() {
+  var args = Array.prototype.slice.call(arguments);
+  if (args.length <= 2 && args[0] === 0 && typeof this._listen2 === "function") {
+    if (typeof args[1] === "function") {
+      this.once("listening", args[1]);
+    }
+    this._listen2("127.0.0.1", 0, 4, 511);
+    return this;
+  }
+  return originalListen.apply(this, args);
+};
+
 module.exports = {};
