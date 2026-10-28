@@ -1,5 +1,7 @@
 "use client";
 
+import Link from "next/link";
+
 import { useCallback, useEffect, useState } from "react";
 import DataTable from "@/components/DataTable";
 import EmptyState from "@/components/EmptyState";
@@ -64,7 +66,12 @@ export default function WorkshopsPage() {
       header: "Workshop",
       cell: ({ row }) => (
         <div className="max-w-sm space-y-1">
-          <p className="font-medium">{row.original.title}</p>
+          <Link
+            className="font-medium text-link underline"
+            href={`/dashboard/workshops/${row.original._id}`}
+          >
+            {row.original.title}
+          </Link>
           <p className="text-muted-foreground">{row.original.description}</p>
         </div>
       ),

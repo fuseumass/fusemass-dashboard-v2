@@ -16,6 +16,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import WorkshopHomeUpdates from "@/components/WorkshopHomeUpdates";
 import { apiFetch } from "@/lib/api";
 import { formatDateTime } from "@/lib/datetime";
 import { useUser } from "@/lib/userContext";
@@ -87,6 +88,7 @@ export default function DashboardHome() {
     <div>
       <PageHeader title={user.name.split(" ")[0]} description={user.email} />
 
+      <WorkshopHomeUpdates />
       <div className="grid items-start gap-4 md:grid-cols-2">
         {state.loading
           ? <CardSkeleton lines={2} />

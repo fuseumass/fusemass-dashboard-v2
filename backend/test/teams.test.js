@@ -259,5 +259,23 @@ test("teams", async function (t) {
     assert.equal((await request(app).patch("/api/admin/settings").set(as(p.mod)).send({ teamMaxSize: 5 })).status, 403);
   });
 
+  await t.test("hardware return deadline is admin-only, validated and clearable", async function () {
+    var p = await seed();
+    var settings = await request(app).get("/api/admin/settings").set(as(p.admin)).expect(200);
+    assert.equal(settings.body.settings.hardwareReturnBy, null);
+    var deadline = new Date(Date.now() + 86400000).toISOString();
+    var saved = await request(app).patch("/api/admin/settings").set(as(p.admin)).send({ hardwareReturnBy: deadline }).expect(200);
+    assert.equal(saved.body.settings.hardwareReturnBy, deadline);
+    for (var value of ["bad", "2030-01-01T12:00", true, 123, {}, []]) {
+      await request(app).patch("/api/admin/settings").set(as(p.admin)).send({ hardwareReturnBy: value, teamMaxSize: 9 }).expect(400);
+    }
+    assert.equal((await OrgSettings.getSingleton()).hardwareReturnBy.toISOString(), deadline);
+    await request(app).patch("/api/admin/settings").set(as(p.mod)).send({ hardwareReturnBy: null }).expect(403);
+    for (var empty of ["", null]) {
+      var cleared = await request(app).patch("/api/admin/settings").set(as(p.admin)).send({ hardwareReturnBy: empty }).expect(200);
+      assert.equal(cleared.body.settings.hardwareReturnBy, null);
+    }
+  });
+
   await db.closeDatabase();
 });

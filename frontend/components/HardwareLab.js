@@ -315,6 +315,20 @@ export default function HardwareLab({ mode }) {
     ...(mode === "staff"
       ? [
           {
+            id: "team",
+            header: "Team",
+            cell: ({ row }) => (
+              <div className="space-y-1">
+                <div>{row.original.team?.name || "No team"}</div>
+                {row.original.teamChanged && (
+                  <Badge variant="secondary">
+                    Changed team: {row.original.currentTeam?.name || "no team"}
+                  </Badge>
+                )}
+              </div>
+            ),
+          },
+          {
             id: "borrower",
             header: "Attendee",
             cell: ({ row }) => (
@@ -515,7 +529,7 @@ export default function HardwareLab({ mode }) {
           ))}
           {attendee && (
             <p className="text-sm font-medium">
-              {attendee.name}:{" "}
+              {attendee.name} ({attendee.team?.name || "No team"}):{" "}
               {attendee.checkedIn
                 ? "Checked in"
                 : "Not checked in to the event"}

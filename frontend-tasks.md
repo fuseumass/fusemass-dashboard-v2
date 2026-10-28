@@ -300,7 +300,7 @@ serving.
       spots left; sign up/cancel with pending states and overlap warnings;
       My workshops section ordered by time, accepted-applicant explanation.
       Day filtering, optimistic updates, calendar download/Google links,
-      detail pages, announcements, attendance and raffles remain deferred.
+      announcements remain deferred. Attendance and raffle delivery is recorded below.
 - [ ] `/dashboard/workshops`: browse published workshops (time, host,
       location, spots left), filter by day; sign up / cancel with optimistic
       UI and a clear "Full" / "Waitlisted" state; overlap warning.
@@ -311,7 +311,7 @@ serving.
       download through the signed-URL endpoint, linkified text, relative
       times; polls every ~15 s). **Every accepted attendee can open it and
       download materials**, signed up or not.
-- [ ] **Attendance (Top Hat-style):** while the organizer has attendance
+- [x] **Attendance (Top Hat-style):** while the organizer has attendance
       open, the workshop page (and a banner on the home page) shows "Enter the
       code on screen": a large, auto-uppercase, 4–6 character input that
       submits on the last character. Then "You're checked in, and you're in
@@ -319,7 +319,7 @@ serving.
       aren't, show "Check in at the front desk first" instead of the input.
       Friendly errors for a wrong or stale code, attendance being closed, or
       too many tries.
-- [ ] **Raffle:** the page explains "Attend and enter the code to be in the
+- [x] **Raffle:** the page explains "Attend and enter the code to be in the
       raffle, drawn after the workshop". Only attendees can win; signing up or
       viewing materials doesn't count. Winners get a "You won <prize>, collect
       it from <organizer room + location> after the workshop" card on the
@@ -327,26 +327,35 @@ serving.
 - **Depends on:** B18, B19, B20, B21. **Related:** T9.
 
 ### F18. Workshop organizer screens
-Visible only to `workshop_organizer`s for **their** workshops (plus admins).
-- [ ] `/dashboard/organize`: list of my assigned workshops only.
+Assigned users can manage their workshops; moderators/admins can manage all.
+B17 will add the dedicated `workshop_organizer` role.
+- [x] `/dashboard/organize`: assigned workshops for users; all workshops for moderators/admins (B17 role deferred).
 - [ ] Workshop console `/dashboard/organize/[id]`:
   - **Announcements composer**, chat-style: multiline text + drag-and-drop
     files (multiple, with per-file progress and type/size errors before
     upload), post, pin/unpin, edit, delete; the feed below like a chat
     history.
   - **Sign-ups:** count vs capacity, list, CSV download.
-  - **Attendance:** open (duration), extend and close; **Present** mode, a
+  - [x] **Attendance:** open (duration), extend and close; **Present** mode, a
     full-screen view for the projector with the rotating code in huge
-    monospace characters, a countdown ring to the next rotation, and an
-    optional QR; a live attendee count; "Add attendee" by scanning their QR
+    monospace characters, a text countdown to the next rotation; optional QR and countdown ring deferred; a live attendee count; "Add attendee" by scanning their QR
     (reuse `CheckInStation`) for people without a phone; signed up vs
     attended.
-  - **Raffle** (from attendees only): the Draw button unlocks when the
+  - [x] **Raffle** (from attendees only): the Draw button unlocks when the
     workshop ends (with an "end early" override); prize name + number of
     winners → draw with a short reveal in Present mode; shows "Winners have
     been emailed to collect from <organizer room>"; mark claimed or redraw
     for no-shows; history of draws.
 - **Depends on:** B17, B20, B21, F13 (kiosk layout for Present mode).
+
+Delivered detail pages show workshop details, attendance and own wins. Home shows
+open attendance notices and wins. Organizer console includes attendee list and
+CSV, session controls, QR staff add, raffle draws, claims, redraw and history.
+Admin workshops link to consoles; admin raffle audit has a separate page.
+Announcements/materials, signup list/export, optional projector QR, countdown
+ring and animated winner reveal remain deferred. Present mode shows rotating
+codes and the latest draw's winner names. Browser screenshots and keyboard
+walkthrough remain unverified in this environment.
 
 ### F19. Admin workshop management
 - [x] `/dashboard/admin/workshops`: `DataTable` + create/edit `Dialog` (title,
@@ -363,6 +372,7 @@ Visible only to `workshop_organizer`s for **their** workshops (plus admins).
 ## Hardware (replaces F5)
 
 ### F20. Hardware checkout and inventory
+- [x] Staff team column and changed-team badges, scanned attendee team, event-zone hardware deadline setting, and leave-team hardware warning.
 - [x] **Checkout station** `/dashboard/staff/hardware` (kiosk layout): scan the
       attendee QR (reuse `CheckInStation`) → their open items appear → scan or
       search an item → confirm. Returns from the same screen: scan the

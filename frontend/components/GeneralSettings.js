@@ -283,3 +283,63 @@ export function CheckInPopupSettings() {
     </SettingsCard>
   );
 }
+
+export function OrganizerRoomSettings() {
+  const [room, setRoom] = useState("");
+  const [loaded, setLoaded] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+  useEffect(() => {
+    apiFetch("/api/admin/settings")
+      .then((data) => {
+        setRoom(data.settings.organizerRoom || "");
+        setLoaded(true);
+      })
+      .catch((err) => setError(err.message));
+  }, []);
+  async function save(event) {
+    event.preventDefault();
+    setSaving(true);
+    setError("");
+    try {
+      const data = await apiFetch("/api/admin/settings", {
+        method: "PATCH",
+        body: JSON.stringify({ organizerRoom: room }),
+      });
+      setRoom(data.settings.organizerRoom);
+      notifySuccess("Organizer room saved");
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setSaving(false);
+    }
+  }
+  return (
+    <SettingsCard
+      title="Prize collection"
+      error={error}
+      onSubmit={save}
+      hint="Used in raffle winner emails and on attendee dashboards."
+      action={
+        <Button type="submit" loading={saving} disabled={!loaded}>
+          Save
+        </Button>
+      }
+    >
+      {loaded
+        ? <Field
+            label="Organizer room"
+            htmlFor="organizer-room"
+            hint="Include the room, location and opening hours. Blank uses the organizer room."
+          >
+            <Input
+              id="organizer-room"
+              maxLength={200}
+              value={room}
+              onChange={(event) => setRoom(event.target.value)}
+            />
+          </Field>
+        : <CardLoading rows={1} />}
+    </SettingsCard>
+  );
+}

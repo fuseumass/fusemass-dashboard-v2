@@ -346,57 +346,57 @@ Raffles happen **after** a Top Hat-style attendance check-in at each workshop:
    separate raffle code.
 
 **Attendance**
-- [ ] `schemas/workshopAttendance.js`: `user`, `workshop`, `checkedInAt`,
+- [x] `schemas/workshopAttendance.js`: `user`, `workshop`, `checkedInAt`,
       `method` (`code` | `staff`), `addedBy?`; unique index on
       (user, workshop).
-- [ ] Attendance session: `POST /api/workshops/:id/attendance/open`
+- [x] Attendance session: `POST /api/workshops/:id/attendance/open`
       (`canManageWorkshop`) with a duration (default 10 min); `extend` and
       `close` endpoints. One open session per workshop at a time.
-- [ ] **Rotating code**, like Top Hat: 4–6 characters from an unambiguous
+- [x] **Rotating code**, like Top Hat: 4–6 characters from an unambiguous
       alphabet (no 0/O/1/I), changing every 30–60 s so a code texted to
       friends outside goes stale. Derive it as
       `HMAC(sessionSecret, floor(now / period))` so nothing is stored per
       rotation. Accept the **current and previous** code to allow for typing
       lag.
-- [ ] `GET /api/workshops/:id/attendance/code` (organizer): current code +
+- [x] `GET /api/workshops/:id/attendance/code` (organizer): current code +
       seconds until it rotates, for Present mode (F18). Optionally also return
       a URL with the code embedded, for a QR attendees can scan.
-- [ ] Attendee: `POST /api/workshops/:id/attendance { code }`. Only accepted
+- [x] Attendee: `POST /api/workshops/:id/attendance { code }`. Only accepted
       applicants who are **checked in to the event** (`User.checkedIn`), with
       an open session and a valid code. Not checked in → 403 "Check in at the
       front desk first". A workshop sign-up is **not** required, so walk-ins
       count. Idempotent (a repeat is a 200 "already here", not an error).
       Ignore any user id in the body.
-- [ ] Brute-force protection: rate-limit attempts per user + IP (e.g. 10/min)
+- [x] Brute-force protection: rate-limit attempts per user + IP (e.g. 10/min)
       and lock a user out of the session after ~10 wrong codes.
-- [ ] Staff override: organizer adds someone without a phone by scanning their
+- [x] Staff override: organizer adds someone without a phone by scanning their
       dashboard QR (`resolveAttendee` + `CheckInStation`), `method: "staff"`.
       The same event check-in rule applies; there's no override for it.
-- [ ] Stats: signed up vs attended vs walk-ins, attendance CSV.
+- [x] Stats: signed up vs attended vs walk-ins, attendance CSV.
 
 **Raffle**
-- [ ] Eligible pool = this workshop's attendees who are **checked in to the
+- [x] Eligible pool = this workshop's attendees who are **checked in to the
       event**, filtered again at draw time (`raffleEnabled` on the workshop).
       Optional event-wide cap: max raffle wins per attendee across all
-      workshops.
-- [ ] `POST /api/workshops/:id/raffle/draw { count, prize }`
+      workshops (optional event-wide cap deferred).
+- [x] `POST /api/workshops/:id/raffle/draw { count, prize }`
       (`canManageWorkshop`): pick `count` distinct winners with
       `crypto.randomInt`, excluding this workshop's previous winners. Store
       every draw (who drew, when, prize, pool size, winners) for audit.
-- [ ] Claiming: organizer marks a winner `claimed`, or `redraw` for a no-show.
+- [x] Claiming: organizer marks a winner `claimed`, or `redraw` for a no-show.
       A redraw excludes the no-show and is recorded too.
-- [ ] **When:** the raffle goes up **after the workshop ends** (the draw
+- [x] **When:** the raffle goes up **after the workshop ends** (the draw
       button unlocks at `endsAt`; organizers can override for workshops that
       finish early). Only attendees can win (decided): people who entered the
       attendance code and are event checked-in. Seeing materials or signing
       up doesn't enter you.
-- [ ] **Winner email** (built-in template `raffle_winner`, via B26): "You won
+- [x] **Winner email** (built-in template `raffle_winner`, via B26): "You won
       <prize> at <workshop>. Collect it from the **organizer room**
       (<location>) after the workshop." The organizer room's name and location
       come from a new `OrgSettings.organizerRoom` (e.g. "Organizer room, S120,
       open 9am–9pm"), so each hackathon sets its own. Also show it as a "You
       won …" card on their dashboard (F17).
-- [ ] Admin view across workshops: all draws and winners, for prize stock.
+- [x] Admin view across workshops: all draws and winners, for prize stock.
 - **Don't repeat:** don't reuse the old `redeem_code` pattern (B17). A
   workshop code only ever records attendance.
 - **Depends on:** B18, B26. **Related:** F17, F18, T9.
@@ -406,6 +406,7 @@ Raffles happen **after** a Top Hat-style attendance check-in at each workshop:
 ## Hardware
 
 ### B22. Hardware inventory + checkout (replaces B10)
+- [x] Checkout team snapshots, current-team change indicators, team CSV column, event return deadline and one-time membership-change return emails.
 Port the old dashboard's hardware lab. Staff (mods + admins) check items out
 by scanning the attendee's QR (the same code as check-in and meals) and
 check them back in on return.

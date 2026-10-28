@@ -1,5 +1,7 @@
 "use client";
 
+import Link from "next/link";
+
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
@@ -159,7 +161,18 @@ export default function WorkshopsAdminPage() {
     }
   }
   const columns = [
-    { accessorKey: "title", header: "Title" },
+    {
+      accessorKey: "title",
+      header: "Title",
+      cell: ({ row }) => (
+        <Link
+          className="text-link underline"
+          href={`/dashboard/organize/${row.original._id}`}
+        >
+          {row.original.title}
+        </Link>
+      ),
+    },
     {
       accessorKey: "startsAt",
       header: "Time",

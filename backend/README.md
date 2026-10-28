@@ -483,6 +483,51 @@ an admin. Capacity 0 means unlimited. Signups always use the caller's account.
 | POST | `/api/workshops/:id/signup` | Reserve a seat; overlapping signups include a warning |
 | DELETE | `/api/workshops/:id/signup` | Cancel caller's signup, free the seat and email a cancellation |
 
+Managers are current moderators/admins or users assigned in `Workshop.organizers`.
+Manager access does not require an accepted application. B17's organizer role and
+assignment editor remain deferred. All routes below use the workshops feature gate.
+
+| Method | Route | Access and purpose |
+| --- | --- | --- |
+| GET | `/api/workshops/manageable` | Authenticated: only workshops the caller can manage |
+| GET | `/api/workshops/:id/me` | Accepted: workshop, attendanceOpen, attended, checkedIn, own wins and organizerRoom |
+| POST | `/api/workshops/:id/attendance/open` | Manager: `{ minutes }`, default 10, whole number 1-180; 409 if already open |
+| POST | `/api/workshops/:id/attendance/extend` | Manager: add `{ minutes }` (same validation) to an open session |
+| POST | `/api/workshops/:id/attendance/close` | Manager: close and invalidate session secret |
+| GET | `/api/workshops/:id/attendance/code` | Manager: `{ code, secondsLeft, openUntil }`, never cached |
+| POST | `/api/workshops/:id/attendance` | Accepted + event checked-in: `{ code }`, own attendance only, idempotent 200 |
+| POST | `/api/workshops/:id/attendance/staff` | Manager: `{ qrId }` or `{ userId }`; target must be accepted and event checked-in |
+| GET | `/api/workshops/:id/attendance` | Manager: attendee names/emails, signedUp/attended/walkIns counts, workshop and organizerRoom |
+| GET | `/api/workshops/:id/attendance.csv` | Manager: formula-safe attendance download |
+| POST | `/api/workshops/:id/raffle/draw` | Manager: `{ count, prize, early? }`; 201 draw, 409 if disabled, before endsAt without early, or pool empty |
+| POST | `/api/workshops/:id/raffle/:drawId/winners/:userId/claim` | Manager: record collection time |
+| POST | `/api/workshops/:id/raffle/:drawId/winners/:userId/redraw` | Manager: mark unclaimed winner no-show, draw one replacement with redrawOf; 409 if exhausted |
+| GET | `/api/workshops/:id/raffle` | Manager: draw history with winner names/emails |
+| GET | `/api/admin/raffles` | Admin: draws across workshops |
+
+Attendance codes have five unambiguous characters derived from HMAC-SHA256,
+rotate every 30 seconds, and accept the current and previous period. Sessions
+get a fresh secret on opening, excluded from all client responses. Attendance
+never requires signup. A 10/minute user + IP limiter runs per server instance;
+ten incorrect codes additionally lock the user out of that session in MongoDB,
+including across server restarts. Staff can still add locked-out attendees.
+Opening a new session resets the wrong-code budget; extending preserves it.
+
+Raffles recheck acceptance and event check-in at draw time and exclude every
+previous winner, including no-shows. Fisher-Yates uses `crypto.randomInt`.
+A unique `(workshop, winners.user)` multikey index atomically stores the audit
+and reserves winners, so concurrent draws retry against the new pool without
+repeated winners. Ensure this index is built before serving raffle requests
+(as with other schema uniqueness constraints). Draws store the actual winner
+count, capped at pool size. A no-show remains recorded if no replacement is
+available. Attendance and draw audit rows are retained when a workshop is cancelled.
+
+`PATCH /api/admin/settings { organizerRoom }` accepts a string of at most 200
+characters; blank uses "the organizer room". The Settings page edits it beside
+the event settings. Background `raffle_winner` template emails and attendee
+winner cards use that location. Lists also include attendanceOpen, attended,
+only the caller's wins (`prize`, `claimed`), and organizerRoom.
+
 Calendar emails use stable workshop UIDs and increasing sequences. Organizer
 assignment, waitlists and subscription feeds are deferred.
 
@@ -547,3 +592,26 @@ sent in the background with event-zone times (`EVENT_TIMEZONE`).
 
 Optional individual unit tracking and the reserve/request queue are deferred.
 `trackUnits` remains false; item-level printable QR labels are supported.
+
+Hardware loans save the borrower's checkout-time `team` reference and `teamName`
+so history survives team deletion. Staff lists include `{ id, name }` snapshots,
+`currentTeam`, and `teamChanged`; scanned attendees include their current team.
+Checkout CSV includes the snapshot team name after email. Attendee routes still
+return only inventory and the caller's own loans.
+
+Admins can clear or set `OrgSettings.hardwareReturnBy` (Date, default null) in
+Settings → General → Hardware. The datetime input uses `EVENT_TIMEZONE`, returned
+with admin settings. The API accepts an ISO timestamp with an explicit offset
+or `Z`, and null or an empty string to clear. A future deadline defaults new
+loans' `dueAt` when staff provide none; existing loans keep their deadlines.
+
+All three hardware receipt/reminder templates receive `{{returnBy}}`, formatted
+in the event time zone, or “the last day of the event” when unset. They also receive
+`{{name}}`, `{{itemName}}`, `{{eventTime}}`, and `{{dueTime}}`. Unedited legacy
+checkout and reminder bodies upgrade on seed; customized bodies are preserved.
+The new `hardware_team_change` template receives `{{name}}`, `{{items}}`,
+`{{newTeam}}`, and `{{returnBy}}`. Creation, invite acceptance, leaving, and leader
+removal trigger background notices to the affected borrower when hardware is on.
+Only open loans with a different checkout-time team are included. An atomic
+`teamChangeNotifiedAt` claim prevents repeated notices for the same loan; delivery
+uses the existing email outbox and retry behavior.

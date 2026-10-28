@@ -1,5 +1,6 @@
 "use strict";
 
+var hardwareTeamChange = require("../utils/hardwareTeamChange");
 var mongoose = require("mongoose");
 var validator = require("validator");
 
@@ -164,6 +165,7 @@ function createTeam(req, res) {
   }
   return Team.create({ name: name, nameKey: Team.nameKeyFor(name), leader: req.user.id, members: [req.user.id] })
     .then(function afterCreate() {
+      hardwareTeamChange(req.user.id);
       return sendMine(req, res, 201);
     })
     .catch(function onError(err) {
@@ -359,6 +361,7 @@ function acceptInvite(req, res) {
         { new: true }
       ).then(function afterJoin(team) {
         if (team) {
+          hardwareTeamChange(req.user.id);
           return sendMine(req, res);
         }
         return Team.findOne({ _id: req.params.teamId, "invites.email": me.email }).then(function why(stillInvited) {
@@ -422,6 +425,7 @@ function leave(req, res) {
         next = Promise.resolve();
       }
       return next.then(function afterLeave() {
+        hardwareTeamChange(req.user.id);
         return sendMine(req, res);
       });
     })
@@ -461,6 +465,7 @@ function removeMember(req, res) {
           res.status(404).json({ error: "They're not on your team." });
           return undefined;
         }
+        hardwareTeamChange(req.params.userId);
         return sendMine(req, res);
       });
     })

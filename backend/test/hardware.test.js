@@ -15,6 +15,11 @@ var User = require("../schemas/user");
 var OrgSettings = require("../schemas/orgSettings");
 var settingsCache = require("../utils/orgSettingsCache");
 var mailer = require("../utils/mailer");
+var Team = require("../schemas/team");
+var EmailLog = require("../schemas/emailLog");
+var EmailTemplate = require("../schemas/emailTemplate");
+var mailMock = require("./helpers/mailMock");
+var realSendTemplateEmail = mailer.sendTemplateEmail;
 var parseCsv = require("csv-parse/sync").parse;
 
 function auth(person) { return { Authorization: "Bearer " + person.token }; }
@@ -37,11 +42,112 @@ function checkout(p, person, fields) {
   return request(app).post("/api/staff/hardware/checkouts").set(auth(p.mod)).send(Object.assign({ userId: person.user.id, itemId: p.item.id }, fields));
 }
 
+async function waitFor(predicate) {
+  for (var attempt = 0; attempt < 100; attempt += 1) {
+    if (await predicate()) return;
+    await new Promise(function pause(resolve) { setTimeout(resolve, 20); });
+  }
+  assert.fail("Background notification did not finish");
+}
+
 test("hardware lab", async function hardware(t) {
   await db.connect();
   t.after(db.closeDatabase);
   t.mock.method(mailer, "sendTemplateEmail", function noMail() { return Promise.resolve(); });
 
+  await t.test("team snapshot, current team, CSV and event deadline", async function () {
+    var p = await seed();
+    var team = await Team.create({ name: "Original team", nameKey: "original team", leader: p.other.user._id, members: [p.attendee.user._id, p.other.user._id] });
+    var deadline = new Date(Date.now() + 86400000).toISOString();
+    await OrgSettings.create({ key: "default", hardwareReturnBy: deadline });
+    var created = await checkout(p, p.attendee);
+    assert.equal(created.status, 201);
+    assert.deepEqual(created.body.checkout.team, { id: team.id, name: team.name });
+    assert.equal(created.body.checkout.dueAt, deadline);
+    var url = "/api/staff/hardware/checkouts?userId=" + p.attendee.user.id;
+    var before = (await request(app).get(url).set(auth(p.mod)).expect(200)).body;
+    assert.deepEqual(before.attendee.team, { id: team.id, name: team.name });
+    assert.equal(before.checkouts[0].teamChanged, false);
+    await request(app).post("/api/teams/me/leave").set(auth(p.attendee)).expect(200);
+    var after = (await request(app).get(url).set(auth(p.mod)).expect(200)).body;
+    assert.equal(after.attendee.team, null);
+    assert.equal(after.checkouts[0].currentTeam, null);
+    assert.equal(after.checkouts[0].teamChanged, true);
+    assert.equal(after.checkouts[0].team.name, team.name);
+    await waitFor(async function notified() { return Boolean((await Checkout.findById(created.body.checkout._id)).teamChangeNotifiedAt); });
+    var history = await request(app).get("/api/staff/hardware/export.csv").set(auth(p.mod)).expect(200);
+    var rows = parseCsv(history.text, { columns: true, bom: true });
+    assert.equal(rows[0].team, team.name);
+    assert.deepEqual(Object.keys(rows[0]).slice(0, 4), ["item", "name", "email", "team"]);
+    var explicit = new Date(Date.now() + 172800000).toISOString();
+    assert.equal((await checkout(p, p.other, { dueAt: explicit })).body.checkout.dueAt, explicit);
+    await OrgSettings.updateOne({}, { $set: { hardwareReturnBy: new Date(Date.now() - 1000) } });
+    assert.equal((await checkout(p, p.other)).body.checkout.dueAt, null);
+  });
+  await t.test("membership changes queue one email per open loan, addressed to the borrower", async function (sub) {
+    var p = await seed();
+    sub.mock.method(mailer, "sendTemplateEmail", realSendTemplateEmail);
+    mailMock.mockTransport(sub);
+    await EmailTemplate.seedDefaults();
+    var team = await Team.create({ name: "First team", nameKey: "first team", leader: p.other.user._id, members: [p.other.user._id, p.attendee.user._id] });
+    var open = (await checkout(p, p.attendee)).body.checkout;
+    var returned = (await checkout(p, p.attendee)).body.checkout;
+    await request(app).post("/api/staff/hardware/checkouts/" + returned._id + "/return").set(auth(p.mod)).expect(200);
+    await request(app).post("/api/teams/me/leave").set(auth(p.attendee)).expect(200);
+    await waitFor(async function logged() { return await EmailLog.countDocuments({ templateKey: "hardware_team_change", status: "sent" }) === 1; });
+    var log = await EmailLog.findOne({ templateKey: "hardware_team_change" });
+    assert.equal(log.to, p.attendee.user.email);
+    assert.equal(log.values.items, "- Board (checked out with First team)");
+    assert.equal(log.values.returnBy, "the last day of the event");
+    assert.ok((await Checkout.findById(open._id)).teamChangeNotifiedAt);
+    assert.equal((await Checkout.findById(returned._id)).teamChangeNotifiedAt, null);
+    await request(app).post("/api/teams").set(auth(p.attendee)).send({ name: "Next team" }).expect(201);
+    await request(app).post("/api/teams/me/leave").set(auth(p.other)).expect(200);
+    await new Promise(function settle(resolve) { setTimeout(resolve, 100); });
+    assert.equal(await EmailLog.countDocuments({ templateKey: "hardware_team_change" }), 1);
+    // Finish receipt work before the next test clears the database.
+    await waitFor(async function receiptsDone() { return await EmailLog.countDocuments({ templateKey: { $in: ["hardware_checkout", "hardware_return"] }, status: "sent" }) === 3; });
+    assert.equal(await Team.countDocuments({ _id: team._id }), 0);
+  });
+  await t.test("leader removal notifies the removed member; joining from no team also counts", async function (sub) {
+    var p = await seed();
+    sub.mock.method(mailer, "sendTemplateEmail", realSendTemplateEmail);
+    mailMock.mockTransport(sub);
+    await EmailTemplate.seedDefaults();
+    await Team.create({ name: "Members", nameKey: "members", leader: p.other.user._id, members: [p.other.user._id, p.attendee.user._id] });
+    await checkout(p, p.attendee);
+    await request(app).delete("/api/teams/me/members/" + p.attendee.user.id).set(auth(p.other)).expect(200);
+    await waitFor(async function logged() { return await EmailLog.countDocuments({ templateKey: "hardware_team_change", status: "sent" }) === 1; });
+    assert.equal((await EmailLog.findOne({ templateKey: "hardware_team_change" })).to, p.attendee.user.email);
+    await checkout(p, p.attendee);
+    await request(app).post("/api/teams/me/invites").set(auth(p.other)).send({ email: p.attendee.user.email }).expect(201);
+    var team = await Team.findOne({ members: p.other.user._id });
+    await request(app).post("/api/teams/invites/" + team.id + "/accept").set(auth(p.attendee)).expect(200);
+    await waitFor(async function loggedAgain() { return await EmailLog.countDocuments({ templateKey: "hardware_team_change", status: "sent" }) === 2; });
+    var logs = await EmailLog.find({ templateKey: "hardware_team_change" }).sort({ createdAt: 1 });
+    assert.equal(logs[1].values.items, "- Board (checked out with no team)");
+    assert.equal(logs[1].values.newTeam, "Members");
+    await waitFor(async function inviteDone() { return await EmailLog.countDocuments({ templateKey: "team_invite", status: "sent" }) === 1; });
+    await waitFor(async function receiptsDone() { return await EmailLog.countDocuments({ templateKey: "hardware_checkout", status: "sent" }) === 2; });
+  });
+  await t.test("no loans or a disabled hardware module sends no team-change notice", async function (sub) {
+    var p = await seed();
+    sub.mock.method(mailer, "sendTemplateEmail", realSendTemplateEmail);
+    mailMock.mockTransport(sub);
+    await EmailTemplate.seedDefaults();
+    await request(app).post("/api/teams").set(auth(p.attendee)).send({ name: "Empty hands" }).expect(201);
+    await request(app).post("/api/teams/me/leave").set(auth(p.attendee)).expect(200);
+    await new Promise(function settle(resolve) { setTimeout(resolve, 100); });
+    await checkout(p, p.attendee);
+    // Checkout already created the settings row (it reads hardwareReturnBy).
+    await OrgSettings.updateOne({ key: "default" }, { $set: { "features.hardware": false } }, { upsert: true });
+    settingsCache.clear();
+    await request(app).post("/api/teams").set(auth(p.attendee)).send({ name: "Module off" }).expect(201);
+    await new Promise(function settle(resolve) { setTimeout(resolve, 100); });
+    assert.equal(await EmailLog.countDocuments({ templateKey: "hardware_team_change" }), 0);
+    await waitFor(async function receiptDone() { return await EmailLog.countDocuments({ templateKey: "hardware_checkout", status: "sent" }) === 1; });
+    assert.equal((await Checkout.findOne({ user: p.attendee.user._id })).teamChangeNotifiedAt, null);
+  });
   await t.test("permissions and disabled feature on every hardware route", async function () {
     var p = await seed();
     var hardwareRoutes = routes.listRoutes(app).filter(function hardwareRoute(route) { return /\/hardware(?:\/|$)/.test(route.path) && route.path.indexOf("/meta/") === -1; });
@@ -185,12 +291,13 @@ test("hardware lab", async function hardware(t) {
     sub.mock.method(mailer, "sendTemplateEmail", function pending(to, key, values) { calls.push({ to: to, key: key, values: values }); return new Promise(function never() {}); });
     var res = await checkout(p, p.attendee, { dueAt: new Date(Date.now() + 86400000).toISOString() });
     assert.equal(res.status, 201);
-    await new Promise(function tick(resolve) { setImmediate(resolve); });
+    await waitFor(function emailStarted() { return calls.length > 0; });
     assert.equal(calls[0].key, "hardware_checkout");
     assert.ok(!/\d{4}-\d{2}-\d{2}T/.test(calls[0].values.dueTime));
     await request(app).post("/api/staff/hardware/checkouts/" + res.body.checkout._id + "/return").set(auth(p.mod)).expect(200);
     await checkout(p, p.other);
     await request(app).post("/api/staff/hardware/reminders").set(auth(p.mod)).send({ itemId: p.item.id }).expect(202);
+    await waitFor(function reminderStarted() { return calls.some(function reminder(call) { return call.key === "hardware_reminder"; }); });
     assert.ok(calls.some(function reminder(call) { return call.key === "hardware_reminder" && call.to === p.other.user.email; }));
   });
 });
