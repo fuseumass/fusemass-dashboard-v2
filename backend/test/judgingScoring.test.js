@@ -15,12 +15,14 @@ var Room = require("../schemas/judgingRoom");
 var Settings = require("../schemas/orgSettings");
 var algorithm = require("../utils/judging/assignments");
 var getCriteria = require("../utils/judging/criteria").getCriteria;
+var criteria = []; // The live rubric, loaded once the database is up.
+var JudgingSettings = require("../schemas/judgingSettings");
 var adminRoot = "/api/admin/judging";
 function auth(person) { return { Authorization: "Bearer " + person.token }; }
 function post(person, path, body) { return request(app).post(path).set(auth(person)).send(body || {}); }
 function queue(person) { return request(app).get("/api/judging/queue").set(auth(person)).expect(200); }
 function rubric() {
-  return Object.fromEntries(getCriteria().map(function score(c) { return [c.key, c.max]; }));
+  return Object.fromEntries(criteria.map(function score(c) { return [c.key, c.max]; }));
 }
 function score(person, project, values) {
   return post(person, "/api/judging/scores", { projectId: String(project), scores: values || rubric(), comments: "Notes" });
@@ -52,6 +54,10 @@ test("judging assignments and scoring", async function (t) {
   var ineligible = await project(room, 5, { tableCheckedInAt: null });
   var absent = await project(room, 6, { deskCheckedInAt: null });
   var withdrawn = await project(room, 7, { withdrawn: true });
+  // Judging starts closed (JudgingSettings.judgingOpen); open it like an admin would.
+  await post(admin, adminRoot + "/open").expect(200);
+  assert.equal((await JudgingSettings.getSingleton()).criteriaLocked, true);
+  criteria = await getCriteria();
 
   await t.test("generation validates inputs, isolates pools, uses capacities and requires both check-ins", async function (t2) {
     await post(admin, adminRoot + "/assignments", { slotMinutes: 0 }).expect(400);
@@ -208,6 +214,6 @@ test("judging assignments and scoring", async function (t) {
     for (var entry of paths) await request(app)[entry[0]](entry[1]).expect(401);
     await Settings.updateOne({}, { $set: { "features.judging": false } }, { upsert: true });
     for (var route of paths) await request(app)[route[0]](route[1]).set(auth(admin)).expect(404);
-    assert.equal((await State.findById("judging")).busy, false);
+    assert.equal((await State.findById("judging")).busyUntil, null);
   });
 });

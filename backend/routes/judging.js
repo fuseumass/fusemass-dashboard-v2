@@ -15,4 +15,16 @@ var isJudge = require("../utils/isJudge");
 router.get("/queue", feature, isJudge, scoring.queue);
 router.post("/scores", feature, isJudge, scoring.scores);
 router.post("/skip", feature, isJudge, scoring.skip);
+var calibration = require("../controllers/judgingCalibrationController");
+router.use(require("../utils/requireFeature")("judging"));
+router.get(
+  "/calibration",
+  require("../utils/isJudge"),
+  calibration.getCalibration,
+);
+router.post(
+  "/calibration/:round",
+  require("../utils/isJudge"),
+  calibration.scoreRound,
+);
 module.exports = router;

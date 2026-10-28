@@ -7,6 +7,7 @@ var Profile = require("../schemas/judgeProfile");
 var User = require("../schemas/user");
 var State = require("../schemas/judgingState");
 var control = require("../utils/judging/state");
+var Settings = require("../schemas/judgingSettings");
 var algorithm = require("../utils/judging/assignments");
 
 function fail(res, err) {
@@ -159,7 +160,11 @@ async function withdraw(req, res) {
 async function setOpen(req, res) {
   try {
     var open = req.route.path === "/open";
-    await control.locked(async function change() { await State.updateOne({ _id: "judging" }, { $set: { judgingOpen: open } }); });
+    await control.locked(async function change() {
+      // Opening judging also locks the rubric and calibration setup for good.
+      var changes = open ? { judgingOpen: true, criteriaLocked: true } : { judgingOpen: false };
+      await Settings.updateOne({ key: "default" }, { $set: changes }, { upsert: true });
+    });
     res.json({ judgingOpen: open });
   } catch (err) { fail(res, err); }
 }

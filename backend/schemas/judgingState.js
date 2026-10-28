@@ -2,14 +2,16 @@
 var mongoose = require("mongoose");
 /** @typedef {object} JudgingState
  * @property {string} _id - Singleton key.
- * @property {boolean} judgingOpen - Score writes allowed.
  * @property {number} activeVersion - Explicitly activated version.
- * @property {boolean} busy - Serializes queue changes, scores and freeze across processes.
+ * @property {Date} busyUntil - Lease expiry for the lock that serializes queue
+ *   changes, scores and freeze across processes; null when free.
+ * @property {string} busyToken - Holder of the current lease.
+ * The open/closed switch is JudgingSettings.judgingOpen.
  */
 var schema = new mongoose.Schema({
   _id: { type: String, default: "judging" },
-  judgingOpen: { type: Boolean, default: true },
   activeVersion: { type: Number, default: null },
-  busy: { type: Boolean, default: false },
+  busyUntil: { type: Date, default: null },
+  busyToken: { type: String, default: null },
 }, { timestamps: true });
 module.exports = mongoose.model("JudgingState", schema);

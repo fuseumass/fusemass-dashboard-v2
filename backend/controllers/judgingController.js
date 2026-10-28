@@ -33,7 +33,7 @@ async function queue(req, res) {
         status: ctx.done.has(id) ? "done" : ctx.skipped.has(id) ? "skipped" : "upcoming",
         scores: score ? score.scores : null, comments: score ? score.comments : "" });
     });
-    res.json({ judgingOpen: state.judgingOpen, version: state.activeVersion, criteria: getCriteria(),
+    res.json({ judgingOpen: state.judgingOpen, version: state.activeVersion, criteria: await getCriteria(),
       slotMinutes: ctx.assignment ? ctx.assignment.params.slotMinutes : null,
       current: assignments.find(function same(p) { return ctx.current && String(p._id) === String(ctx.current._id); }) || null,
       total: assignments.length, assignments: assignments,
@@ -41,8 +41,8 @@ async function queue(req, res) {
       done: assignments.filter(function done(p) { return p.status === "done"; }) });
   } catch (err) { fail(res, err); }
 }
-function validate(body) {
-  var criteria = getCriteria();
+async function validate(body) {
+  var criteria = await getCriteria();
   if (!body.scores || typeof body.scores !== "object" || Array.isArray(body.scores) ||
       Object.keys(body.scores).length !== criteria.length || criteria.some(function invalid(c) {
         var value = body.scores[c.key];
@@ -63,7 +63,7 @@ async function scores(req, res) {
     var body = req.body || {};
     await control.locked(async function write(state) {
       var ctx = await writable(state, req.user.id, body.projectId);
-      validate(body);
+      await validate(body);
       if ((!ctx.current || String(ctx.current._id) !== String(body.projectId)) && !ctx.skipped.has(String(body.projectId)) && !ctx.done.has(String(body.projectId))) throw control.problem(409, "Score the current project first.");
       await Score.findOneAndUpdate({ judge: req.user.id, project: body.projectId },
         { $set: { scores: body.scores, comments: body.comments || "" } }, { upsert: true, new: true, runValidators: true });

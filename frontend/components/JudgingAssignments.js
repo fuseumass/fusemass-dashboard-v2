@@ -256,7 +256,16 @@ export default function JudgingAssignments({ projects, onChange }) {
           <Button
             variant="outline"
             loading={busy}
-            onClick={() => action(data.judgingOpen ? "/close" : "/open")}
+            onClick={() =>
+              data.judgingOpen
+                ? action("/close")
+                : setConfirmation({
+                    title: "Open judging",
+                    description:
+                      "Judges can submit scores once judging is open. The rubric and calibration projects lock and can't be edited again, even after you close judging.",
+                    path: "/open",
+                  })
+            }
           >
             {data.judgingOpen ? "Close judging" : "Open judging"}
           </Button>

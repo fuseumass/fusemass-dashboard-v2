@@ -171,6 +171,15 @@ test("B1: email template CRUD", async function emailTemplateCrud(t) {
     for (var key of Object.keys(old)) {
       assert.equal((await EmailTemplate.findOne({ key: key })).body, "Custom hardware instructions");
     }
+    // The previous default (the one in production) upgrades to the team rules.
+    await EmailTemplate.updateOne(
+      { key: "hardware_checkout" },
+      { $set: { body: "Hi {{name}},\n\nYou checked out {{itemName}} at {{eventTime}}.\n\nPlease return all hardware to the hardware desk before you leave for the day on {{returnBy}}.\n\nReturn deadline: {{dueTime}}" } }
+    );
+    await EmailTemplate.seedDefaults();
+    var upgraded = (await EmailTemplate.findOne({ key: "hardware_checkout" })).body;
+    assert.match(upgraded, /even if you change teams/);
+    assert.match(upgraded, /If you switch teams, remember to return the hardware you checked out/);
     var builtIn = await EmailTemplate.findOne({ key: "hardware_team_change" });
     assert.ok(EmailTemplate.isBuiltInKey(builtIn.key));
     var admin = await fixtures.createUser({ role: "admin" });

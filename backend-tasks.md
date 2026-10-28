@@ -652,17 +652,18 @@ will walk to.
 - **Depends on:** B24b; check-in from `feature/qr-checkin`.
 
 ### B24d. Judge calibration (tutorial) and bias
-- [ ] `JudgingSettings.calibrationProjects` (default 3, matching 2025): each
+- [x] `JudgingSettings.calibrationProjects` (default 3, matching 2025): each
       has a title and an optional description or link. All judges score the
       same ones, in the same order, typically at the judges' briefing.
-- [ ] `schemas/judgeProfile.js` (one per judge user): `user`, `hardware`,
+- [x] `schemas/judgeProfile.js` (one per judge user): `user`, `hardware`,
       `calibrationScores: [{ round, scores, comments }]`, `bias: { general,
       category, computedAt }`.
-- [ ] `POST /api/judging/calibration/:round` (isJudge): rubric-validated,
+- [x] `POST /api/judging/calibration/:round` (isJudge): rubric-validated,
       **upsert** per round (rescoring replaces), rounds in order.
-- [ ] `POST /api/admin/judging/bias` runs `utils/judging/bias.js` over everyone
+- [x] `POST /api/admin/judging/bias` runs `utils/judging/bias.js` over everyone
       who finished calibration and stores the result. Judges who skipped
       calibration get `bias: null` and are flagged in results (B24g).
+- Implemented settings GET/PATCH, calibration GET/POST and bias GET/POST with admin and judge UI. Configuration edits reset calibration; projects and criteria stay locked after judging first opens. Queue/scoring and results remain B24e–B24g.
 - **Depends on:** B24a, B47.
 
 ### B24e. Assignment generation (versioned)
@@ -683,7 +684,9 @@ will walk to.
 - **Depends on:** B24a, B24c, B47.
 
 ### B24f. Judge queue and scoring
-- [x] Rubric adapter `utils/judging/criteria.js#getCriteria()` supplies the six default criteria with help, ranges, weights and kind. Settings storage/editing belongs to the parallel B24d branch; no JudgingSettings is created here.
+- [x] Rubric in `JudgingSettings.criteria: [{ key, label, help, min, max,
+      weight, kind: "general" | "category" }]`, seeded with the 2025 six (see
+      "How it works") and editable by admins until judging starts.
 - [x] `GET /api/judging/queue` (isJudge): current project (name, table, room,
       category, Devpost link), position "4 of 12", skipped list, done list.
 - [x] `POST /api/judging/scores { projectId, scores, comments }`: every

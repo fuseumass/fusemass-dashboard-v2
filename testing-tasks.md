@@ -159,6 +159,10 @@ fixed.
       the mean of all judges' means, per round, averaged; category the same);
       a judge who scores everything +2 gets general bias +2; a judge with no
       calibration gets `null`.
+- [x] **Calibration API (B24d):** rubric validation, ordered round upserts, completion,
+      bias compared with the pure formula over completed judges only, configuration
+      reset/locking, role permissions and feature gates in `judgingCalibration.test.js`.
+      Written but not executed in the offline environment without MongoDB.
 - [ ] **Results (pure):** the bias-adjusted ranking flips the order of two
       projects where a strict judge saw one and a generous judge the other;
       projects with fewer than k scores are flagged.

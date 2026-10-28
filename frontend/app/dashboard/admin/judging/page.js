@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
+import AdminJudgingCalibration from "@/components/AdminJudgingCalibration";
 import DataTable from "@/components/DataTable";
 import EmptyState from "@/components/EmptyState";
 import JudgingAssignments from "@/components/JudgingAssignments";
@@ -473,14 +474,18 @@ export default function JudgingAdminPage() {
         </Alert>
       )}
       <Tabs defaultValue="rooms">
-        <TabsList>
+        <TabsList className="h-auto flex-wrap">
           <TabsTrigger value="rooms">Rooms</TabsTrigger>
           <TabsTrigger value="projects">Projects</TabsTrigger>
           <TabsTrigger value="import">Import</TabsTrigger>
           <TabsTrigger value="assignments">Assignments</TabsTrigger>
+          <TabsTrigger value="calibration">Calibration</TabsTrigger>
         </TabsList>
         <TabsContent value="assignments">
           <JudgingAssignments projects={projects} onChange={load} />
+        </TabsContent>
+        <TabsContent value="calibration">
+          <AdminJudgingCalibration />
         </TabsContent>
         <TabsContent value="rooms" className="space-y-4">
           <div className="flex flex-wrap items-center justify-between gap-4">
