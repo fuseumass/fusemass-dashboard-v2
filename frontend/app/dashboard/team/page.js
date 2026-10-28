@@ -36,6 +36,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
 import { apiFetch } from "@/lib/api";
+import { loadSiteMeta } from "@/lib/features";
 import { notifySuccess } from "@/lib/notify";
 import { useUser } from "@/lib/userContext";
 
@@ -251,6 +252,34 @@ function ConfirmDialog({
 }
 
 function TeamCard({ team, isLeader, userId, busy, act }) {
+  const [hasHardware, setHasHardware] = useState(false);
+  const [checkingHardware, setCheckingHardware] = useState(false);
+  const [hardwareError, setHardwareError] = useState("");
+
+  async function confirmLeave() {
+    setCheckingHardware(true);
+    setHardwareError("");
+    try {
+      const meta = await loadSiteMeta();
+      let open = false;
+      if (meta.features?.hardware !== false) {
+        try {
+          const mine = await apiFetch("/api/hardware/mine");
+          open = mine.checkouts.some((loan) => !loan.returnedAt);
+        } catch (err) {
+          // Team membership is available to applicants without an acceptance.
+          if (err.status !== 400 && err.status !== 404) throw err;
+        }
+      }
+      setHasHardware(open);
+      setConfirming({ leave: true });
+    } catch (err) {
+      setHardwareError(err.message);
+    } finally {
+      setCheckingHardware(false);
+    }
+  }
+
   const [inviteEmail, setInviteEmail] = useState("");
   const [devpost, setDevpost] = useState(team.devpostUrl || "");
   const [renaming, setRenaming] = useState(false);
@@ -500,12 +529,17 @@ function TeamCard({ team, isLeader, userId, busy, act }) {
         <Button
           type="button"
           variant="destructive"
-          loading={busy === "leave"}
-          onClick={() => setConfirming({ leave: true })}
+          loading={busy === "leave" || checkingHardware}
+          onClick={confirmLeave}
         >
           <LogOut aria-hidden="true" />
           Leave team
         </Button>
+        {hardwareError && (
+          <Alert variant="destructive">
+            <AlertDescription>{hardwareError}</AlertDescription>
+          </Alert>
+        )}
       </CardContent>
 
       <ConfirmDialog
@@ -523,9 +557,11 @@ function TeamCard({ team, isLeader, userId, busy, act }) {
         description={
           confirming?.remove
             ? "They will lose access to the team. You can invite them again later."
-            : lastMember
-              ? "You are the last member, so leaving deletes the team."
-              : "You can join another team or be invited back."
+            : hasHardware
+              ? `${lastMember ? "You are the last member, so leaving deletes the team. " : ""}You have hardware checked out. You will need to return it to the hardware desk after leaving. A member of the team using it can check it out again.`
+              : lastMember
+                ? "You are the last member, so leaving deletes the team."
+                : "You can join another team or be invited back."
         }
         action={confirming?.remove ? "Remove" : "Leave team"}
         onConfirm={() => {

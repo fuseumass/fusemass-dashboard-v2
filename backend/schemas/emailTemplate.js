@@ -31,7 +31,7 @@ var DEFAULT_TEMPLATES = [
   {
     key: "hardware_checkout",
     subject: "Hardware checkout: {{itemName}}",
-    body: "Hi {{name}},\n\nYou checked out {{itemName}} at {{eventTime}}.\nReturn deadline: {{dueTime}}",
+    body: "Hi {{name}},\n\nYou checked out {{itemName}} at {{eventTime}}.\n\nPlease return all hardware to the hardware desk before you leave for the day on {{returnBy}}.\n\nReturn deadline: {{dueTime}}",
   },
   {
     key: "hardware_return",
@@ -41,7 +41,14 @@ var DEFAULT_TEMPLATES = [
   {
     key: "hardware_reminder",
     subject: "Please return {{itemName}}",
-    body: "Hi {{name}},\n\nPlease bring {{itemName}} back to the hardware desk.\nReturn deadline: {{dueTime}}",
+    body: "Hi {{name}},\n\nPlease bring {{itemName}} back to the hardware desk before you leave for the day on {{returnBy}}.\nReturn deadline: {{dueTime}}",
+  },
+  {
+    // Sent when a borrower changes teams with hardware still out, so a
+    // member of the team using it can check it out again.
+    key: "hardware_team_change",
+    subject: "Please return your hardware: you changed teams",
+    body: "Hi {{name}},\n\nYou changed teams, and you still have hardware checked out:\n\n{{items}}\n\nPlease return all of it to the hardware desk now. One of the members of the team that's using it can check it out again under their name.\n\nReturn by: {{returnBy}}",
   },
   {
     key: "application_received",
@@ -114,6 +121,8 @@ var LEGACY_DEFAULT_SUBJECTS = {
 };
 
 var LEGACY_DEFAULT_BODIES = {
+  hardware_checkout: ["Hi {{name}},\n\nYou checked out {{itemName}} at {{eventTime}}.\nReturn deadline: {{dueTime}}"],
+  hardware_reminder: ["Hi {{name}},\n\nPlease bring {{itemName}} back to the hardware desk.\nReturn deadline: {{dueTime}}"],
   checked_in: [
     "Hi {{name}},\n\nYou're checked in to {{orgName}}. Welcome!\n\nIf you haven't joined our Discord yet, join now. It's where announcements, mentors and team-finding happen: {{discordUrl}}\n\n{{runOfShow}}\n\nSchedule updates, FAQs, maps and prizes are on our website: {{websiteUrl}}\n\nHappy hacking!",
   ],

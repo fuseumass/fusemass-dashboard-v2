@@ -1,5 +1,8 @@
 "use strict";
 
+var Team = require("../schemas/team");
+var settingsCache = require("../utils/orgSettingsCache");
+var returnBy = require("../utils/hardwareReturnBy");
 var mongoose = require("mongoose");
 var Item = require("../schemas/hardwareItem");
 var Checkout = require("../schemas/hardwareCheckout");
@@ -48,10 +51,11 @@ function itemFields(body, partial) {
 /** @param {object} user - Recipient. @param {object} item - Item. @param {object} loan - Loan. @param {string} key - Template key. @returns {void} */
 function email(user, item, loan, key) {
   // Start outside the request promise; throttled SMTP must never hold the desk up.
-  Promise.resolve().then(function send() {
+  Promise.resolve().then(async function send() {
+    var settings = await settingsCache.get();
     var fmt = new Intl.DateTimeFormat("en-US", { dateStyle: "medium", timeStyle: "short", timeZone: process.env.EVENT_TIMEZONE || "America/New_York" });
     return mailer.sendTemplateEmail(user.email, key, {
-      name: user.name, itemName: item.name,
+      name: user.name, itemName: item.name, returnBy: returnBy(settings),
       dueTime: loan.dueAt ? fmt.format(new Date(loan.dueAt)) : "Return to the hardware desk before leaving the event.",
       eventTime: fmt.format(new Date(loan.returnedAt || loan.checkedOutAt))
     });
@@ -98,6 +102,18 @@ async function checkouts(req, res) {
     if (req.query.open === "1" || req.query.overdue === "1") filter.returnedAt = null;
     if (req.query.overdue === "1") filter.dueAt = { $lt: new Date(), $ne: null };
     var loans = await Checkout.find(filter).populate("user", "name email").populate("item", "name location").sort({ dueAt: 1, checkedOutAt: -1 }).lean();
+    var ids = loans.filter(function hasUser(loan) { return loan.user; }).map(function borrower(loan) { return loan.user._id; });
+    if (attendee) ids.push(attendee.id);
+    var teams = await Team.find({ members: { $in: ids } }).select("name members").lean();
+    var byUser = {};
+    teams.forEach(function mapTeam(team) { team.members.forEach(function member(id) { byUser[String(id)] = { id: String(team._id), name: team.name }; }); });
+    loans.forEach(function describe(loan) {
+      var snapshot = loan.team ? { id: String(loan.team), name: loan.teamName || "Deleted team" } : null;
+      loan.currentTeam = loan.user ? byUser[String(loan.user._id)] || null : null;
+      loan.teamChanged = String(snapshot && snapshot.id) !== String(loan.currentTeam && loan.currentTeam.id);
+      loan.team = snapshot;
+    });
+    if (attendee) attendee.team = byUser[String(attendee.id)] || null;
     // Missing deadlines follow dated loans; overdue loans naturally sort first.
     loans.sort(function dueFirst(a, b) { return (a.dueAt ? new Date(a.dueAt).getTime() : Infinity) - (b.dueAt ? new Date(b.dueAt).getTime() : Infinity); });
     return res.json({ checkouts: loans, attendee: attendee });
@@ -111,12 +127,16 @@ async function checkout(req, res) {
     var body = req.body || {};
     if (!validId(body.itemId)) throw invalid("Select an item.");
     if (body.unitId) throw invalid("Individual unit tracking is not enabled.");
+    var settings = await settingsCache.get();
+    var defaultDue = settings && settings.hardwareReturnBy;
     var dueAt = body.dueAt ? new Date(body.dueAt) : null;
     if (dueAt && (!Number.isFinite(dueAt.getTime()) || dueAt <= new Date())) throw invalid("Return deadline must be in the future.");
+    if (!dueAt && defaultDue && new Date(defaultDue) > new Date()) dueAt = new Date(defaultDue);
     if (body.notes !== undefined && (typeof body.notes !== "string" || body.notes.length > 4000)) throw invalid("Notes must be at most 4000 characters.");
     var found = await staff.resolveAttendee(body);
     if (found.error) return res.status(found.status).json({ error: found.error });
     if (!found.user.checkedIn) return res.status(400).json({ error: "Attendee is not checked in to the event." });
+    var team = await Team.findOne({ members: found.user._id }).select("name");
     var item = await Item.findOne({ _id: body.itemId, archived: false });
     if (!item) return res.status(404).json({ error: "Item not found." });
     var open = await Checkout.countDocuments({ user: found.user._id, item: item._id, returnedAt: null });
@@ -125,7 +145,7 @@ async function checkout(req, res) {
     if (!stock) return res.status(409).json({ error: "Item is out of stock or inventory changed. Refresh and try again." });
     for (var slot = 0; slot < item.maxPerAttendee; slot += 1) {
       try {
-        loan = await Checkout.create({ user: found.user._id, item: item._id, checkedOutBy: req.user.id, dueAt: dueAt, notes: body.notes || "", slot: slot });
+        loan = await Checkout.create({ team: team ? team._id : null, teamName: team ? team.name : "", user: found.user._id, item: item._id, checkedOutBy: req.user.id, dueAt: dueAt, notes: body.notes || "", slot: slot });
         break;
       } catch (err) { if (err.code !== 11000) throw err; }
     }
@@ -135,7 +155,7 @@ async function checkout(req, res) {
       return res.status(409).json({ error: "Attendee limit reached." });
     }
     email(found.user, item, loan, "hardware_checkout");
-    return res.status(201).json({ checkout: loan });
+    return res.status(201).json({ checkout: Object.assign(loan.toObject(), { team: team ? { id: team.id, name: team.name } : null }) });
   } catch (err) {
     if (stock && !loan) {
       try { await Item.updateOne({ _id: stock._id }, { $inc: { availableQty: 1 } }); }
@@ -214,13 +234,13 @@ async function exportCsv(req, res) {
   var last = null;
   return csv.sendCsv(res, {
     filename: csv.datedFilename(inventoryExport ? "hardware-inventory" : "hardware-checkouts", "csv"),
-    header: inventoryExport ? ["name", "category", "description", "link", "location", "imageUrl", "totalQty", "availableQty", "maxPerAttendee"] : ["item", "name", "email", "checkedOutAt", "dueAt", "returnedAt", "notes"],
+    header: inventoryExport ? ["name", "category", "description", "link", "location", "imageUrl", "totalQty", "availableQty", "maxPerAttendee"] : ["item", "name", "email", "team", "checkedOutAt", "dueAt", "returnedAt", "notes"],
     nextRows: async function nextRows() {
       var filter = last ? { _id: { $gt: last } } : {};
       var rows = inventoryExport ? await Item.find(filter).sort({ _id: 1 }).limit(250).lean() : await Checkout.find(filter).populate("item", "name").populate("user", "name email").sort({ _id: 1 }).limit(250).lean();
       if (rows.length) last = rows[rows.length - 1]._id;
       return rows.map(function cells(row) {
-        return inventoryExport ? [row.name, row.category, row.description, row.link, row.location, row.imageUrl, row.totalQty, row.availableQty, row.maxPerAttendee] : [row.item && row.item.name, row.user && row.user.name, row.user && row.user.email, row.checkedOutAt, row.dueAt, row.returnedAt, row.notes];
+        return inventoryExport ? [row.name, row.category, row.description, row.link, row.location, row.imageUrl, row.totalQty, row.availableQty, row.maxPerAttendee] : [row.item && row.item.name, row.user && row.user.name, row.user && row.user.email, row.teamName || "", row.checkedOutAt, row.dueAt, row.returnedAt, row.notes];
       });
     }
   });

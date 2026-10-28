@@ -84,6 +84,9 @@ var orgSettingsSchema = new Schema(
       type: Boolean,
       default: true,
     },
+    // When borrowers must return all hardware (default due time for loans
+    // and {{returnBy}} in the hardware emails). Null = "the last day of the event".
+    hardwareReturnBy: { type: Date, default: null },
     // Largest team allowed (members, plus pending invites while forming).
     teamMaxSize: {
       type: Number,
