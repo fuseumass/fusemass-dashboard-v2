@@ -12,7 +12,7 @@ var overrideFields = ["category", "hardware", "needsPower", "withdrawn"];
 
 function fail(res, err) {
   var bad = err.name === "ValidationError" || err.name === "CastError";
-  res.status(err.code === 11000 ? 409 : bad ? 400 : 500).json({
+  res.status(err.status || (err.code === 11000 ? 409 : bad ? 400 : 500)).json({
     error:
       err.code === 11000
         ? "That project or table already exists."
@@ -166,14 +166,19 @@ async function updateProject(req, res) {
     }
   }
   try {
-    var project = await Project.findByIdAndUpdate(
-      req.params.id,
-      {
-        $set: values,
-        $addToSet: { overriddenFields: { $each: Object.keys(values) } },
-      },
-      { new: true, runValidators: true },
-    );
+    var control = require("../utils/judging/state");
+    var project = await control.locked(async function update(state) {
+      var updated = await Project.findByIdAndUpdate(
+        req.params.id,
+        {
+          $set: values,
+          $addToSet: { overriddenFields: { $each: Object.keys(values) } },
+        },
+        { new: true, runValidators: true },
+      );
+      if (updated && updated.withdrawn) await control.removeProject(updated._id, state);
+      return updated;
+    });
     if (!project) {
       res.status(404).json({ error: "Project not found." });
       return;

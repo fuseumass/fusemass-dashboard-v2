@@ -7,6 +7,7 @@ import { useForm } from "react-hook-form";
 import { z } from "zod";
 import DataTable from "@/components/DataTable";
 import EmptyState from "@/components/EmptyState";
+import JudgingAssignments from "@/components/JudgingAssignments";
 import PageHeader from "@/components/PageHeader";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import {
@@ -476,7 +477,11 @@ export default function JudgingAdminPage() {
           <TabsTrigger value="rooms">Rooms</TabsTrigger>
           <TabsTrigger value="projects">Projects</TabsTrigger>
           <TabsTrigger value="import">Import</TabsTrigger>
+          <TabsTrigger value="assignments">Assignments</TabsTrigger>
         </TabsList>
+        <TabsContent value="assignments">
+          <JudgingAssignments projects={projects} onChange={load} />
+        </TabsContent>
         <TabsContent value="rooms" className="space-y-4">
           <div className="flex flex-wrap items-center justify-between gap-4">
             <p className="text-sm text-muted-foreground">

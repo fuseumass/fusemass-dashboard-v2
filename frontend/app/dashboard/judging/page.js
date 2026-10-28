@@ -2,6 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useEffect } from "react";
+import JudgeQueue from "@/components/JudgeQueue";
 import PageHeader from "@/components/PageHeader";
 import { useUser } from "@/lib/userContext";
 
@@ -31,6 +32,7 @@ export default function JudgingPage() {
           </dd>
         </div>
       </dl>
+      <JudgeQueue userId={user._id || user.id} />
     </div>
   );
 }

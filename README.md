@@ -201,9 +201,9 @@ atomically, including through the shared reset-password endpoint so it cannot
 reuse an invitation concurrently. Matching Google accounts can also sign in from the acceptance page or normal login;
 Google sign-in invalidates their pending invite token.
 
-The judging page is a placeholder. Calibration, progress, queues, scoring and
-removal from active assignments remain in B24d–B24g. Profiles are retained on
-removal; B24e has a TODO to remove demoted judges from active assignments.
+The judging page provides queues and scoring. Calibration and progress remain
+in B24d/B24g. Role removal also removes the active assignment queue. Profiles are retained on
+removal; B24e removes demoted judges from active assignments.
 
 ## 6. Data & schema conventions (Mongoose)
 

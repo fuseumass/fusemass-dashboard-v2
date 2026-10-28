@@ -422,21 +422,23 @@ floor: build the judge screens mobile-first, in the kiosk layout (F13).**
 - [ ] **Calibration:** "Practice project 1 of 3", the same rubric form as real
       judging, a short explainer ("everyone scores the same projects so we
       can correct for strict and generous judges"), then "Calibration done".
-- [ ] **Current project:** a large table number + room, then project name,
+- [x] **Current project:** a large table number + room, then project name,
       category, Devpost link; progress "4 of 12"; the rubric with each
       criterion's **guiding questions** (from the rubric's `help`), entered as
       segmented 0–N buttons (no free number inputs: the 2025 form only clamped
       in the browser); comments; **Submit & next** and **Skip**. Prevent double
       submit. When the queue is done: "All done, thank you".
-- [ ] **Skipped:** list with table/room, tap to score. Scoring a skipped
+- [x] **Skipped:** list with table/room, tap to score. Scoring a skipped
       project returns you to your *current* project and doesn't skip ahead
       (the 2025 bug).
-- [ ] **My assignments:** the full list in order, including the first (2025
+- [x] **My assignments:** the full list in order, including the first (2025
       dropped it), each marked done / skipped / upcoming from real scores.
-- [ ] Optional slot timer per project if B24e's decision picks (a).
+- [x] Optional slot timer per project if B24e's decision picks (a).
 - [ ] Offline tolerance: keep the unsent form in local storage and retry on
       reconnect, since venue Wi-Fi drops.
 - **Depends on:** B24d, B24f, F27.
+
+Queue and scoring are implemented with the existing calibration status placeholder intact for B24d. Drafts persist per user/project on this device and can be retried manually; automatic reconnect retry and calibration routing remain unfinished. Visual screenshots and keyboard walkthrough remain to be captured with a browser.
 
 ### F21b. Team check-in screens (desk → table)
 - [x] **Judging desk** (`/dashboard/staff/judging`, kiosk layout, reusing
@@ -466,7 +468,7 @@ floor: build the judge screens mobile-first, in the kiosk layout (F13).**
       general/category), locked once scores exist; calibration projects.
 - [ ] **Judges:** list with hardware flag, invite status, calibration done,
       bias, progress; invite and bulk-invite (F27).
-- [ ] **Assignments:** parameters (judgings per project) → Generate → show the
+- [x] **Assignments:** parameters (judgings per project) → Generate → show the
       verifier report and per-judge queues → Activate. Version history; add
       or remove a judge; withdraw a project.
 - [ ] **Progress** (the 2025 "leaderboard"): per project scores in / assigned,
@@ -495,8 +497,7 @@ floor: build the judge screens mobile-first, in the kiosk layout (F13).**
 - [x] Client guards on every judging page (judges + admins only); the API
       enforces it anyway (B47).
 
-Judging page is a guarded placeholder. Calibration, current project, skipped
-and assignments await F21/B24. Password invite acceptance is available; matching
+Judging page now includes current project, skipped/done lists and assignments. Calibration routing awaits B24d. Password invite acceptance is available; matching
 Google accounts use the existing sign-in flow.
 - **Depends on:** B47. **Related:** F13 (nav config with `roles`).
 

@@ -9,6 +9,15 @@ var upload = multer({
   limits: { fileSize: 2 * 1024 * 1024, files: 1, fields: 0 },
 });
 router.use(requireFeature("judging"));
+var assignments = require("../controllers/judgingAssignmentController");
+router.get("/assignments", isAdmin, assignments.list);
+router.post("/assignments", isAdmin, assignments.generate);
+router.post("/assignments/:version/activate", isAdmin, assignments.activate);
+router.post("/assignments/judges", isAdmin, assignments.addJudge);
+router.delete("/assignments/judges/:judgeId", isAdmin, assignments.removeJudge);
+router.post("/projects/:id/withdraw", isAdmin, assignments.withdraw);
+router.post("/close", isAdmin, assignments.setOpen);
+router.post("/open", isAdmin, assignments.setOpen);
 var checkin = require("../controllers/judgingCheckinController");
 router.get("/table-signs", isAdmin, checkin.tableSigns);
 router.post("/bulk-assign", isAdmin, checkin.bulkAssign);

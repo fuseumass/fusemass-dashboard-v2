@@ -171,13 +171,14 @@ fixed.
       hardware room; room full → clear error; table check-in with another
       table's token → "wrong table" naming the right one; table check-in
       before desk → rejected; idempotency, project selection, bulk confirmation, undo, email queueing and permissions covered in `backend/test/judgingCheckin.test.js`. Written, not run here (no MongoDB). Assignment eligibility remains B24e.
-- [ ] **Scoring:** out-of-range / non-integer / missing criteria → 400; a
+- [x] **Scoring:** out-of-range / non-integer / missing criteria → 400; a
       project not in the caller's queue → 403; rescoring is an upsert (one
       row per judge and project); **scoring a skipped project doesn't advance
       the queue** (2025 bug); unknown project → 404, not a hang; after freeze →
       409; the assignment sheet includes the first project.
-- [ ] **Versions:** activating a regenerated version keeps existing scores;
+- [x] **Versions:** activating a regenerated version keeps existing scores;
       removing a judge takes them out of the active queues.
+      Written in `backend/test/judgingScoring.test.js`, including hardware pools, vacancies, verifier failures, late changes, withdrawal, freeze, rubric validation and feature gates. New routes are in the permission matrix. Not run here: no MongoDB.
 - **Depends on:** B24a–B24h, B47.
 
 ## T16. Finance

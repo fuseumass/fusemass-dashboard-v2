@@ -301,7 +301,7 @@ function setRole(req, res) {
           $set: { judgeInvitePending: false },
           $unset: { resetPasswordToken: "", resetPasswordExpires: "" },
         });
-        // TODO B24e: remove demoted judges from the active assignment version.
+        await require("../utils/judging/state").removeJudge(user._id);
       }
       res.status(200).json({ user: user.toJSON() });
     })
