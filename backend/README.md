@@ -681,3 +681,30 @@ judge users who finished all rounds contribute to the mean; incomplete,
 inactive and removed profiles get null bias when computing. Stored bias has
 `general`, `category` and `computedAt`. Missing profiles are shown as incomplete.
 Future queues, real project scoring and results remain B24e–B24g.
+
+## Judging desk and table check-in (B24c)
+
+All routes below require `judging` enabled (404 otherwise).
+
+| Method | Route | Access and body / result |
+| --- | --- | --- |
+| POST | `/api/staff/judging/desk-checkin` | Moderator/admin. `{ qrId }` or `{ userId }`, optional `projectId`. Accepted attendee required. Multiple projects return 409 with project choices. Returns project with table and room; repeated scans return the existing assignment. |
+| GET | `/api/judging/projects` | Accepted participant, excludes judges. Only the caller's project names and table/check-in information. |
+| POST | `/api/judging/table-checkin` | Accepted project member, excludes judges. `{ token }` from table sign. Desk check-in required, wrong table returns 409 naming the correct table and room. Idempotent. |
+| GET | `/api/admin/judging/table-signs` | Admin. `{ signs: [{ tableNumber, room, qr }] }` with PNG data URLs for the printable HTML screen at `/dashboard/admin/judging/table-signs`. Random per-table tokens persist across printing and project undo. |
+| POST | `/api/admin/judging/bulk-assign` | Admin. Without confirmation returns 409 and current `count`. Confirm with `{ confirm: true, count }` to assign remaining active projects and mark both steps complete. A stale count is refused. |
+| POST | `/api/admin/judging/projects/:id/undo-table` | Admin. Clears room, table and both check-ins. Appends actor, timestamp and old table/room to `Project.tableUndoLog`. |
+
+Tables use global continuous numbers in room order; hardware and regular projects
+use their respective room pools. Allocation attempts a transaction; standalone
+MongoDB transaction rejection falls back to atomic conditional writes and unique
+indexes with retries. Full rooms return 409. Undo frees the number. Room layout
+is locked after signs or assignments are created so numbering and printed signs
+remain consistent. Configure all rooms before printing signs or opening the desk.
+
+Desk check-in queues `judging_table_assigned` in the background for each matched
+member account, with `{{name}}`, `{{table}}` and `{{room}}`. Repeat desk scans do
+not queue the message again. Bulk fallback resumes unfinished projects after a
+failure; earlier assignments are retained if a later room is full. This fallback
+intentionally bypasses physical desk/table attendance. Withdrawn projects are
+excluded. Future assignment generation must require both timestamps (B24e).

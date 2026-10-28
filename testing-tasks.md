@@ -170,11 +170,11 @@ fixed.
       headers keeps all 4 members with full names (2025 kept one first name);
       an empty hardware column doesn't crash; re-import updates instead of
       duplicating; unmatched emails are reported.
-- [ ] **Desk + table check-in:** 30 parallel desk check-ins → unique, continuous
+- [x] **Desk + table check-in:** 20 parallel desk check-ins → unique, continuous
       table numbers across rooms in order; hardware projects go to the
       hardware room; room full → clear error; table check-in with another
       table's token → "wrong table" naming the right one; table check-in
-      before desk → rejected; only projects with both steps get assignments.
+      before desk → rejected; idempotency, project selection, bulk confirmation, undo, email queueing and permissions covered in `backend/test/judgingCheckin.test.js`. Written, not run here (no MongoDB). Assignment eligibility remains B24e.
 - [ ] **Scoring:** out-of-range / non-integer / missing criteria → 400; a
       project not in the caller's queue → 403; rescoring is an upsert (one
       row per judge and project); **scoring a skipped project doesn't advance

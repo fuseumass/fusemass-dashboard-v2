@@ -10,6 +10,7 @@ import {
   UserPlus,
 } from "lucide-react";
 import { useEffect, useState } from "react";
+import JudgingTableCard from "@/components/JudgingTableCard";
 import PageHeader from "@/components/PageHeader";
 import { CardSkeleton } from "@/components/skeletons";
 import { Alert, AlertDescription } from "@/components/ui/alert";
@@ -78,6 +79,7 @@ export default function TeamPage() {
 
   return (
     <div className="mx-auto w-full max-w-2xl">
+      <JudgingTableCard />
       <PageHeader
         title="Team"
         description={`Teams of up to ${data?.maxSize || 4}. Add your Devpost link after you submit so judges can find your project.`}

@@ -84,4 +84,6 @@ router.post(
     staffController.sendAccountLink
 );
 
+router.post("/judging/desk-checkin", requireFeature("judging"), isAuthenticated, isModerator,
+    require("../controllers/judgingCheckinController").deskCheckin);
 module.exports = router;

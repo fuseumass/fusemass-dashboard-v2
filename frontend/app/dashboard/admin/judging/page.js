@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
@@ -142,6 +143,8 @@ export default function JudgingAdminPage() {
   const user = useUser();
   const router = useRouter();
   const admin = user.role === "admin";
+  const [checkinAction, setCheckinAction] = useState(null);
+  const [confirmation, setConfirmation] = useState("");
   const [rooms, setRooms] = useState([]);
   const [projects, setProjects] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -208,6 +211,43 @@ export default function JudgingAdminPage() {
       await load();
     } catch (err) {
       applyServerError(form, err);
+    }
+  }
+  async function checkinChange() {
+    setBusy(true);
+    setError("");
+    try {
+      await apiFetch(checkinAction.path, {
+        method: "POST",
+        body: JSON.stringify(checkinAction.body || {}),
+      });
+      setCheckinAction(null);
+      setConfirmation("");
+      notifySuccess("Judging check-in updated");
+      await load();
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setBusy(false);
+    }
+  }
+  async function prepareBulk() {
+    setBusy(true);
+    try {
+      await apiFetch(`${root}/bulk-assign`, { method: "POST", body: "{}" });
+    } catch (err) {
+      if (err.data?.count !== undefined) {
+        setConfirmation("");
+        setCheckinAction({
+          path: `${root}/bulk-assign`,
+          body: { confirm: true, count: err.data.count },
+          count: err.data.count,
+          title: "Assign everyone",
+          description: `Assign tables and complete both check-ins for ${err.data.count} projects. Type ${err.data.count} to confirm. A capacity error can leave earlier projects completed; review and retry.`,
+        });
+      } else setError(err.message);
+    } finally {
+      setBusy(false);
     }
   }
   async function remove() {
@@ -299,6 +339,36 @@ export default function JudgingAdminPage() {
     },
   ];
   const projectColumns = [
+    {
+      id: "desk",
+      header: "Desk check-in",
+      cell: ({ row }) => (row.original.deskCheckedInAt ? "Done" : "Pending"),
+    },
+    {
+      id: "tableCheckin",
+      header: "Table check-in",
+      cell: ({ row }) => (row.original.tableCheckedInAt ? "Done" : "Pending"),
+    },
+    {
+      id: "undo",
+      header: "Table action",
+      cell: ({ row }) => (
+        <Button
+          size="sm"
+          variant="ghost"
+          disabled={!row.original.tableNumber || busy}
+          onClick={() =>
+            setCheckinAction({
+              path: `${root}/projects/${row.original._id}/undo-table`,
+              title: "Clear table",
+              description: `Clear the table and both check-ins for ${row.original.name}. This is logged with your account and the time.`,
+            })
+          }
+        >
+          Clear table
+        </Button>
+      ),
+    },
     { accessorKey: "name", header: "Name" },
     { accessorKey: "category", header: "Category" },
     {
@@ -339,6 +409,59 @@ export default function JudgingAdminPage() {
   return (
     <div className="space-y-6">
       <PageHeader title="Judging" />
+      <div className="flex flex-wrap gap-2">
+        <Button asChild variant="outline">
+          <Link href="/dashboard/admin/judging/table-signs">
+            Print table signs
+          </Link>
+        </Button>
+        <Button variant="outline" loading={busy} onClick={prepareBulk}>
+          Assign everyone
+        </Button>
+      </div>
+      <AlertDialog
+        open={!!checkinAction}
+        onOpenChange={(open) => {
+          if (!open && !busy) setCheckinAction(null);
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{checkinAction?.title}</AlertDialogTitle>
+            <AlertDialogDescription>
+              {checkinAction?.description}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          {checkinAction?.count !== undefined && (
+            <div className="space-y-2">
+              <Label htmlFor="bulk-count">Project count</Label>
+              <Input
+                id="bulk-count"
+                value={confirmation}
+                onChange={(e) => setConfirmation(e.target.value)}
+              />
+            </div>
+          )}
+          {error && (
+            <Alert variant="destructive">
+              <AlertDescription>{error}</AlertDescription>
+            </Alert>
+          )}
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={busy}>Cancel</AlertDialogCancel>
+            <Button
+              loading={busy}
+              disabled={
+                checkinAction?.count !== undefined &&
+                confirmation !== String(checkinAction.count)
+              }
+              onClick={checkinChange}
+            >
+              Confirm {checkinAction?.title?.toLowerCase()}
+            </Button>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
       {error && (
         <Alert variant="destructive">
           <AlertDescription>

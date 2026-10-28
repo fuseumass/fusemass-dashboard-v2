@@ -6,6 +6,11 @@ var Schema = mongoose.Schema;
 
 var DEFAULT_TEMPLATES = [
   {
+    key: "judging_table_assigned",
+    subject: "Your judging table: {{table}} in {{room}}",
+    body: "Hi {{name}},\n\nYour table is {{table}} in {{room}}. Go to your table, then scan the QR on the table from your dashboard to finish judging check-in.",
+  },
+  {
     key: "judge_invite",
     subject: "Your invitation to judge at {{orgName}}",
     body: "Hi {{name}},\n\nYou have been invited to judge at {{orgName}}. Set your password here:\n{{inviteUrl}}\n\nThis link works for 7 days. If it expires, ask an organizer to resend your invite.",
