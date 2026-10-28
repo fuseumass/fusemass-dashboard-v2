@@ -93,10 +93,10 @@ were presumably tracked in spreadsheets, so B33–B37 are a new design.
 | ----------- | ------ | ---- |
 | Inventory CRUD (name, category, location, link, count) | ✅ | B22, F20 |
 | Search by item id / name | ✅ | B23, F20 |
-| Checkout / return, per-item history log | ✅ staff-only, atomic stock and retained history | B22 |
-| "All checked out" list | ✅ | B22, F20 |
+| Checkout / return, per-item history log | ✅ staff-only, atomic stock, checkout team snapshots and retained history | B22 |
+| "All checked out" list | ✅ snapshot/current teams and changed-team badges | B22, F20 |
 | Barcode label CSV | ✅ printable item QR labels | B22 |
-| Slack reminders to return hardware | ✅ background email reminders | B22, B26 |
+| Slack reminders to return hardware | ✅ background email reminders, event return deadline and one-time team-change notices | B22, B26 |
 | Facilities page (makerspace tools list, `hum-xii`) | ✅ | B23, F20 |
 
 Individual unit tracking and the optional reserve/request queue are deferred.
