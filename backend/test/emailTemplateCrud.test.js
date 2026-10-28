@@ -48,9 +48,11 @@ test("B1: email template CRUD", async function emailTemplateCrud(t) {
         "application_rejected",
         "application_waitlisted",
         "checked_in",
+        "hardware_team_change",
         "hardware_checkout",
         "hardware_return",
         "hardware_reminder",
+        "raffle_winner",
         "team_invite",
         "verify_email",
         "workshop_signup",
@@ -147,6 +149,31 @@ test("B1: email template CRUD", async function emailTemplateCrud(t) {
 
     assert.equal(res.status, 200);
     assert.equal(res.body.template.subject, "Still fine");
+  });
+
+  await t.test("hardware defaults upgrade old bodies and preserve custom text", async function () {
+    var old = {
+      hardware_checkout: "Hi {{name}},\n\nYou checked out {{itemName}} at {{eventTime}}.\nReturn deadline: {{dueTime}}",
+      hardware_reminder: "Hi {{name}},\n\nPlease bring {{itemName}} back to the hardware desk.\nReturn deadline: {{dueTime}}",
+    };
+    for (var key of Object.keys(old)) {
+      await EmailTemplate.updateOne({ key: key }, { $set: { body: old[key], subject: "Custom subject" } });
+    }
+    await EmailTemplate.seedDefaults();
+    for (var key of Object.keys(old)) {
+      var template = await EmailTemplate.findOne({ key: key });
+      assert.match(template.body, /{{returnBy}}/);
+      assert.equal(template.subject, "Custom subject");
+      await EmailTemplate.updateOne({ key: key }, { $set: { body: "Custom hardware instructions" } });
+    }
+    await EmailTemplate.seedDefaults();
+    for (var key of Object.keys(old)) {
+      assert.equal((await EmailTemplate.findOne({ key: key })).body, "Custom hardware instructions");
+    }
+    var builtIn = await EmailTemplate.findOne({ key: "hardware_team_change" });
+    assert.ok(EmailTemplate.isBuiltInKey(builtIn.key));
+    var admin = await fixtures.createUser({ role: "admin" });
+    await request(app).delete("/api/admin/email-templates/" + builtIn.id).set("Authorization", "Bearer " + admin.token).expect(400);
   });
 
   await db.closeDatabase();

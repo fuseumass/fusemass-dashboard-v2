@@ -4,6 +4,9 @@ var mongoose = require("mongoose");
 /**
  * @typedef {object} HardwareCheckout
  * @property {object} user - Borrower reference.
+ * @property {object} team - Team reference at checkout, or null.
+ * @property {string} teamName - Team name saved at checkout.
+ * @property {Date} teamChangeNotifiedAt - First membership-change notification.
  * @property {object} item - Inventory reference.
  * @property {object} checkedOutBy - Staff reference.
  * @property {Date} checkedOutAt - Checkout time.
@@ -15,6 +18,9 @@ var mongoose = require("mongoose");
  */
 var schema = new mongoose.Schema({
   user: { type: mongoose.Schema.Types.ObjectId, ref: "User", required: true, index: true },
+  team: { type: mongoose.Schema.Types.ObjectId, ref: "Team", default: null },
+  teamName: { type: String, default: "" },
+  teamChangeNotifiedAt: { type: Date, default: null },
   item: { type: mongoose.Schema.Types.ObjectId, ref: "HardwareItem", required: true, index: true },
   checkedOutBy: { type: mongoose.Schema.Types.ObjectId, ref: "User", required: true },
   checkedOutAt: { type: Date, default: Date.now },

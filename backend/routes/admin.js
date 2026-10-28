@@ -20,8 +20,11 @@ var validateBody = require("../utils/validateBody");
 var applicationStatus = require("../utils/applicationStatus");
 
 var workshopController = require("../controllers/workshopController");
+var workshopRaffleController = require("../controllers/workshopRaffleController");
 var router = express.Router();
 router.use("/judges", require("./judges"));
+router.use("/judging", require("./adminJudging"));
+router.get("/raffles", requireFeature("workshops"), isAdmin, workshopRaffleController.history);
 router.use("/workshops", requireFeature("workshops"));
 router.get("/workshops", isAdmin, workshopController.listAdmin);
 router.post("/workshops", isAdmin, workshopController.create);

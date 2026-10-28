@@ -65,6 +65,30 @@ export const NAV_ITEMS = [
     feature: "judging",
   },
   {
+    href: "/dashboard/admin/judging",
+    label: "Judging setup",
+    icon: ClipboardList,
+    group: "admin",
+    roles: ADMIN,
+    feature: "judging",
+  },
+  {
+    href: "/dashboard/organize",
+    label: "Organize workshops",
+    icon: CalendarDays,
+    group: "organize",
+    roles: STAFF,
+    feature: "workshops",
+  },
+  {
+    href: "/dashboard/admin/raffles",
+    label: "Raffles",
+    icon: ClipboardList,
+    group: "admin",
+    roles: ADMIN,
+    feature: "workshops",
+  },
+  {
     href: "/dashboard",
     label: "Home",
     icon: House,
@@ -302,7 +326,10 @@ export function isActive(item, pathname, items = NAV_ITEMS) {
  */
 export function isKioskPath(pathname) {
   const owner = findNavItem(pathname);
-  return Boolean(owner?.kiosk);
+  return (
+    Boolean(owner?.kiosk) ||
+    /^\/dashboard\/organize\/[^/]+\/present$/.test(pathname)
+  );
 }
 
 /**

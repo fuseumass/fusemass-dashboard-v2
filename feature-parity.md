@@ -82,9 +82,9 @@ were presumably tracked in spreadsheets, so B33–B37 are a new design.
 | ----------- | ------ | ---- |
 | Events with `rsvpable` + `max_seats` | ✅ admin CRUD, publication and atomic capacity; organizer assignment deferred | B18, B19 |
 | RSVP / un-RSVP to an event | ✅ accepted attendees, overlap warnings and My workshops; waitlist deferred | B19, F17 |
-| Per-event attendance check-in | 📋 Top Hat-style code; requires event check-in | B21 |
+| Per-event attendance check-in | ✅ Rotating attendance code, staff QR add, event check-in guard, counts and CSV | B21 |
 | Workshop materials / announcements | ➕ 📋 visible to every accepted attendee | B20 |
-| Workshop raffle | ➕ 📋 after the workshop ends, attendees only; winner emailed to collect from the organizer room | B21 |
+| Workshop raffle | ✅ Attendee-only draw after workshop (early override), claims/redraw audit, collection emails and winner cards | B21 |
 | Calendar invites per workshop | ✅ signup, changes and cancellations; stable UID and sequence; subscription feed deferred | B19 |
 
 ## Hardware
@@ -93,10 +93,10 @@ were presumably tracked in spreadsheets, so B33–B37 are a new design.
 | ----------- | ------ | ---- |
 | Inventory CRUD (name, category, location, link, count) | ✅ | B22, F20 |
 | Search by item id / name | ✅ | B23, F20 |
-| Checkout / return, per-item history log | ✅ staff-only, atomic stock and retained history | B22 |
-| "All checked out" list | ✅ | B22, F20 |
+| Checkout / return, per-item history log | ✅ staff-only, atomic stock, checkout team snapshots and retained history | B22 |
+| "All checked out" list | ✅ snapshot/current teams and changed-team badges | B22, F20 |
 | Barcode label CSV | ✅ printable item QR labels | B22 |
-| Slack reminders to return hardware | ✅ background email reminders | B22, B26 |
+| Slack reminders to return hardware | ✅ background email reminders, event return deadline and one-time team-change notices | B22, B26 |
 | Facilities page (makerspace tools list, `hum-xii`) | ✅ | B23, F20 |
 
 Individual unit tracking and the optional reserve/request queue are deferred.
@@ -112,9 +112,10 @@ Individual unit tracking and the optional reserve/request queue are deferred.
 
 | Old feature | Status | Task |
 | ----------- | ------ | ---- |
-| Project submission with team members | 🟡 teams + their Devpost link live on the dashboard (B15); projects are imported from Devpost | B24b |
+| Project submission with team members | ✅ dashboard teams (B15), Devpost CSV preview/confirm, URL and email matching, admin project overrides | B24b |
+| Judging rooms and capacities | ✅ admin CRUD, hardware rooms, deletion protection | B24b |
 | Public project gallery | ✖ Devpost hosts it | — |
-| Power-outlet needs per project | 📋 | B24b |
+| Power-outlet needs per project | ✅ admin override preserved on import | B24b |
 | Prizes / tracks, participants pick prizes, assign winners | 📋 | B24h |
 | Judge assignments (old Rails: tags, mass assign) | ✖ replaced by the 2025 judging platform's slotted generator | B24a, B24e |
 | Printed judging forms (`paper_judging`) | 🟡 printable table signs only | B24c |

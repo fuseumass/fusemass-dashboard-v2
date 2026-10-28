@@ -14,6 +14,9 @@ var mongoose = require("mongoose");
  * @property {boolean} published
  * @property {boolean} raffleEnabled
  * @property {boolean} cancelled
+ * @property {Date} attendanceOpenUntil
+ * @property {string} attendanceSecret - Private session key, excluded from queries.
+ * @property {number} attendancePeriodSec
  * @property {number} sequence - Calendar revision.
  */
 var schema = new mongoose.Schema(
@@ -30,8 +33,19 @@ var schema = new mongoose.Schema(
     published: { type: Boolean, default: false },
     raffleEnabled: { type: Boolean, default: false },
     cancelled: { type: Boolean, default: false },
+    attendanceOpenUntil: { type: Date, default: null },
+    attendanceSecret: { type: String, select: false },
+    attendancePeriodSec: { type: Number, default: 30, min: 1 },
     sequence: { type: Number, default: 0 },
   },
-  { timestamps: true },
+  {
+    timestamps: true,
+    toJSON: {
+      transform: function hideSecret(_doc, result) {
+        delete result.attendanceSecret;
+        return result;
+      },
+    },
+  },
 );
 module.exports = mongoose.model("Workshop", schema);

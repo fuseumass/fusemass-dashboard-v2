@@ -11,8 +11,10 @@ import EmailTemplateEditor from "@/components/EmailTemplateEditor";
 import {
   AuthSettings,
   CheckInPopupSettings,
+  OrganizerRoomSettings,
   TeamSettings,
 } from "@/components/GeneralSettings";
+import HardwareSettings from "@/components/HardwareSettings";
 import PageHeader from "@/components/PageHeader";
 import ReviewSettings from "@/components/ReviewSettings";
 import RoundsManager from "@/components/RoundsManager";
@@ -70,7 +72,9 @@ export default function SettingsPage() {
         <TabsContent value="general" className="space-y-4">
           <AuthSettings />
           <FeatureSwitches />
+          <HardwareSettings />
           <TeamSettings />
+          <OrganizerRoomSettings />
           <CheckInPopupSettings />
         </TabsContent>
         <TabsContent value="branding" className="space-y-4">

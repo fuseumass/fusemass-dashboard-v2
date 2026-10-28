@@ -188,6 +188,24 @@ test("T0: rounds, org settings, user management", async function orgAndRounds(t)
     assert.equal(patchRes.body.settings.googleAuthEnabled, false);
   });
 
+  await t.test("organizer room is admin-only, validated, saved and read back", async function () {
+    await db.clearDatabase();
+    var admin = await fixtures.createUser({ role: "admin" });
+    var applicant = await fixtures.createUser();
+    var path = "/api/admin/settings";
+    assert.equal((await request(app).patch(path).set("Authorization", "Bearer " + applicant.token).send({ organizerRoom: "Room" })).status, 403);
+    for (var value of [null, 123, {}, "x".repeat(201)]) {
+      assert.equal((await request(app).patch(path).set("Authorization", "Bearer " + admin.token).send({ organizerRoom: value })).status, 400);
+    }
+    var saved = await request(app).patch(path).set("Authorization", "Bearer " + admin.token).send({ organizerRoom: "  Room S120, open 9am-9pm  " });
+    assert.equal(saved.status, 200);
+    assert.equal(saved.body.settings.organizerRoom, "Room S120, open 9am-9pm");
+    var loaded = await request(app).get(path).set("Authorization", "Bearer " + admin.token);
+    assert.equal(loaded.body.settings.organizerRoom, "Room S120, open 9am-9pm");
+    var cleared = await request(app).patch(path).set("Authorization", "Bearer " + admin.token).send({ organizerRoom: "" });
+    assert.equal(cleared.body.settings.organizerRoom, "");
+  });
+
   // ---- User search + promote -----------------------------------------------
 
   await t.test("admin can search users and promote one to moderator, then admin", async function () {
