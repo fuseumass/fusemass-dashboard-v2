@@ -13,6 +13,7 @@ var applicationStatus = require("../utils/applicationStatus");
 var applicationFlags = require("../utils/applicationFlags");
 var waitlist = require("../utils/waitlist");
 var decisions = require("../utils/decisions");
+var hardwareReturnBy = require("../utils/hardwareReturnBy");
 var validator = require("validator");
 var mongoose = require("mongoose");
 
@@ -570,6 +571,12 @@ function sampleTemplateValues(user) {
     prize: "Workshop prize (sample)",
     organizerRoom: "the organizer room",
     status: "accepted",
+    returnBy: hardwareReturnBy({ hardwareReturnBy: start }),
+    newTeam: "Sample team",
+    items: "- Sample board (checked out with Sample team)",
+    itemName: "Sample board",
+    eventTime: hardwareReturnBy({ hardwareReturnBy: start }),
+    dueTime: hardwareReturnBy({ hardwareReturnBy: start }),
     setupUrl: primaryClientOrigin() + "/reset-password?token=sample&setup=1",
     verifyUrl: primaryClientOrigin() + "/verify-email?token=sample",
     runOfShow: calendar.formatRunOfShow([

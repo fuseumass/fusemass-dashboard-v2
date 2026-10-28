@@ -550,3 +550,26 @@ sent in the background with event-zone times (`EVENT_TIMEZONE`).
 
 Optional individual unit tracking and the reserve/request queue are deferred.
 `trackUnits` remains false; item-level printable QR labels are supported.
+
+Hardware loans save the borrower's checkout-time `team` reference and `teamName`
+so history survives team deletion. Staff lists include `{ id, name }` snapshots,
+`currentTeam`, and `teamChanged`; scanned attendees include their current team.
+Checkout CSV includes the snapshot team name after email. Attendee routes still
+return only inventory and the caller's own loans.
+
+Admins can clear or set `OrgSettings.hardwareReturnBy` (Date, default null) in
+Settings → General → Hardware. The datetime input uses `EVENT_TIMEZONE`, returned
+with admin settings. The API accepts an ISO timestamp with an explicit offset
+or `Z`, and null or an empty string to clear. A future deadline defaults new
+loans' `dueAt` when staff provide none; existing loans keep their deadlines.
+
+All three hardware receipt/reminder templates receive `{{returnBy}}`, formatted
+in the event time zone, or “the last day of the event” when unset. They also receive
+`{{name}}`, `{{itemName}}`, `{{eventTime}}`, and `{{dueTime}}`. Unedited legacy
+checkout and reminder bodies upgrade on seed; customized bodies are preserved.
+The new `hardware_team_change` template receives `{{name}}`, `{{items}}`,
+`{{newTeam}}`, and `{{returnBy}}`. Creation, invite acceptance, leaving, and leader
+removal trigger background notices to the affected borrower when hardware is on.
+Only open loans with a different checkout-time team are included. An atomic
+`teamChangeNotifiedAt` claim prevents repeated notices for the same loan; delivery
+uses the existing email outbox and retry behavior.

@@ -372,6 +372,7 @@ walkthrough remain unverified in this environment.
 ## Hardware (replaces F5)
 
 ### F20. Hardware checkout and inventory
+- [x] Staff team column and changed-team badges, scanned attendee team, event-zone hardware deadline setting, and leave-team hardware warning.
 - [x] **Checkout station** `/dashboard/staff/hardware` (kiosk layout): scan the
       attendee QR (reuse `CheckInStation`) → their open items appear → scan or
       search an item → confirm. Returns from the same screen: scan the

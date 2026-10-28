@@ -24,6 +24,7 @@ function getSettings(_req, res) {
     .then(function afterLoad(results) {
       res.status(200).json({
         settings: results[0],
+        eventTimezone: process.env.EVENT_TIMEZONE || "America/New_York",
         googleEnvAllowed: googleStatus.envAllowsGoogle(),
         // Fields an admin can put on the check-in popup: { key: label }, the
         // built-ins plus every round's custom questions ("answers.<key>").
@@ -51,7 +52,7 @@ function getSettings(_req, res) {
  * PATCH /api/admin/settings — update org settings (admin only).
  * Body: { googleAuthEnabled?, publicApplications?, autoFlagApplications?,
  *         checkInPopupEnabled?: boolean, checkInPopupFields?: string[],
- *         teamMaxSize?: number,
+ *         teamMaxSize?: number, hardwareReturnBy?: string|null,
  *         autoAccept?: { enabled?, includeSubdomains?: boolean, domains?: string[],
  *                        emailsPerDay?: number },
  *         features?: { meals?, hardware?, workshops?, judging?, raffle?: boolean },
@@ -72,6 +73,15 @@ function updateSettings(req, res) {
       return Promise.resolve();
     }
     update.organizerRoom = req.body.organizerRoom.trim();
+  }
+  if (req.body && req.body.hardwareReturnBy !== undefined) {
+    var value = req.body.hardwareReturnBy;
+    var deadline = value === null || value === "" ? null : new Date(value);
+    if (deadline && (typeof value !== "string" || !/T.*(?:Z|[+-]\d{2}:\d{2})$/.test(value) || !Number.isFinite(deadline.getTime()))) {
+      res.status(400).json({ error: "hardwareReturnBy must be a date with a time zone, or null." });
+      return Promise.resolve();
+    }
+    update.hardwareReturnBy = deadline;
   }
   if (req.body && req.body.features !== undefined) {
     var featureCheck = features.validatePatch(req.body.features);
