@@ -641,3 +641,43 @@ removal trigger background notices to the affected borrower when hardware is on.
 Only open loans with a different checkout-time team are included. An atomic
 `teamChangeNotifiedAt` claim prevents repeated notices for the same loan; delivery
 uses the existing email outbox and retry behavior.
+
+## Judge calibration and rubric (B24d)
+
+These routes require `requireFeature("judging")`. The B47 `/api/judging`
+status endpoint retains its feature-independent behavior.
+
+| Method | Route | Access | Body / response |
+| --- | --- | --- | --- |
+| GET | `/api/admin/judging/settings` | Admin | `{ settings }`, singleton defaults to three ordered practice projects and six criteria |
+| PATCH | `/api/admin/judging/settings` | Admin | Partial `{ calibrationProjects, criteria, judgingOpen }`; returns `{ settings }` |
+| GET | `/api/judging/calibration` | Judge or admin | `{ rounds, criteria, scores, calibrationDone }`, only caller's scores |
+| POST | `/api/judging/calibration/:round` | Judge or admin with active profile | `{ scores: { criterionKey: integer }, comments }`; returns `{ scores, calibrationDone }` |
+| GET | `/api/admin/judging/bias` | Admin | `{ judges: [{ id, name, done, bias }] }`, last stored values |
+| POST | `/api/admin/judging/bias` | Admin | Computes and stores bias, same response as GET |
+
+Rounds use one-based numbers. Earlier rounds must be scored first (409 otherwise).
+Rescoring replaces that round and preserves later scores. All criteria are
+required, integers within inclusive min/max; unknown keys and numeric strings
+return 400. Comments are optional, at most 5000 characters. Completion means
+every configured round has valid scores.
+
+Calibration projects have `title`, optional `description` and optional HTTPS
+`link`; array order defines round order (1–20 projects). Criteria have unique
+alphanumeric/underscore `key` (starting with a letter), `label`, `help`, integer
+`min`/`max` with min < max, positive finite `weight`, and `kind` of `general` or
+`category`. There must be at least one general criterion and exactly one category
+criterion, matching the existing pure bias function. Seeded ranges are Innovation
+0–10, Functionality 0–10, Practicality 0–5, Presentation 0–10, Q&A 0–5 and Category
+fit 0–10; weights default to 1. Bias reproduces the legacy unweighted means;
+weights are reserved for project results.
+
+Saving projects or criteria resets every profile's calibration and bias. After
+`judgingOpen` first becomes true, both remain locked (409), including after
+closing judging. `criteriaLocked` is internal and cannot be patched. Calibration
+scores can still be edited; each score edit clears the whole cohort's stored
+bias. Recompute bias after changes. Only active profiles belonging to current
+judge users who finished all rounds contribute to the mean; incomplete,
+inactive and removed profiles get null bias when computing. Stored bias has
+`general`, `category` and `computedAt`. Missing profiles are shown as incomplete.
+Future queues, real project scoring and results remain B24e–B24g.
