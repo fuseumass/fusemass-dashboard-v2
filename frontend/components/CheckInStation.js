@@ -110,7 +110,12 @@ export function useStationLog() {
  *   `action: { label, onClick }` button (e.g. "Force check-in").
  * @returns {JSX.Element}
  */
-export default function CheckInStation({ title, onCode, result }) {
+export default function CheckInStation({
+  title,
+  onCode,
+  result,
+  submitLabel = "Check in",
+}) {
   const [code, setCode] = useState("");
   const inputRef = useRef(null);
   const busyRef = useRef(false);
@@ -175,7 +180,7 @@ export default function CheckInStation({ title, onCode, result }) {
             className="h-10 min-w-0 flex-1"
           />
           <Button type="submit" size="lg" disabled={!code.trim()}>
-            Check in
+            {submitLabel}
           </Button>
         </form>
 

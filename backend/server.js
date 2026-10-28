@@ -35,6 +35,7 @@ function createApp() {
   var teamRoutes = require("./routes/teams");
   var publicRoutes = require("./routes/public");
   var workshopRoutes = require("./routes/workshops");
+  var hardwareRoutes = require("./routes/hardware");
 
   var app = express();
 
@@ -75,6 +76,8 @@ function createApp() {
       exposedHeaders: ["Content-Disposition"],
     })
   );
+  // The inventory import accepts up to 500 KB of CSV inside a JSON body.
+  app.use("/api/admin/hardware/import", express.json({ limit: "1mb" }));
   app.use(express.json());
   app.use(cookieParser());
 
@@ -104,6 +107,9 @@ function createApp() {
   app.use("/api/staff", staffRoutes);
   app.use("/api/teams", teamRoutes);
   app.use("/api/workshops", workshopRoutes);
+  app.use("/api/hardware", hardwareRoutes.attendee);
+  app.use("/api/staff/hardware", hardwareRoutes.staff);
+  app.use("/api/admin/hardware", hardwareRoutes.admin);
 
   // --- Fallback error handler (Express 4 signature: err, req, res, next) ------
   app.use(function errorHandler(err, req, res, _next) {

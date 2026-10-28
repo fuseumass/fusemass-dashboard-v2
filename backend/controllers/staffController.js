@@ -649,6 +649,7 @@ async function sendAccountLink(req, res) {
 }
 
 module.exports = {
+  resolveAttendee: resolveAttendee,
   lookupAttendee: lookupAttendee,
   resendQrEmail: resendQrEmail,
   sendAccountLink: sendAccountLink,

@@ -229,6 +229,23 @@ emailed on acceptance (or via "Forgot password").
 
 | Method | Path                            | Auth      | Purpose                                |
 | ------ | ------------------------------- | --------- | -------------------------------------- |
+| GET | `/api/hardware?q=&category=` | accepted user | Inventory availability and facilities; no borrower identities |
+| GET | `/api/hardware/mine` | accepted user | Own open and returned hardware with deadlines |
+| GET | `/api/staff/hardware` | moderator | Inventory and facilities |
+| GET | `/api/staff/hardware/checkouts?itemId=&userId=&qrId=&open=1&overdue=1` | moderator | Borrower lookup, item history or outstanding loans, overdue first |
+| POST | `/api/staff/hardware/checkouts` | moderator | Checkout `{ qrId or userId, itemId, dueAt?, notes? }`; accepted and event checked-in required |
+| POST | `/api/staff/hardware/checkouts/:id/return` | moderator | Idempotent return; retains history |
+| GET | `/api/staff/hardware/export.csv?kind=inventory` | moderator | Inventory CSV; omit kind for complete checkout history |
+| POST | `/api/staff/hardware/reminders` | moderator | Background return reminders for open loans; optional `{ itemId }` |
+| GET | `/api/admin/hardware` | admin | Inventory and facilities |
+| POST | `/api/admin/hardware/items` | admin | Create inventory item |
+| PATCH | `/api/admin/hardware/items/:id` | admin | Edit item; adjusts available stock by total quantity delta |
+| DELETE | `/api/admin/hardware/items/:id` | admin | Archive item only when all stock is on hand; preserves history |
+| POST | `/api/admin/hardware/import` | admin | `{ csv, preview }`; preview defaults true; false imports validated rows as new items |
+| GET | `/api/admin/hardware/labels` | admin | Printable item QR data URLs with `hardware:<itemId>` payload |
+| POST | `/api/admin/hardware/facilities` | admin | Create `{ name, location, accessNotes }` |
+| PATCH | `/api/admin/hardware/facilities/:id` | admin | Edit facility |
+| DELETE | `/api/admin/hardware/facilities/:id` | admin | Remove facility |
 | GET    | `/api/health`                   | public    | Liveness check                         |
 | GET    | `/api/health/db`                | public    | Database check: 200 up / 503 down      |
 | POST   | `/api/auth/register`            | public    | Create applicant (valid email required, 400 otherwise), return JWT, email a verification link |
@@ -319,8 +336,9 @@ modules added later), so it can never lock anyone out or crash a request.
 
 > **Every router of a flag-gated module MUST mount `requireFeature`**, before
 > its auth guards, or the module keeps answering while "off". Today:
-> `meals` is mounted on `/api/admin/meals` and `/api/staff/meals`. The other
-> four flags default on and gate nothing yet; when their modules land, mount
+> `meals` is mounted on `/api/admin/meals` and `/api/staff/meals`. Hardware gates
+`/api/hardware`, `/api/staff/hardware` and `/api/admin/hardware`. The
+> remaining flags default on and gate nothing yet; when their modules land, mount
 > them the same way (`router.use("/hardware", requireFeature("hardware"))`) and
 > add a test that a disabled module 404s for admin, moderator and anonymous
 > callers. To add a new flag, add it to `utils/features.js` (keys + label).
@@ -493,3 +511,23 @@ same JWT. It is available independently of the feature flag. Future judging
 features remain in B24. Judges cannot submit applications or obtain attendee QR
 codes. Invite emails use the built-in `judge_invite` template and `{{inviteUrl}}`;
 links are credentials, never persisted in the outbox or retried there.
+
+## Hardware lab
+
+All hardware routes answer 404 while the hardware feature is off, before auth.
+Attendee views require an accepted application. Checkout additionally requires
+event check-in. Stock uses a conditional atomic decrement, with compensation if
+creating a checkout fails. A unique partial index on open borrower/item/slot
+loans enforces the attendee limit across concurrent requests. Returns claim the
+open row once and restore one unit. Loan rows are never deleted.
+
+Inventory CSV accepts `name,totalQty` and optional `category,description,link,
+location,imageUrl,maxPerAttendee`. Import adds new items, never overwrites existing
+stock. Preview validates every row before import. Limits: 500 KB and 1000 rows.
+Changing an attendee limit requires all stock returned. Item archival preserves
+references and requires all stock on hand. Receipts and reminders use the
+`hardware_checkout`, `hardware_return` and `hardware_reminder` built-in templates,
+sent in the background with event-zone times (`EVENT_TIMEZONE`).
+
+Optional individual unit tracking and the reserve/request queue are deferred.
+`trackUnits` remains false; item-level printable QR labels are supported.
