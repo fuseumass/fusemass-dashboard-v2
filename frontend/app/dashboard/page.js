@@ -90,6 +90,8 @@ export default function DashboardHome() {
   const shownApplication = standing?.application || state.application;
   const shownRound = standing?.round || state.round;
 
+  // The shared shell also guards dashboard URLs. Keep attendee cards hidden
+  // while the judge home redirect completes.
   if (user.role === "judge") return null;
 
   return (

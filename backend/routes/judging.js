@@ -10,6 +10,11 @@ var authenticated = require("../utils/isAuthenticated");
 var feature = require("../utils/requireFeature")("judging");
 router.get("/projects", feature, authenticated, checkin.myProjects);
 router.post("/table-checkin", feature, authenticated, checkin.tableCheckin);
+var scoring = require("../controllers/judgingController");
+var isJudge = require("../utils/isJudge");
+router.get("/queue", feature, isJudge, scoring.queue);
+router.post("/scores", feature, isJudge, scoring.scores);
+router.post("/skip", feature, isJudge, scoring.skip);
 var calibration = require("../controllers/judgingCalibrationController");
 router.use(require("../utils/requireFeature")("judging"));
 router.get(

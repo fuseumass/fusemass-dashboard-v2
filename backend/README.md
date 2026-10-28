@@ -708,3 +708,52 @@ not queue the message again. Bulk fallback resumes unfinished projects after a
 failure; earlier assignments are retained if a later room is full. This fallback
 intentionally bypasses physical desk/table attendance. Withdrawn projects are
 excluded. Future assignment generation must require both timestamps (B24e).
+
+## Judging assignments and scoring (B24e, B24f)
+
+All routes below require `judging` enabled (404 otherwise). Judge access uses
+`isJudge` (current database role, judge/admin); admin routes use `isAdmin`.
+
+| Method | Route | Body / result |
+| --- | --- | --- |
+| POST | `/api/admin/judging/assignments` | Admin. `{ judgingsPerProject: 3, slotMinutes: null }`. Both values optional. Positive integer judgings (1–100), optional positive timer minutes (up to 240). Returns 201 with inactive `assignment` and `verifierReport`, or 422 with reports and no version saved. |
+| GET | `/api/admin/judging/assignments` | Admin. `{ versions, activeVersion, judgingOpen }`, newest first, including original verifier reports and queues. |
+| POST | `/api/admin/judging/assignments/:version/activate` | Admin. Explicitly select the active version; 404 for unknown version. Prunes withdrawn projects and inactive/demoted judges. |
+| POST | `/api/admin/judging/assignments/judges` | Admin. `{ judgeId, projectIds }`. Add an active judge with distinct eligible projects in order. Hardware projects require a hardware profile. Existing queue returns 409; remove it before replacing. |
+| DELETE | `/api/admin/judging/assignments/judges/:judgeId` | Admin. Remove judge from active queues, preserve scores and profile. Role demotion and judge removal also prune the queue. |
+| POST | `/api/admin/judging/projects/:id/withdraw` | Admin. Mark withdrawn and remove from every active queue, skips and slots. Existing project PATCH withdrawal does the same. Scores remain. |
+| POST | `/api/admin/judging/close` | Admin. Freeze score writes and skips (409). |
+| POST | `/api/admin/judging/open` | Admin. Allow score writes and skips. Records `JudgingSettings.judgingOpenedAt` on first open and preserves it on reopen. |
+| GET | `/api/judging/queue` | Judge. Safe project details, current project, positions, slot numbers, full assignments, skipped/done lists, own scores/comments, rubric, `slotMinutes`, `judgingOpenedAt` (first opening, null before opening) and closed state. Assignment status is current/upcoming/skipped/done. |
+| POST | `/api/judging/scores` | Judge. `{ projectId, scores: { criterionKey: integer }, comments? }`. Complete rubric required, comments up to 10000 chars. Upserts on judge/project; scoring current advances, scoring skipped unskips, rescoring done does not advance. Upcoming projects must wait (409). |
+| POST | `/api/judging/skip` | Judge. `{ projectId? }`. Skip only the current project (409 for another assigned project). Omitted id means current. Clients should send id to reject stale actions. |
+
+Scoring/skipping return 404 for unknown projects, 403 for projects outside the
+caller's active queue, and 409 while closed. Scores are independent of versions:
+scored projects in a new queue are already done; scores outside it are retained
+for future results. The default rubric is isolated in
+`utils/judging/criteria.js#getCriteria()` for the parallel B24d settings adapter.
+No calibration gating is introduced until that branch meets this one.
+
+Generation requires both project check-in timestamps, excludes withdrawn
+projects, and uses separate regular and hardware judge/profile pools. Hardware
+judges do not participate in the regular generation. Configured room capacities
+control starting proportions; explicit occupied table lists preserve vacancies
+and real room membership. All pool verifiers must pass before saving anything.
+The timer is advisory, starts when a judge opens a project, persists in that tab,
+and never prevents saving after it expires.
+
+Late additions append slots after all existing queues to avoid slot collisions.
+Late additions/removals and withdrawals may alter per-project coverage and load;
+the saved verifier report describes the **original generation**, not a fresh
+verification of those edits. Review active queues or generate a new version to
+restore full verified coverage. Withdrawal retains null slot gaps.
+
+Assignment changes, score writes and open/close share a database singleton lock,
+so requests across server processes cannot race freeze or activation. Busy
+requests retry briefly, then return 409. If a process dies during a locked write,
+confirm it has stopped and inspect the affected data before clearing
+`JudgingState` document `_id: "judging"` field `busy` to false. Locks intentionally
+do not expire into overlapping writes. Multi-document writes are retryable but
+not transactions: a failed response can have persisted a score or withdrawal;
+queue reads derive done state from scores and exclude withdrawn projects.

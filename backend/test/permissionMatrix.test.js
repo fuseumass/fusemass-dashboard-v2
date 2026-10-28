@@ -79,6 +79,17 @@ function row(method, path, level, options) {
 }
 
 var MATRIX = [
+  row("GET", "/api/judging/queue", "judge"),
+  row("POST", "/api/judging/scores", "judge"),
+  row("POST", "/api/judging/skip", "judge"),
+  row("GET", "/api/admin/judging/assignments", "admin"),
+  row("POST", "/api/admin/judging/assignments", "admin"),
+  row("POST", "/api/admin/judging/assignments/:version/activate", "admin"),
+  row("POST", "/api/admin/judging/assignments/judges", "admin"),
+  row("DELETE", "/api/admin/judging/assignments/judges/:judgeId", "admin"),
+  row("POST", "/api/admin/judging/projects/:id/withdraw", "admin"),
+  row("POST", "/api/admin/judging/close", "admin"),
+  row("POST", "/api/admin/judging/open", "admin"),
   row("POST", "/api/staff/judging/desk-checkin", "moderator"),
   row("GET", "/api/judging/projects", "accepted"),
   row("POST", "/api/judging/table-checkin", "accepted"),

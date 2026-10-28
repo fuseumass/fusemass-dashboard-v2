@@ -13,6 +13,7 @@
  * @param {number} config.judgingsPerProject Number of times each project should be judged
  * @param {number} config.numRooms Number of judging rooms
  * @param {Array} [config.roomCapacities] Optional array of capacities for each room
+ * @param {number[][]} [config.roomTables] Occupied tables per configured room (preserves vacancies).
  * @param {function} [config.rng=Math.random] Random source returning [0, 1).
  * @param {number} [config.maxAttempts=10] Maximum retry attempts
  * @returns {Object} {success, assignments, issues, log}. Each judge has a compact
@@ -25,6 +26,7 @@ function generateJudgingAssignments({
   judgingsPerProject,
   numRooms,
   roomCapacities = null,
+  roomTables = null,
   maxAttempts = 10,
   rng = Math.random,
 }) {
@@ -68,6 +70,7 @@ function generateJudgingAssignments({
     numRooms,
     judgingsPerProject,
     roomCapacities,
+    roomTables,
     rng,
     log,
     tableNumberToProject, // Add mapping to system
@@ -149,6 +152,9 @@ function generateJudgingAssignments({
 // ============================================================================
 
 function createRooms(system) {
+  if (system.roomTables) return system.roomTables.map(function room(projects, i) {
+    return { roomId: i + 1, capacity: system.roomCapacities[i], projects: projects.slice() };
+  });
   var rooms = []
 
   // Sort projects by table number to ensure proper ordering

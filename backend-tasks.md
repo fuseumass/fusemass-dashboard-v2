@@ -225,7 +225,7 @@ staff screens.
     immediately (JWT role is re-checked against the database for judging
     routes, or tokens are short-lived; decide which in the PR).
 
-Implemented B47. Assignment removal is deferred to B24e (TODO in role changes);
+Implemented B47. Assignment removal is implemented in B24e;
 progress awaits B24g. Minimal JudgeProfile is ready for B24d.
 - **Depends on:** none. **Related:** B24a–B24i, F27, T11, T12.
 
@@ -667,42 +667,41 @@ will walk to.
 - **Depends on:** B24a, B47.
 
 ### B24e. Assignment generation (versioned)
-- [ ] `POST /api/admin/judging/assignments { judgingsPerProject = 3 }`: take
+- [x] `POST /api/admin/judging/assignments { judgingsPerProject = 3, slotMinutes = null }`: take
       projects with **both** check-ins, split into regular and hardware pools
       (hardware projects only get `hardware` judges), and run the ported
       generator per pool, with rooms and capacities from `JudgingRoom`.
-- [ ] Store the result as a new `JudgingAssignment` version: `{ version,
+- [x] Store the result as a new `JudgingAssignment` version: `{ version,
       createdBy, createdAt, params, verifierReport, queues: [{ judge,
       projects: [Project] }] }`. Judges keyed by **user id**, not name. Refuse
       to save a set that fails the verifier; return the report.
-- [ ] Activate a version explicitly. Regenerating or activating a new version
+- [x] Activate a version explicitly. Regenerating or activating a new version
       never deletes scores: scores for projects still in a judge's new queue
       count as done; others stay in results.
-- [ ] Late changes without regenerating everything: add or remove a judge, and
+- [x] Late changes without regenerating everything: add or remove a judge, and
       withdraw a project (removes it from all queues).
-- [ ] **Decision needed:** the generator is slot-based (no two judges at one
-      table in the same slot), but in 2025 judges moved at their own pace, so
-      slots drifted. Options: (a) keep it, plus an optional per-slot timer on the
-      judge screen; (b) later, assign the next project dynamically when a
-      judge finishes (Gavel-style). Recommend (a) for this year.
+- [x] **Decision (a):** keep the slot-based generator and optional per-slot countdown (`slotMinutes`, null means no timer). Actual occupied tables are mapped to configured rooms and capacities, including vacancies.
 - **Depends on:** B24a, B24c, B47.
 
 ### B24f. Judge queue and scoring
+- [x] Persist first `JudgingSettings.judgingOpenedAt` through both opening paths, preserve on reopen, return with `slotMinutes` for schedule estimates.
 - [x] Rubric in `JudgingSettings.criteria: [{ key, label, help, min, max,
       weight, kind: "general" | "category" }]`, seeded with the 2025 six (see
       "How it works") and editable by admins until judging starts.
-- [ ] `GET /api/judging/queue` (isJudge): current project (name, table, room,
+- [x] `GET /api/judging/queue` (isJudge): current project (name, table, room,
       category, Devpost link), position "4 of 12", skipped list, done list.
-- [ ] `POST /api/judging/scores { projectId, scores, comments }`: every
+- [x] `POST /api/judging/scores { projectId, scores, comments }`: every
       criterion present, an integer within its range (the server enforces this
       now); the project must be in the caller's active queue (403 otherwise);
       **upsert** on (judge, project). Submitting **only advances the queue when
       it's the current project**, so rescoring a skipped team never jumps past
       the next one (the 2025 bug). Unknown project → 404.
-- [ ] `POST /api/judging/skip` (current → skipped), and scoring a skipped
+- [x] `POST /api/judging/skip` (current → skipped), and scoring a skipped
       project removes it from skipped.
-- [ ] Freeze: once an admin closes judging, every score write → 409.
+- [x] Freeze: once an admin closes judging, every score write → 409.
 - **Depends on:** B24e.
+
+Implementation notes: generation is inactive until explicitly activated. Regular and hardware judges form separate pools. Late additions use explicit eligible project ids and append slots after the existing schedule; additions/removals can change coverage and the stored report describes the original generation. Scores survive all assignment changes. Demotion/removal also prunes the active queue. Database writes and freeze share a singleton lock; see backend/README.md for recovery after a process crash.
 
 ### B24g. Progress board, results and exports
 - [ ] **Progress** (the 2025 "leaderboard"): `GET /api/admin/judging/progress`,

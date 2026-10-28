@@ -8,6 +8,7 @@ import { z } from "zod";
 import AdminJudgingCalibration from "@/components/AdminJudgingCalibration";
 import DataTable from "@/components/DataTable";
 import EmptyState from "@/components/EmptyState";
+import JudgingAssignments from "@/components/JudgingAssignments";
 import PageHeader from "@/components/PageHeader";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import {
@@ -477,8 +478,12 @@ export default function JudgingAdminPage() {
           <TabsTrigger value="rooms">Rooms</TabsTrigger>
           <TabsTrigger value="projects">Projects</TabsTrigger>
           <TabsTrigger value="import">Import</TabsTrigger>
+          <TabsTrigger value="assignments">Assignments</TabsTrigger>
           <TabsTrigger value="calibration">Calibration</TabsTrigger>
         </TabsList>
+        <TabsContent value="assignments">
+          <JudgingAssignments projects={projects} onChange={load} />
+        </TabsContent>
         <TabsContent value="calibration">
           <AdminJudgingCalibration />
         </TabsContent>

@@ -281,7 +281,7 @@ async function remove(req, res, next) {
       { user: user._id },
       { $set: { active: false } },
     );
-    // TODO B24e: remove this judge from the active assignment version.
+    await require("../utils/judging/state").removeJudge(user._id);
     res.json({ user: user.toJSON() });
   } catch (err) {
     next(err);
