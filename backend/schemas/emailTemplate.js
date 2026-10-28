@@ -42,7 +42,7 @@ var DEFAULT_TEMPLATES = [
   {
     key: "hardware_checkout",
     subject: "Hardware checkout: {{itemName}}",
-    body: "Hi {{name}},\n\nYou checked out {{itemName}} at {{eventTime}}.\n\nPlease return all hardware to the hardware desk before you leave for the day on {{returnBy}}.\n\nReturn deadline: {{dueTime}}",
+    body: "Hi {{name}},\n\nYou checked out {{itemName}} at {{eventTime}}.\nReturn deadline: {{dueTime}}\n\nWhat you need to know:\n\n- You are responsible for this hardware until it is returned to the hardware desk, even if you change teams.\n- Return all hardware you checked out before you leave for the day on {{returnBy}}.\n- If you switch teams, remember to return the hardware you checked out first. A member of the team that is using it can check it out again under their name.\n- If you leave the event early, return your hardware before you go.\n- If something breaks or goes missing, tell the hardware desk right away.\n\nYou can see everything you have checked out on the Hardware page of your dashboard.",
   },
   {
     key: "hardware_return",
@@ -132,7 +132,10 @@ var LEGACY_DEFAULT_SUBJECTS = {
 };
 
 var LEGACY_DEFAULT_BODIES = {
-  hardware_checkout: ["Hi {{name}},\n\nYou checked out {{itemName}} at {{eventTime}}.\nReturn deadline: {{dueTime}}"],
+  hardware_checkout: [
+    "Hi {{name}},\n\nYou checked out {{itemName}} at {{eventTime}}.\nReturn deadline: {{dueTime}}",
+    "Hi {{name}},\n\nYou checked out {{itemName}} at {{eventTime}}.\n\nPlease return all hardware to the hardware desk before you leave for the day on {{returnBy}}.\n\nReturn deadline: {{dueTime}}",
+  ],
   hardware_reminder: ["Hi {{name}},\n\nPlease bring {{itemName}} back to the hardware desk.\nReturn deadline: {{dueTime}}"],
   checked_in: [
     "Hi {{name}},\n\nYou're checked in to {{orgName}}. Welcome!\n\nIf you haven't joined our Discord yet, join now. It's where announcements, mentors and team-finding happen: {{discordUrl}}\n\n{{runOfShow}}\n\nSchedule updates, FAQs, maps and prizes are on our website: {{websiteUrl}}\n\nHappy hacking!",
