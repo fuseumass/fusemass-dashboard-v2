@@ -2,6 +2,9 @@
 var mongoose = require("mongoose");
 var Workshop = require("../schemas/workshop");
 var Signup = require("../schemas/workshopSignup");
+var Attendance = require("../schemas/workshopAttendance");
+var Draw = require("../schemas/raffleDraw");
+var Settings = require("../schemas/orgSettings");
 var Application = require("../schemas/application");
 var User = require("../schemas/user");
 var calendar = require("../utils/calendar");
@@ -188,12 +191,10 @@ async function update(req, res, next) {
       runValidators: true,
     });
     if (!workshop) {
-      res
-        .status(409)
-        .json({
-          error:
-            "Capacity cannot be below the current signup count, or the workshop was cancelled.",
-        });
+      res.status(409).json({
+        error:
+          "Capacity cannot be below the current signup count, or the workshop was cancelled.",
+      });
       return;
     }
     // Emails go out in the background (the mailer spaces sends a second
@@ -227,7 +228,12 @@ async function remove(req, res, next) {
     }
     if (workshop.signupCount)
       notifyInBackground(workshop, "workshop_cancelled", "CANCEL");
-    else await Workshop.deleteOne({ _id: workshop._id, signupCount: 0 });
+    else if (
+      !(await Attendance.exists({ workshop: workshop._id })) &&
+      !(await Draw.exists({ workshop: workshop._id }))
+    ) {
+      await Workshop.deleteOne({ _id: workshop._id, signupCount: 0 });
+    }
     res.json({ ok: true });
   } catch (err) {
     next(err);
@@ -245,9 +251,29 @@ async function list(req, res, next) {
         ? { _id: { $in: ids }, cancelled: false, published: true }
         : { published: true, cancelled: false };
     var workshops = await Workshop.find(query).sort({ startsAt: 1 }).lean();
+    var attendance = await Attendance.find({ user: req.user.id }).distinct(
+      "workshop",
+    );
+    var attended = new Set(attendance.map(String));
+    var draws = await Draw.find({ "winners.user": req.user.id }).lean();
+    var settings = await Settings.getSingleton();
     res.json({
       workshops: workshops.map(function decorate(workshop) {
         delete workshop.organizers;
+        workshop.attendanceOpen = +workshop.attendanceOpenUntil > Date.now();
+        workshop.attended = attended.has(String(workshop._id));
+        workshop.organizerRoom = settings.organizerRoom || "the organizer room";
+        workshop.wins = [];
+        draws.forEach(function eachDraw(draw) {
+          if (String(draw.workshop) !== String(workshop._id)) return;
+          draw.winners.forEach(function eachWinner(winner) {
+            if (String(winner.user) === req.user.id && !winner.noShow)
+              workshop.wins.push({
+                prize: draw.prize,
+                claimed: winner.claimed,
+              });
+          });
+        });
         workshop.spotsLeft =
           workshop.capacity === 0
             ? null
@@ -342,14 +368,10 @@ async function signup(req, res, next) {
       endsAt: { $gt: workshop.startsAt },
     });
     await email(workshop, req.user.id, "workshop_signup", "PUBLISH");
-    res
-      .status(201)
-      .json({
-        signedUp: true,
-        warning: overlap
-          ? "This overlaps another of your workshops."
-          : undefined,
-      });
+    res.status(201).json({
+      signedUp: true,
+      warning: overlap ? "This overlaps another of your workshops." : undefined,
+    });
   } catch (err) {
     next(err);
   }

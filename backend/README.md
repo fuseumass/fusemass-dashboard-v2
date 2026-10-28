@@ -483,6 +483,51 @@ an admin. Capacity 0 means unlimited. Signups always use the caller's account.
 | POST | `/api/workshops/:id/signup` | Reserve a seat; overlapping signups include a warning |
 | DELETE | `/api/workshops/:id/signup` | Cancel caller's signup, free the seat and email a cancellation |
 
+Managers are current moderators/admins or users assigned in `Workshop.organizers`.
+Manager access does not require an accepted application. B17's organizer role and
+assignment editor remain deferred. All routes below use the workshops feature gate.
+
+| Method | Route | Access and purpose |
+| --- | --- | --- |
+| GET | `/api/workshops/manageable` | Authenticated: only workshops the caller can manage |
+| GET | `/api/workshops/:id/me` | Accepted: workshop, attendanceOpen, attended, checkedIn, own wins and organizerRoom |
+| POST | `/api/workshops/:id/attendance/open` | Manager: `{ minutes }`, default 10, whole number 1-180; 409 if already open |
+| POST | `/api/workshops/:id/attendance/extend` | Manager: add `{ minutes }` (same validation) to an open session |
+| POST | `/api/workshops/:id/attendance/close` | Manager: close and invalidate session secret |
+| GET | `/api/workshops/:id/attendance/code` | Manager: `{ code, secondsLeft, openUntil }`, never cached |
+| POST | `/api/workshops/:id/attendance` | Accepted + event checked-in: `{ code }`, own attendance only, idempotent 200 |
+| POST | `/api/workshops/:id/attendance/staff` | Manager: `{ qrId }` or `{ userId }`; target must be accepted and event checked-in |
+| GET | `/api/workshops/:id/attendance` | Manager: attendee names/emails, signedUp/attended/walkIns counts, workshop and organizerRoom |
+| GET | `/api/workshops/:id/attendance.csv` | Manager: formula-safe attendance download |
+| POST | `/api/workshops/:id/raffle/draw` | Manager: `{ count, prize, early? }`; 201 draw, 409 if disabled, before endsAt without early, or pool empty |
+| POST | `/api/workshops/:id/raffle/:drawId/winners/:userId/claim` | Manager: record collection time |
+| POST | `/api/workshops/:id/raffle/:drawId/winners/:userId/redraw` | Manager: mark unclaimed winner no-show, draw one replacement with redrawOf; 409 if exhausted |
+| GET | `/api/workshops/:id/raffle` | Manager: draw history with winner names/emails |
+| GET | `/api/admin/raffles` | Admin: draws across workshops |
+
+Attendance codes have five unambiguous characters derived from HMAC-SHA256,
+rotate every 30 seconds, and accept the current and previous period. Sessions
+get a fresh secret on opening, excluded from all client responses. Attendance
+never requires signup. A 10/minute user + IP limiter runs per server instance;
+ten incorrect codes additionally lock the user out of that session in MongoDB,
+including across server restarts. Staff can still add locked-out attendees.
+Opening a new session resets the wrong-code budget; extending preserves it.
+
+Raffles recheck acceptance and event check-in at draw time and exclude every
+previous winner, including no-shows. Fisher-Yates uses `crypto.randomInt`.
+A unique `(workshop, winners.user)` multikey index atomically stores the audit
+and reserves winners, so concurrent draws retry against the new pool without
+repeated winners. Ensure this index is built before serving raffle requests
+(as with other schema uniqueness constraints). Draws store the actual winner
+count, capped at pool size. A no-show remains recorded if no replacement is
+available. Attendance and draw audit rows are retained when a workshop is cancelled.
+
+`PATCH /api/admin/settings { organizerRoom }` accepts a string of at most 200
+characters; blank uses "the organizer room". The Settings page edits it beside
+the event settings. Background `raffle_winner` template emails and attendee
+winner cards use that location. Lists also include attendanceOpen, attended,
+only the caller's wins (`prize`, `claimed`), and organizerRoom.
+
 Calendar emails use stable workshop UIDs and increasing sequences. Organizer
 assignment, waitlists and subscription feeds are deferred.
 

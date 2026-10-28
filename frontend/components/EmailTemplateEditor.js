@@ -18,6 +18,7 @@ import { apiFetch } from "@/lib/api";
 import { notifySuccess } from "@/lib/notify";
 
 const TEMPLATE_LABELS = {
+  raffle_winner: "Raffle winner",
   hardware_checkout: "Hardware checkout",
   hardware_return: "Hardware return",
   hardware_reminder: "Hardware reminder",
@@ -32,6 +33,9 @@ const TEMPLATE_LABELS = {
 };
 
 const PLACEHOLDER_GUIDE = [
+  "{{title}}",
+  "{{prize}}",
+  "{{organizerRoom}}",
   "{{returnBy}}",
   "{{newTeam}}",
   "{{items}}",

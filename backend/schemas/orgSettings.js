@@ -84,6 +84,9 @@ var orgSettingsSchema = new Schema(
       type: Boolean,
       default: true,
     },
+    // Where raffle winners collect prizes ("Organizer room, S120, open
+    // 9am-9pm"); shown in the raffle_winner email and the "You won" card.
+    organizerRoom: { type: String, default: "", trim: true, maxlength: 200 },
     // When borrowers must return all hardware (default due time for loans
     // and {{returnBy}} in the hardware emails). Null = "the last day of the event".
     hardwareReturnBy: { type: Date, default: null },

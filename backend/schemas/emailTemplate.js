@@ -29,6 +29,12 @@ var DEFAULT_TEMPLATES = [
       "Hi {{name}},\n\nYou're no longer signed up for {{title}} ({{when}}).\n\nThe attachment removes it from your calendar.",
   },
   {
+    // Sent to each raffle winner; {{organizerRoom}} comes from org settings.
+    key: "raffle_winner",
+    subject: "You won a raffle at {{title}}",
+    body: "Hi {{name}},\n\nYou won {{prize}} in the raffle at {{title}}.\n\nCollect it from {{organizerRoom}} after the workshop. Bring your dashboard QR code.",
+  },
+  {
     key: "hardware_checkout",
     subject: "Hardware checkout: {{itemName}}",
     body: "Hi {{name}},\n\nYou checked out {{itemName}} at {{eventTime}}.\n\nPlease return all hardware to the hardware desk before you leave for the day on {{returnBy}}.\n\nReturn deadline: {{dueTime}}",
