@@ -118,9 +118,9 @@ Individual unit tracking and the optional reserve/request queue are deferred.
 | Power-outlet needs per project | ✅ admin override preserved on import | B24b |
 | Prizes / tracks, participants pick prizes, assign winners | 📋 | B24h |
 | Judge assignments (old Rails: tags, mass assign) | ✖ replaced by the 2025 judging platform's slotted generator | B24a, B24e |
-| Printed judging forms (`paper_judging`) | 🟡 printable table signs only | B24c |
+| Printed judging forms (`paper_judging`) | ✅ printable table signs with persistent random QR tokens | B24c |
 | Judging results + CSV | 📋 (the 2025 app never computed results) | B24g |
-| **2025 judging:** two-step desk → table check-in | 📋 | B24c |
+| **2025 judging:** two-step desk → table check-in | ✅ desk station, participant table scan, table email, admin fallback and audited undo | B24c |
 | **2025 judging:** calibration rounds + judge bias | 🟡 pure bias formula ported and tested; judge profile and calibration status ready (B47); calibration flow pending | B24d, B47 |
 | **2025 judging:** time-slotted assignments + verifier | 🟡 pure generator/verifier ported and tested; API integration pending | B24a, B24e |
 | **2025 judging:** one-at-a-time scoring, skip, rejudge, assignment sheet | 📋 | B24f |

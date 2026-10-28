@@ -17,6 +17,7 @@ var Schema = mongoose.Schema;
  * @property {number} tableNumber - Assigned table.
  * @property {Date} deskCheckedInAt - Desk check-in time.
  * @property {Date} tableCheckedInAt - Table check-in time.
+ * @property {object[]} tableUndoLog - Actor, time and previous table for each admin undo.
  * @property {boolean} withdrawn - Withdrawn from judging.
  * @property {string[]} overriddenFields - Fields maintained by admins.
  */
@@ -36,6 +37,13 @@ var schema = new Schema(
     tableNumber: { type: Number, min: 1 },
     deskCheckedInAt: Date,
     tableCheckedInAt: Date,
+    tableUndoLog: [{
+      _id: false,
+      by: { type: Schema.Types.ObjectId, ref: "User" },
+      at: Date,
+      tableNumber: Number,
+      room: { type: Schema.Types.ObjectId, ref: "JudgingRoom" },
+    }],
     withdrawn: { type: Boolean, default: false },
     overriddenFields: [String],
   },
@@ -50,4 +58,5 @@ schema.index(
     },
   },
 );
+schema.index({ tableNumber: 1 }, { unique: true, partialFilterExpression: { tableNumber: { $type: "number" } } });
 module.exports = mongoose.model("Project", schema);

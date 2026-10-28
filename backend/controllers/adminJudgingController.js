@@ -3,6 +3,7 @@ var mongoose = require("mongoose");
 var parse = require("csv-parse/sync").parse;
 var Room = require("../schemas/judgingRoom");
 var Project = require("../schemas/project");
+var JudgingTable = require("../schemas/judgingTable");
 var ProjectImport = require("../schemas/projectImport");
 var Team = require("../schemas/team");
 var User = require("../schemas/user");
@@ -62,6 +63,9 @@ async function saveRoom(req, res) {
     return;
   }
   try {
+    if (await JudgingTable.exists({}) || await Project.exists({ tableNumber: { $type: "number" } })) {
+      return res.status(409).json({ error: "Room layout is locked after table signs or assignments are created." });
+    }
     var room = req.params.id
       ? await Room.findByIdAndUpdate(
           req.params.id,
@@ -82,6 +86,7 @@ async function saveRoom(req, res) {
 async function deleteRoom(req, res) {
   if (!validId(req, res)) return;
   try {
+    if (await JudgingTable.exists({}) || await Project.exists({ tableNumber: { $type: "number" } })) return res.status(409).json({ error: "Room layout is locked after table signs or assignments are created." });
     if (
       await Project.exists({
         room: req.params.id,
