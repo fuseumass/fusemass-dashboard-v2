@@ -417,11 +417,13 @@ floor: build the judge screens mobile-first, in the kiosk layout (F13).**
 | `landing.ejs`, `emails/*.ejs` | Not needed (dashboard home; email templates) | — |
 
 ### F21a. Judge screens
+Calibration flow implemented with progress and editing earlier rounds. Current-project routing,
+real project scoring, shared scoring form and offline recovery remain B24e/B24f.
 - [ ] `/dashboard/judging` routes the judge to calibration until it's done,
       then to their current project.
-- [ ] **Calibration:** "Practice project 1 of 3", the same rubric form as real
-      judging, a short explainer ("everyone scores the same projects so we
-      can correct for strict and generous judges"), then "Calibration done".
+- [x] **Calibration:** one round at a time, progress, rubric help and range-checked
+      number inputs, a short explainer and "Calibration done"; edit earlier rounds.
+      Uses the kiosk layout. Reusing the form for real judging remains B24f.
 - [ ] **Current project:** a large table number + room, then project name,
       category, Devpost link; progress "4 of 12"; the rubric with each
       criterion's **guiding questions** (from the rubric's `help`), entered as
@@ -462,8 +464,10 @@ floor: build the judge screens mobile-first, in the kiosk layout (F13).**
       totals vs project count, so admins see shortages before the event.
 - [x] **Projects:** filtered table, matched/unmatched member counts, room/table display,
       and admin overrides for category, hardware, power and withdrawal (B24b).
-- [ ] **Rubric:** criteria editor (label, guiding questions, min/max, weight,
-      general/category), locked once scores exist; calibration projects.
+- [x] **Rubric:** Calibration section edits label, guiding questions, min/max, weight,
+      general/category and ordered calibration projects; locked after judging starts.
+- [x] **Calibration bias:** completion status, Compute bias and stored bias table.
+      Assignment progress remains pending B24g.
 - [ ] **Judges:** list with hardware flag, invite status, calibration done,
       bias, progress; invite and bulk-invite (F27).
 - [ ] **Assignments:** parameters (judgings per project) → Generate → show the

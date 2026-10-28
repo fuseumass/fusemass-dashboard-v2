@@ -2,6 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useEffect } from "react";
+import JudgeCalibration from "@/components/JudgeCalibration";
 import PageHeader from "@/components/PageHeader";
 import { useUser } from "@/lib/userContext";
 
@@ -17,20 +18,9 @@ export default function JudgingPage() {
     <div className="space-y-6">
       <PageHeader
         title="Judging"
-        description="Judging opens when organizers start it."
+        description="Complete calibration before scoring projects."
       />
-      <dl className="grid gap-4 text-sm sm:grid-cols-2">
-        <div>
-          <dt className="text-muted-foreground">Hardware judging</dt>
-          <dd>{user.judgeProfile?.hardware ? "Enabled" : "Disabled"}</dd>
-        </div>
-        <div>
-          <dt className="text-muted-foreground">Calibration</dt>
-          <dd>
-            {user.judgeProfile?.calibrationDone ? "Complete" : "Not started"}
-          </dd>
-        </div>
-      </dl>
+      <JudgeCalibration />
     </div>
   );
 }

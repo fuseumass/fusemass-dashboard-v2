@@ -60,6 +60,7 @@ export const NAV_ITEMS = [
   },
   {
     href: "/dashboard/judging",
+    kiosk: true,
     label: "Judging",
     icon: ClipboardList,
     group: "me",

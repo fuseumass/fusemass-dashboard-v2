@@ -9,6 +9,11 @@ var upload = multer({
   limits: { fileSize: 2 * 1024 * 1024, files: 1, fields: 0 },
 });
 router.use(requireFeature("judging"));
+var calibration = require("../controllers/judgingCalibrationController");
+router.get("/settings", isAdmin, calibration.getSettings);
+router.patch("/settings", isAdmin, calibration.patchSettings);
+router.get("/bias", isAdmin, calibration.getBias);
+router.post("/bias", isAdmin, calibration.postBias);
 var checkin = require("../controllers/judgingCheckinController");
 router.get("/table-signs", isAdmin, checkin.tableSigns);
 router.post("/bulk-assign", isAdmin, checkin.bulkAssign);
