@@ -376,6 +376,18 @@ test("judging rooms and project imports", async function (t) {
   await t.test(
     "room CRUD, runtime validation, duplicate rows and file limits",
     async function () {
+      // Table numbers come from the room layout, so it's locked while any
+      // project has a table; the earlier subtest left one at table 1.
+      assert.equal(
+        (
+          await request(app)
+            .post(root + "/rooms")
+            .set(auth(admin))
+            .send({ name: "Locked", order: 1, capacity: 5 })
+        ).status,
+        409,
+      );
+      await Project.updateMany({}, { $unset: { tableNumber: 1, room: 1 } });
       var create = await request(app)
         .post(root + "/rooms")
         .set(auth(admin))

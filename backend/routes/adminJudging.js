@@ -9,6 +9,10 @@ var upload = multer({
   limits: { fileSize: 2 * 1024 * 1024, files: 1, fields: 0 },
 });
 router.use(requireFeature("judging"));
+var checkin = require("../controllers/judgingCheckinController");
+router.get("/table-signs", isAdmin, checkin.tableSigns);
+router.post("/bulk-assign", isAdmin, checkin.bulkAssign);
+router.post("/projects/:id/undo-table", isAdmin, checkin.undo);
 router.get("/rooms", isAdmin, controller.listRooms);
 router.post("/rooms", isAdmin, controller.saveRoom);
 router.patch("/rooms/:id", isAdmin, controller.saveRoom);

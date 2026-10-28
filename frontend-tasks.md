@@ -439,18 +439,19 @@ floor: build the judge screens mobile-first, in the kiosk layout (F13).**
 - **Depends on:** B24d, B24f, F27.
 
 ### F21b. Team check-in screens (desk → table)
-- [ ] **Judging desk** (`/dashboard/staff/judging-desk`, kiosk layout, reusing
+- [x] **Judging desk** (`/dashboard/staff/judging`, kiosk layout, reusing
       `CheckInStation`): scan any team member's attendee QR → show the
       project, members and the assigned **table + room in huge type** →
       done. Errors: no project found, already assigned (show its table),
       room full. If they're on several projects, pick one.
-- [ ] **Table check-in** for attendees: once their project has a table, the
-      home page shows "Go to table 34 in S131, then scan the QR on your table"
+- [x] **Table check-in** for attendees: once their project has a table, the
+      Team page shows "Go to table 34 in S131, then scan the QR on your table"
       with the camera scanner. Results: done / wrong table (say the right
       one) / not desk-checked-in yet.
-- [ ] Admin: print table signs (from B24c), the bulk fallback ("check-in
+- [x] Admin: print table signs (from B24c), the bulk fallback ("check-in
       failed: assign everyone"), with a typed confirmation, and clear a
       project's table.
+- Implemented on the Team page with the shared QR scanner. Screenshots, keyboard walkthrough and real camera verification remain pending in a running environment.
 - **Depends on:** B24c.
 
 ### F21c. Admin judging console

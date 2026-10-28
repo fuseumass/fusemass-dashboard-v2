@@ -625,28 +625,30 @@ Each is one PR, behind the `judging` feature flag (B25) until B24i.
 ### B24c. Two-step team check-in (desk → table)
 Keep the 2025 flow: it makes sure teams are physically at the table judges
 will walk to.
-- [ ] **Desk check-in** (phase 2): `POST /api/staff/judging/desk-checkin
+- [x] **Desk check-in** (phase 2): `POST /api/staff/judging/desk-checkin
       { qrId }` (moderators + admins). Resolve the attendee from their QR with
       the shared `resolveAttendee`, find their project (409 if they're on
       several; staff pick one), and assign the next table **inside a
       transaction**. Keep the 2025 logic: rooms in `order`, hardware projects
       → hardware rooms, global continuous numbering, room full → clear error.
       Rely on the unique index + retry for races.
-- [ ] **Table signs:** `GET /api/admin/judging/table-signs` → a printable PDF/HTML
+- [x] **Table signs:** `GET /api/admin/judging/table-signs` → a printable PDF/HTML
       sheet per table with a big table number, room, and a QR holding a random
       per-table token (stored on a `JudgingTable` record or in the room's
       table list).
-- [ ] **Table check-in** (phase 3): a logged-in team member scans the table QR
+- [x] **Table check-in** (phase 3): a logged-in team member scans the table QR
       on their dashboard → `POST /api/judging/table-checkin { token }`. It must
       match their project's assigned table, otherwise "Wrong table: you're at
       table 12, go to table 34 in S131". Desk check-in is required first.
-- [ ] Email the team their table + room after desk check-in (built-in template
+- [x] Email the team their table + room after desk check-in (built-in template
       `judging_table_assigned`, via B26).
-- [ ] **Fallback** (phase 3b), admin-only `POST`: bulk-assign tables to every
+- [x] **Fallback** (phase 3b), admin-only `POST`: bulk-assign tables to every
       project and mark both steps done, with a confirmation that states the
       count.
-- [ ] Undo for mistakes: admin can clear a project's table (frees the number,
+- [x] Undo for mistakes: admin can clear a project's table (frees the number,
       logged).
+- Implemented with transaction fallback for standalone MongoDB, global unique index and retry, persistent tokens, count-confirmed bulk fallback and durable undo audit. Bulk fallback may complete earlier projects before a capacity failure; retry resumes remaining projects. Room layout is locked after signs or assignments exist.
+- Integration tests written but not run here (no MongoDB). Light/dark/mobile screenshots and device scanning remain to verify in a running environment.
 - **Depends on:** B24b; check-in from `feature/qr-checkin`.
 
 ### B24d. Judge calibration (tutorial) and bias

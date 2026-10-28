@@ -418,3 +418,19 @@
     visibility: visible;
   }
 }
+
+@media print {
+  body:has(.judging-table-signs) [data-slot="sidebar"],
+  body:has(.judging-table-signs) [data-slot="sidebar-gap"],
+  body:has(.judging-table-signs) header,
+  body:has(.judging-table-signs) [data-slot="sidebar-trigger"] {
+    display: none;
+  }
+  body:has(.judging-table-signs) main {
+    max-width: none;
+    padding: 0;
+  }
+  .judging-table-signs section:last-child {
+    break-after: auto;
+  }
+}
