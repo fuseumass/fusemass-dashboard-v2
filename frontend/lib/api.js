@@ -185,3 +185,18 @@ export async function openSignedLink(path) {
     throw err;
   }
 }
+
+/** @param {string} path - Authenticated download route. @param {string} filename - Download name. @returns {Promise<void>} */
+export async function apiDownload(path, filename) {
+  const token = getToken();
+  const res = await fetch(`${API_URL}${path}`, {
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+  });
+  if (!res.ok) await readResponse(res, path, Boolean(token));
+  const url = URL.createObjectURL(await res.blob());
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  link.click();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}

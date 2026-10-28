@@ -91,13 +91,15 @@ were presumably tracked in spreadsheets, so B33–B37 are a new design.
 
 | Old feature | Status | Task |
 | ----------- | ------ | ---- |
-| Inventory CRUD (name, category, location, link, count) | 📋 | B22, F20 |
-| Search by item id / name | 📋 | B23, F20 |
-| Checkout / return, per-item history log | 📋 (old had no permission check) | B22 |
-| "All checked out" list | 📋 | B22, F20 |
-| Barcode label CSV | 📋 as printable QR labels | B22 |
-| Slack reminders to return hardware | 📋 as email | B22, B26 |
-| Facilities page (makerspace tools list, `hum-xii`) | 📋 | B23, F20 |
+| Inventory CRUD (name, category, location, link, count) | ✅ | B22, F20 |
+| Search by item id / name | ✅ | B23, F20 |
+| Checkout / return, per-item history log | ✅ staff-only, atomic stock and retained history | B22 |
+| "All checked out" list | ✅ | B22, F20 |
+| Barcode label CSV | ✅ printable item QR labels | B22 |
+| Slack reminders to return hardware | ✅ background email reminders | B22, B26 |
+| Facilities page (makerspace tools list, `hum-xii`) | ✅ | B23, F20 |
+
+Individual unit tracking and the optional reserve/request queue are deferred.
 
 ## Mentorship
 
@@ -119,8 +121,8 @@ were presumably tracked in spreadsheets, so B33–B37 are a new design.
 | Printed judging forms (`paper_judging`) | 🟡 printable table signs only | B24c |
 | Judging results + CSV | 📋 (the 2025 app never computed results) | B24g |
 | **2025 judging:** two-step desk → table check-in | 📋 | B24c |
-| **2025 judging:** calibration rounds + judge bias | 📋 | B24d |
-| **2025 judging:** time-slotted assignments + verifier | 📋 | B24a, B24e |
+| **2025 judging:** calibration rounds + judge bias | 🟡 pure bias formula ported and tested; calibration flow pending | B24d |
+| **2025 judging:** time-slotted assignments + verifier | 🟡 pure generator/verifier ported and tested; API integration pending | B24a, B24e |
 | **2025 judging:** one-at-a-time scoring, skip, rejudge, assignment sheet | 📋 | B24f |
 | **2025 judging:** progress board ("leaderboard") | 📋 | B24g |
 
@@ -145,6 +147,6 @@ Technical settings is a new platform feature under review on `feature/tech-setti
 | ----------- | ------ | ---- |
 | Feature flags per module | 🟡 backend ✅ (`OrgSettings.features`, `requireFeature`, gates meals; each new module must mount it); nav hides meals items; full nav config is F13 | B25, F13 |
 | Per-hackathon config repo (names, texts, branding) | 🟡 backend ✅ runtime branding API (`GET /api/meta/branding`, admin settings, logo upload) + admin card; the site still needs to apply it (colour flags fix) | B28, F12 |
-| CSV exports (applications, events, judging, projects) | 🟡 applications, check-ins, meals done; workshops, hardware, judging, projects pending | B29 |
+| CSV exports (applications, events, judging, projects) | 🟡 applications, check-ins, meals done; hardware done; workshops, judging, projects pending | B29 |
 | Resume bulk download (`download_resumes.py`) | ✅ ZIP of consenting accepted applicants | B29 |
 | Error reporting (Sentry/Raven) | 📋 | B46 |

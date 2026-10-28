@@ -409,29 +409,29 @@ Raffles happen **after** a Top Hat-style attendance check-in at each workshop:
 Port the old dashboard's hardware lab. Staff (mods + admins) check items out
 by scanning the attendee's QR (the same code as check-in and meals) and
 check them back in on return.
-- [ ] `schemas/hardwareItem.js`: `name`, `category`, `description`, `link`,
+- [x] `schemas/hardwareItem.js`: `name`, `category`, `description`, `link`,
       `location` (bin/shelf), `imageUrl`, `totalQty`, `availableQty`,
       `maxPerAttendee`, `trackUnits`.
 - [ ] Optional `schemas/hardwareUnit.js` for expensive items tracked one by one
       (`item`, `label`/barcode, `status`). Labels: printable QR per item/unit
       via `utils/qrCode`. The old dashboard printed barcode CSVs.
-- [ ] `schemas/hardwareCheckout.js`: `user`, `item`, `unit?`, `checkedOutBy`,
+- [x] `schemas/hardwareCheckout.js`: `user`, `item`, `unit?`, `checkedOutBy`,
       `checkedOutAt`, `dueAt`, `returnedAt?`, `returnedTo?`, `notes`
       (collateral held, condition). **Never delete rows**: returning sets
       `returnedAt`, which is the history (the old app deleted checkouts and
       kept a separate log).
-- [ ] Checkout `POST /api/staff/hardware/checkouts { qrId | userId, itemId,
+- [x] Checkout `POST /api/staff/hardware/checkouts { qrId | userId, itemId,
       unitId? }`. Resolve the attendee with the shared `resolveAttendee`, and
       require **event checked-in**. Take stock atomically:
       `HardwareItem.findOneAndUpdate({ _id, availableQty: { $gt: 0 } }, { $inc: { availableQty: -1 } })`.
       Enforce `maxPerAttendee` against open checkouts. Put stock back if
       anything after that fails.
-- [ ] Return `POST /api/staff/hardware/checkouts/:id/return`: idempotent (a
+- [x] Return `POST /api/staff/hardware/checkouts/:id/return`: idempotent (a
       second call is a no-op, not a second `+1`).
-- [ ] Staff lists: by item (who has it), by attendee (scan QR → their open
+- [x] Staff lists: by item (who has it), by attendee (scan QR → their open
       items, for a fast return), outstanding/overdue; CSV export.
-- [ ] Inventory CRUD (`isAdmin`) + CSV import for the initial stock count.
-- [ ] Email checkout/return receipts and "please return" reminders through
+- [x] Inventory CRUD (`isAdmin`) + CSV import for the initial stock count.
+- [x] Email checkout/return receipts and "please return" reminders through
       B26 (this replaces the old Slack DMs).
 - **Don't repeat (old dashboard):**
   - `HardwareCheckoutsController` had **no permission check**: any logged-in
@@ -449,17 +449,24 @@ check them back in on return.
 - **Depends on:** B25 (feature flag); check-in from `feature/qr-checkin`.
   **Related:** F20, T10.
 
+
+Implemented in the hardware working tree. Optional individual unit tracking and
+the reserve/request queue are deferred. Printable labels identify item types.
+
 ### B23. Participant hardware views
-- [ ] `GET /api/hardware` (accepted attendees): inventory with availability,
+- [x] `GET /api/hardware` (accepted attendees): inventory with availability,
       category filter, search. Never shows who has an item.
-- [ ] `GET /api/hardware/mine`: my open + returned checkouts, due times.
+- [x] `GET /api/hardware/mine`: my open + returned checkouts, due times.
 - [ ] Optional: request/reserve an item for pickup (a queue staff see on the
       checkout screen). Neither old platform had this; build only if
       organizers want it.
-- [ ] **Facilities:** an admin-editable list of on-site resources that aren't
+- [x] **Facilities:** an admin-editable list of on-site resources that aren't
       checked out (makerspaces, soldering, 3D printing, laser cutter, …;
       `hum-xii` had this as a static page), with location and access notes.
 - **Depends on:** B22. **Related:** F20.
+
+Implemented in the hardware working tree. Optional individual unit tracking and
+the reserve/request queue are deferred. Printable labels identify item types.
 
 ---
 
@@ -561,23 +568,25 @@ parallel**; then B24b → B24c → B24d/B24e → B24f → B24g → B24h; B24i la
 Each is one PR, behind the `judging` feature flag (B25) until B24i.
 
 ### B24a. Port the algorithms as pure modules (do first)
-- [ ] Copy `generateJudgingAssignments` + `AssignmentGenerator` +
+- [x] Copy `generateJudgingAssignments` + `AssignmentGenerator` +
       `AssignmentVerifier` from `utils/judging-api.js` into
       `utils/judging/assignments.js`, converted to CommonJS, with no `console.log`
       noise (return a `log` array instead). `utils/judging-assignments.js` (the
       CLI/demo version) is not used by the app; don't port it.
-- [ ] **Characterization tests before changing anything** (T11): run it on the
+- [x] **Characterization tests before changing anything** (T11): run it on the
       2025 shape (the 5 regular rooms 33/49/33/40/22 + hardware room 31,
       ~160 teams, 3 judgings per team) with a seeded RNG, and snapshot the
       invariants.
-- [ ] Make randomness injectable (`rng` parameter, default `Math.random`) so
+- [x] Make randomness injectable (`rng` parameter, default `Math.random`) so
       tests are deterministic.
-- [ ] Then fix the verifier: after `_fixUnderJudgedProjects`, re-run **all**
+- [x] Then fix the verifier: after `_fixUnderJudgedProjects`, re-run **all**
       checks; place fixes only where the slot is free; fail loudly if it can't.
-- [ ] Extract the bias formula from `/update-bias-scores` into
+- [x] Extract the bias formula from `/update-bias-scores` into
       `utils/judging/bias.js` (`computeBias(tutorialScoresByJudge, rubric)` →
       `{ judgeId: { general, category } }`). Keep the formula identical so the
       2025 numbers can be reproduced.
+- Pure modules and algorithm tests complete; API/database wiring remains in later tasks.
+  Compact legacy queues are retained; `slots` preserves empty time slots.
 - **Depends on:** none. **Related:** T11.
 
 ### B24b. Rooms, projects and the Devpost import
@@ -1053,10 +1062,15 @@ sponsors, catering and insurance.
 `npm audit` in `backend/` (Oct 2026): **critical** `proxy-addr` and
 **moderate** `body-parser`/`qs` (via `express`), **high** `nodemailer`,
 moderate `ip-address`, moderate `csv-parse` (fix is a major bump to v7).
-- [ ] `npm audit fix` (non-breaking ones), run the test suite.
-- [ ] `csv-parse` v7 upgrade: check `metaController`'s colleges loader still
-      works.
-- [ ] Add `npm audit --audit-level=high` to CI (T15).
+- [x] `npm audit fix` (non-breaking ones), run the test suite.
+      *Done:* `proxy-addr`, `qs`, `ip-address` fixed; `nodemailer` 9 → 10
+      (checked against the real Bird SMTP login); `multer` 1 → 2 (1.x was
+      deprecated for vulnerabilities). Frontend: `next` 16.2.12 → 16.4.3
+      (critical RCE advisories), `nanoid` fixed. Both `npm audit` report 0.
+- [x] `csv-parse` v7 upgrade: check `metaController`'s colleges loader still
+      works. *Done:* colleges.csv parses the same; tests pass.
+- [x] Add `npm audit --audit-level=high` to CI (T15). *Done:* production
+      dependencies, frontend and backend jobs.
 - **Depends on:** none.
 
 ---
