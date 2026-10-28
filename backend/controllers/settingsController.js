@@ -66,6 +66,13 @@ function getSettings(_req, res) {
 function updateSettings(req, res) {
   var update = {};
   var replacedSlots = [];
+  if (req.body && req.body.organizerRoom !== undefined) {
+    if (typeof req.body.organizerRoom !== "string" || req.body.organizerRoom.trim().length > 200) {
+      res.status(400).json({ error: "organizerRoom must be a string of at most 200 characters." });
+      return Promise.resolve();
+    }
+    update.organizerRoom = req.body.organizerRoom.trim();
+  }
   if (req.body && req.body.features !== undefined) {
     var featureCheck = features.validatePatch(req.body.features);
     if (featureCheck.errors.length) {

@@ -84,6 +84,9 @@ var orgSettingsSchema = new Schema(
       type: Boolean,
       default: true,
     },
+    // Where raffle winners collect prizes ("Organizer room, S120, open
+    // 9am-9pm"); shown in the raffle_winner email and the "You won" card.
+    organizerRoom: { type: String, default: "", trim: true, maxlength: 200 },
     // Largest team allowed (members, plus pending invites while forming).
     teamMaxSize: {
       type: Number,

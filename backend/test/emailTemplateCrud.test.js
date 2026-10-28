@@ -50,6 +50,7 @@ test("B1: email template CRUD", async function emailTemplateCrud(t) {
         "hardware_checkout",
         "hardware_return",
         "hardware_reminder",
+        "raffle_winner",
         "team_invite",
         "verify_email",
         "workshop_signup",

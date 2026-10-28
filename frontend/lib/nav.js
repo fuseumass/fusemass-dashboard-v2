@@ -48,6 +48,22 @@ export const NAV_GROUPS = [
 ];
 
 export const NAV_ITEMS = [
+  {
+    href: "/dashboard/organize",
+    label: "Organize workshops",
+    icon: CalendarDays,
+    group: "organize",
+    roles: STAFF,
+    feature: "workshops",
+  },
+  {
+    href: "/dashboard/admin/raffles",
+    label: "Raffles",
+    icon: ClipboardList,
+    group: "admin",
+    roles: ADMIN,
+    feature: "workshops",
+  },
   { href: "/dashboard", label: "Home", icon: House, group: "me", exact: true },
   {
     href: "/dashboard/application",
@@ -271,7 +287,10 @@ export function isActive(item, pathname, items = NAV_ITEMS) {
  */
 export function isKioskPath(pathname) {
   const owner = findNavItem(pathname);
-  return Boolean(owner?.kiosk);
+  return (
+    Boolean(owner?.kiosk) ||
+    /^\/dashboard\/organize\/[^/]+\/present$/.test(pathname)
+  );
 }
 
 /**

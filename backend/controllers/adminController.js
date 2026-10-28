@@ -566,6 +566,9 @@ function sampleTemplateValues(user) {
   var start = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
   return {
     name: user.name,
+    title: "Workshop (sample)",
+    prize: "Workshop prize (sample)",
+    organizerRoom: "the organizer room",
     status: "accepted",
     setupUrl: primaryClientOrigin() + "/reset-password?token=sample&setup=1",
     verifyUrl: primaryClientOrigin() + "/verify-email?token=sample",

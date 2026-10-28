@@ -82,9 +82,9 @@ were presumably tracked in spreadsheets, so B33–B37 are a new design.
 | ----------- | ------ | ---- |
 | Events with `rsvpable` + `max_seats` | ✅ admin CRUD, publication and atomic capacity; organizer assignment deferred | B18, B19 |
 | RSVP / un-RSVP to an event | ✅ accepted attendees, overlap warnings and My workshops; waitlist deferred | B19, F17 |
-| Per-event attendance check-in | 📋 Top Hat-style code; requires event check-in | B21 |
+| Per-event attendance check-in | ✅ Rotating attendance code, staff QR add, event check-in guard, counts and CSV | B21 |
 | Workshop materials / announcements | ➕ 📋 visible to every accepted attendee | B20 |
-| Workshop raffle | ➕ 📋 after the workshop ends, attendees only; winner emailed to collect from the organizer room | B21 |
+| Workshop raffle | ✅ Attendee-only draw after workshop (early override), claims/redraw audit, collection emails and winner cards | B21 |
 | Calendar invites per workshop | ✅ signup, changes and cancellations; stable UID and sequence; subscription feed deferred | B19 |
 
 ## Hardware

@@ -76,6 +76,21 @@ function row(method, path, level, options) {
 }
 
 var MATRIX = [
+  row("POST", "/api/workshops/:id/attendance/open", "moderator"),
+  row("POST", "/api/workshops/:id/attendance/extend", "moderator"),
+  row("POST", "/api/workshops/:id/attendance/close", "moderator"),
+  row("GET", "/api/workshops/:id/attendance/code", "moderator"),
+  row("POST", "/api/workshops/:id/attendance/staff", "moderator"),
+  row("GET", "/api/workshops/:id/attendance", "moderator"),
+  row("GET", "/api/workshops/:id/attendance.csv", "moderator"),
+  row("POST", "/api/workshops/:id/raffle/draw", "moderator"),
+  row("POST", "/api/workshops/:id/raffle/:drawId/winners/:userId/claim", "moderator"),
+  row("POST", "/api/workshops/:id/raffle/:drawId/winners/:userId/redraw", "moderator"),
+  row("GET", "/api/workshops/:id/raffle", "moderator"),
+  row("GET", "/api/workshops/manageable", "authenticated"),
+  row("GET", "/api/workshops/:id/me", "accepted"),
+  row("POST", "/api/workshops/:id/attendance", "accepted"),
+  row("GET", "/api/admin/raffles", "admin"),
   row("GET", "/api/workshops", "accepted"),
   row("GET", "/api/workshops/mine", "accepted"),
   row("POST", "/api/workshops/:id/signup", "accepted"),
