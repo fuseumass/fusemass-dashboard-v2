@@ -120,6 +120,7 @@ export default function StaffCheckInPage() {
           <Button
             type="button"
             variant="outline"
+            className="pointer-coarse:h-11"
             onClick={() => setForce(force ? null : {})}
           >
             {force ? "Close forced check-in" : "Force check-in"}
@@ -248,6 +249,7 @@ function ForceCheckInPanel({ initial, onSubmit, onClose }) {
                   type="button"
                   variant="outline"
                   size="sm"
+                  className="pointer-coarse:h-11"
                   onClick={() => setTarget(null)}
                 >
                   Change
@@ -259,6 +261,7 @@ function ForceCheckInPanel({ initial, onSubmit, onClose }) {
                   placeholder="Search everyone by name or email"
                   value={query}
                   onChange={(e) => setQuery(e.target.value)}
+                  className="pointer-coarse:h-11"
                 />
                 {people.length > 0
                   ? <ul className="divide-y rounded-lg border">
@@ -268,7 +271,7 @@ function ForceCheckInPanel({ initial, onSubmit, onClose }) {
                             type="button"
                             onClick={() => setTarget(p)}
                             disabled={p.checkedIn}
-                            className="flex w-full items-center justify-between gap-3 px-3 py-2 text-left text-sm outline-none first:rounded-t-lg last:rounded-b-lg hover:bg-muted focus-visible:bg-muted disabled:opacity-60"
+                            className="flex w-full items-center justify-between gap-3 px-3 py-2 text-left text-sm pointer-coarse:min-h-11 outline-none first:rounded-t-lg last:rounded-b-lg hover:bg-muted focus-visible:bg-muted disabled:opacity-60"
                           >
                             <span className="min-w-0 truncate">
                               <span className="font-medium">{p.name}</span>
@@ -304,16 +307,24 @@ function ForceCheckInPanel({ initial, onSubmit, onClose }) {
           <div className="flex flex-wrap gap-2">
             <Button
               type="submit"
+              className="max-w-full pointer-coarse:h-11"
               loading={submitting}
               disabled={!target || reason.trim().length < 3}
             >
               {submitting
                 ? "Checking in"
                 : target
-                  ? `Force check-in ${target.name}`
+                  ? <span className="truncate">
+                      Force check-in {target.name}
+                    </span>
                   : "Pick someone first"}
             </Button>
-            <Button type="button" variant="outline" onClick={onClose}>
+            <Button
+              type="button"
+              variant="outline"
+              className="pointer-coarse:h-11"
+              onClick={onClose}
+            >
               Cancel
             </Button>
           </div>
@@ -379,7 +390,7 @@ function AttendeeSearch({ onCheckIn }) {
           placeholder="Search by name or email"
           value={query}
           onChange={(e) => setQuery(e.target.value)}
-          className="h-10"
+          className="h-10 pointer-coarse:h-11"
         />
 
         {error
@@ -415,6 +426,7 @@ function AttendeeSearch({ onCheckIn }) {
                           </p>
                         : <Button
                             type="button"
+                            className="pointer-coarse:h-11"
                             loading={pendingId === a.id}
                             onClick={() => handleCheckIn(a)}
                           >

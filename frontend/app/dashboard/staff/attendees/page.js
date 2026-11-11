@@ -142,10 +142,11 @@ export default function AttendeeHelpPage() {
             placeholder="attendee@example.com"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
-            className="min-w-48 flex-1"
+            className="min-w-48 flex-1 pointer-coarse:h-11"
           />
           <Button
             type="submit"
+            className="pointer-coarse:h-11"
             loading={busy === "lookup"}
             disabled={!email.trim()}
           >
@@ -163,8 +164,10 @@ export default function AttendeeHelpPage() {
         {attendee
           ? <Card>
               <CardHeader>
-                <CardTitle className="text-lg">{attendee.name}</CardTitle>
-                <p className="text-sm text-muted-foreground">
+                <CardTitle className="text-lg wrap-anywhere">
+                  {attendee.name}
+                </CardTitle>
+                <p className="text-sm text-muted-foreground wrap-anywhere">
                   {attendee.email}
                 </p>
               </CardHeader>
@@ -190,6 +193,7 @@ export default function AttendeeHelpPage() {
                   <Button
                     type="button"
                     variant="outline"
+                    className="pointer-coarse:h-11"
                     disabled={!accepted}
                     loading={busy === "qr"}
                     title={
@@ -205,6 +209,7 @@ export default function AttendeeHelpPage() {
                   <Button
                     type="button"
                     variant="outline"
+                    className="pointer-coarse:h-11"
                     loading={busy === "link"}
                     onClick={sendAccountLink}
                   >
@@ -235,10 +240,11 @@ export default function AttendeeHelpPage() {
                             value={reason}
                             onChange={(e) => setReason(e.target.value)}
                             placeholder="Reason (at least 3 characters)"
-                            className="min-w-48 flex-1"
+                            className="min-w-48 flex-1 pointer-coarse:h-11"
                           />
                           <Button
                             type="submit"
+                            className="pointer-coarse:h-11"
                             loading={busy === "checkin"}
                             disabled={reason.trim().length < 3}
                           >

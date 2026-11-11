@@ -51,6 +51,8 @@ export default function JudgingDeskPage() {
           {choice.projects.map((p) => (
             <Button
               key={p._id}
+              size="lg"
+              className="max-w-full pointer-coarse:h-11"
               disabled={busy}
               onClick={() => check(choice.qrId, p._id)}
             >
@@ -64,7 +66,7 @@ export default function JudgingDeskPage() {
           className="space-y-2 rounded-lg border bg-card p-6"
           aria-live="polite"
         >
-          <p className="text-4xl font-semibold tabular-nums">
+          <p className="text-3xl font-semibold tabular-nums wrap-anywhere sm:text-4xl">
             Table {project.tableNumber} in {project.room?.name}
           </p>
           <p>{project.name}</p>

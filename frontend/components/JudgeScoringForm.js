@@ -91,6 +91,7 @@ export default function JudgeScoringForm({
                   key={n}
                   type="button"
                   size="sm"
+                  className="min-w-8 tabular-nums pointer-coarse:size-11"
                   variant={values[c.key] === n ? "default" : "outline"}
                   aria-label={`${c.label}: ${n}`}
                   aria-pressed={values[c.key] === n}
@@ -119,6 +120,7 @@ export default function JudgeScoringForm({
       </p>
       <Button
         type="submit"
+        className="pointer-coarse:h-11 max-sm:w-full"
         loading={busy}
         disabled={disabled || busy || !complete}
       >

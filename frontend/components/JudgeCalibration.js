@@ -100,7 +100,7 @@ function RoundForm({ data, round, onSaved }) {
                     max={c.max}
                     step={1}
                     required
-                    className="max-w-32"
+                    className="max-w-32 pointer-coarse:h-11"
                   />
                 </FormControl>
                 <FormMessage />
@@ -128,7 +128,11 @@ function RoundForm({ data, round, onSaved }) {
             </AlertDescription>
           </Alert>
         )}
-        <Button type="submit" loading={form.formState.isSubmitting}>
+        <Button
+          type="submit"
+          className="pointer-coarse:h-11"
+          loading={form.formState.isSubmitting}
+        >
           Save round
         </Button>
       </form>
@@ -200,6 +204,7 @@ export default function JudgeCalibration() {
           <Button
             key={project.round}
             variant={round === i + 1 ? "default" : "outline"}
+            className="pointer-coarse:h-11"
             disabled={i > data.scores.length}
             aria-current={round === i + 1 ? "step" : undefined}
             onClick={() => setRound(i + 1)}

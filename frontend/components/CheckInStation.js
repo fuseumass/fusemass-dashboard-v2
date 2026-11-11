@@ -177,9 +177,14 @@ export default function CheckInStation({
             spellCheck={false}
             value={code}
             onChange={handleChange}
-            className="h-10 min-w-0 flex-1"
+            className="h-10 min-w-0 flex-1 pointer-coarse:h-11"
           />
-          <Button type="submit" size="lg" disabled={!code.trim()}>
+          <Button
+            type="submit"
+            size="lg"
+            className="pointer-coarse:h-11"
+            disabled={!code.trim()}
+          >
             {submitLabel}
           </Button>
         </form>
@@ -212,7 +217,7 @@ function CheckInPopup({ rows }) {
     <div
       aria-live="polite"
       onPointerDown={() => setOpen(false)}
-      className="fixed inset-0 z-50 flex items-start justify-center bg-overlay p-4 pt-[12vh]"
+      className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto overscroll-contain bg-overlay p-4 pt-[12vh]"
     >
       <div
         // Stop taps inside the card from reaching the scrim.
@@ -236,7 +241,7 @@ function CheckInPopup({ rows }) {
         <Button
           type="button"
           size="lg"
-          className="mt-6 w-full"
+          className="mt-6 w-full pointer-coarse:h-11"
           onClick={() => setOpen(false)}
         >
           Done
@@ -255,7 +260,7 @@ function ResultBanner({ result }) {
       aria-live="polite"
       className={cn("block space-y-1 rounded-xl p-4", style.banner)}
     >
-      <p className="flex items-center gap-2 text-xl leading-tight font-semibold">
+      <p className="flex items-start gap-2 text-xl leading-tight font-semibold wrap-anywhere">
         <Icon className="size-6 shrink-0" aria-hidden="true" />
         {result.message}
       </p>
@@ -270,7 +275,7 @@ function ResultBanner({ result }) {
         ? <Button
             type="button"
             variant="outline"
-            className="mt-2 text-foreground"
+            className="mt-2 text-foreground pointer-coarse:h-11"
             onClick={result.action.onClick}
           >
             {result.action.label}
