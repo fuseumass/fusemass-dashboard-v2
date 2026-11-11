@@ -409,6 +409,85 @@ export default function HardwareLab({ mode }) {
         </AlertDescription>
       </Alert>
     );
+  const myHardwareSection = (
+    <section className="space-y-4">
+      <h2 className="text-base font-semibold">My hardware</h2>
+      <DataTable
+        columns={loanColumns}
+        data={loans}
+        loading={loading}
+        emptyState={<EmptyState title="You have no hardware loans." />}
+      />
+    </section>
+  );
+  const facilitiesSection = (
+    <section className="space-y-4">
+      <div className="flex items-center justify-between gap-2">
+        <h2 className="text-base font-semibold">Facilities</h2>
+        {mode === "admin" && (
+          <Button
+            variant="outline"
+            onClick={() => setEditor({ facility: true, record: {} })}
+          >
+            Create facility
+          </Button>
+        )}
+      </div>
+      {loading
+        ? <Skeleton className="h-20 w-full" />
+        : <DataTable
+            data={facilities}
+            columns={[
+              { accessorKey: "name", header: "Name" },
+              { accessorKey: "location", header: "Location" },
+              { accessorKey: "accessNotes", header: "Access notes" },
+              ...(mode === "admin"
+                ? [
+                    {
+                      id: "actions",
+                      header: "Actions",
+                      cell: ({ row }) => (
+                        <div className="flex gap-2">
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() =>
+                              setEditor({
+                                facility: true,
+                                record: row.original,
+                              })
+                            }
+                          >
+                            Edit
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            onClick={() =>
+                              setConfirm({
+                                label: `Remove ${row.original.name}`,
+                                action: async () => {
+                                  await apiFetch(
+                                    `/api/admin/hardware/facilities/${row.original._id}`,
+                                    { method: "DELETE" },
+                                  );
+                                  await load();
+                                },
+                              })
+                            }
+                          >
+                            Remove
+                          </Button>
+                        </div>
+                      ),
+                    },
+                  ]
+                : []),
+            ]}
+            emptyState={<EmptyState title="No facilities listed." />}
+          />}
+    </section>
+  );
   return (
     <div className="space-y-6">
       <PageHeader
@@ -642,6 +721,9 @@ export default function HardwareLab({ mode }) {
           )}
         </section>
       )}
+      {/* Participants see what they have and where to build first. */}
+      {mode === "attendee" && myHardwareSection}
+      {mode === "attendee" && facilitiesSection}
       <section className="space-y-4">
         <h2 className="text-base font-semibold">
           {mode === "attendee" ? "Browse hardware" : "Inventory"}
@@ -704,17 +786,6 @@ export default function HardwareLab({ mode }) {
             </details>
           ))}
       </section>
-      {mode === "attendee" && (
-        <section className="space-y-4">
-          <h2 className="text-base font-semibold">My hardware</h2>
-          <DataTable
-            columns={loanColumns}
-            data={loans}
-            loading={loading}
-            emptyState={<EmptyState title="You have no hardware loans." />}
-          />
-        </section>
-      )}
       {mode === "admin" && (
         <section className="space-y-4">
           <h2 className="text-base font-semibold">Import and labels</h2>
@@ -851,72 +922,7 @@ export default function HardwareLab({ mode }) {
           )}
         </section>
       )}
-      <section className="space-y-4">
-        <div className="flex items-center justify-between gap-2">
-          <h2 className="text-base font-semibold">Facilities</h2>
-          {mode === "admin" && (
-            <Button
-              variant="outline"
-              onClick={() => setEditor({ facility: true, record: {} })}
-            >
-              Create facility
-            </Button>
-          )}
-        </div>
-        {loading
-          ? <Skeleton className="h-20 w-full" />
-          : <DataTable
-              data={facilities}
-              columns={[
-                { accessorKey: "name", header: "Name" },
-                { accessorKey: "location", header: "Location" },
-                { accessorKey: "accessNotes", header: "Access notes" },
-                ...(mode === "admin"
-                  ? [
-                      {
-                        id: "actions",
-                        header: "Actions",
-                        cell: ({ row }) => (
-                          <div className="flex gap-2">
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              onClick={() =>
-                                setEditor({
-                                  facility: true,
-                                  record: row.original,
-                                })
-                              }
-                            >
-                              Edit
-                            </Button>
-                            <Button
-                              size="sm"
-                              variant="ghost"
-                              onClick={() =>
-                                setConfirm({
-                                  label: `Remove ${row.original.name}`,
-                                  action: async () => {
-                                    await apiFetch(
-                                      `/api/admin/hardware/facilities/${row.original._id}`,
-                                      { method: "DELETE" },
-                                    );
-                                    await load();
-                                  },
-                                })
-                              }
-                            >
-                              Remove
-                            </Button>
-                          </div>
-                        ),
-                      },
-                    ]
-                  : []),
-              ]}
-              emptyState={<EmptyState title="No facilities listed." />}
-            />}
-      </section>
+      {mode !== "attendee" && facilitiesSection}
       {editor && (
         <RecordEditor
           {...editor}
