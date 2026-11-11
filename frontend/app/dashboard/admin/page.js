@@ -6,12 +6,15 @@ import {
   Flag,
   FlagOff,
   Inbox,
+  Mail,
   MoreHorizontal,
   PanelRightOpen,
+  Pencil,
   RefreshCw,
   X,
 } from "lucide-react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import ApplicationEditForm from "@/components/ApplicationEditForm";
 import { FlagBadge, FlagPanel } from "@/components/ApplicationFlags";
 import ApplicationStatusBadge from "@/components/ApplicationStatusBadge";
 import DataTable from "@/components/DataTable";
@@ -47,7 +50,8 @@ import {
 } from "@/components/ui/sheet";
 import { Switch } from "@/components/ui/switch";
 import { apiFetch } from "@/lib/api";
-import { notifySuccess } from "@/lib/notify";
+import { formatDateTime } from "@/lib/datetime";
+import { notifyError, notifySuccess } from "@/lib/notify";
 import { useUser } from "@/lib/userContext";
 import { cn } from "@/lib/utils";
 
@@ -181,6 +185,27 @@ export default function AdminReviewPage() {
         flaggedBy: updated.flaggedBy,
       });
     }
+  }
+
+  // Staff corrected the application in the drawer: refresh the table row's
+  // columns (name, email, school) from the saved application.
+  function detailsChanged(updated) {
+    setApplications((prev) => {
+      const next = prev.map((app) =>
+        app._id === updated._id
+          ? {
+              ...app,
+              name: updated.name,
+              university: updated.university,
+              applicant: updated.applicant,
+              updatedAt: updated.updatedAt,
+            }
+          : app,
+      );
+      cache.list = next;
+      return next;
+    });
+    cache.details.set(updated._id, updated);
   }
 
   async function clearFlag(id) {
@@ -450,6 +475,7 @@ export default function AdminReviewPage() {
             cache={cache}
             onClose={() => setSelectedId(null)}
             onFlagChanged={flagChanged}
+            onDetailsChanged={detailsChanged}
             onDecide={decide}
             deciding={deciding === selected._id}
           />
@@ -467,11 +493,51 @@ function ApplicationDrawer({
   cache,
   onClose,
   onFlagChanged,
+  onDetailsChanged,
   onDecide,
   deciding,
 }) {
   const [app, setApp] = useState(() => cache.details.get(summary._id) || null);
   const [error, setError] = useState("");
+  const [editing, setEditing] = useState(false);
+  // Set when this drawer changed the account email, so an accepted applicant
+  // can be sent their acceptance email again at the corrected address.
+  const [newEmail, setNewEmail] = useState("");
+  const [resending, setResending] = useState(false);
+  const bodyRef = useRef(null);
+
+  // Switching between reading and editing starts at the top, where the
+  // resend offer and the account fields are.
+  function showTop() {
+    requestAnimationFrame(() => bodyRef.current?.scrollTo({ top: 0 }));
+  }
+
+  function saved(data) {
+    setApp(data.application);
+    onDetailsChanged(data.application);
+    setEditing(false);
+    showTop();
+    if (data.emailChanged) setNewEmail(data.application.applicant?.email || "");
+    notifySuccess(
+      data.changed?.length ? "Application updated" : "Nothing changed",
+    );
+  }
+
+  async function resendAcceptance() {
+    setResending(true);
+    try {
+      await apiFetch("/api/staff/attendee/resend-qr", {
+        method: "POST",
+        body: JSON.stringify({ email: newEmail }),
+      });
+      notifySuccess(`Acceptance email sent to ${newEmail}`);
+      setNewEmail("");
+    } catch (err) {
+      notifyError(err, { title: "Couldn't send the acceptance email" });
+    } finally {
+      setResending(false);
+    }
+  }
 
   useEffect(() => {
     const cached = cache.details.get(summary._id);
@@ -496,17 +562,45 @@ function ApplicationDrawer({
 
   return (
     <Sheet open onOpenChange={(open) => (open ? null : onClose())}>
-      <SheetContent className="w-full gap-0 sm:max-w-md">
+      <SheetContent
+        className={cn(
+          "w-full gap-0",
+          // Editing takes the whole width on phones: the form needs it.
+          editing ? "data-[side=right]:w-full sm:max-w-xl" : "sm:max-w-md",
+        )}
+      >
         <SheetHeader className="shrink-0 gap-1 border-b p-4 pr-12">
-          <SheetTitle className="text-base font-semibold">
-            {summary.name || summary.applicant?.name}
-          </SheetTitle>
+          <div className="flex items-start justify-between gap-3">
+            <SheetTitle className="text-base font-semibold">
+              {editing
+                ? "Edit application"
+                : summary.name || summary.applicant?.name}
+            </SheetTitle>
+            {app && !editing
+              ? <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    setEditing(true);
+                    showTop();
+                  }}
+                >
+                  <Pencil aria-hidden="true" />
+                  Edit
+                </Button>
+              : null}
+          </div>
           <SheetDescription className="flex flex-wrap items-center gap-x-3 gap-y-1">
-            <span>{summary.applicant?.email}</span>
+            <span className="break-all">{summary.applicant?.email}</span>
             <ApplicationStatusBadge status={summary.status} />
           </SheetDescription>
+          {app?.edits?.length ? <EditHistory edits={app.edits} /> : null}
         </SheetHeader>
-        <div className="min-h-0 flex-1 space-y-4 overflow-y-auto p-4">
+        <div
+          ref={bodyRef}
+          className="min-h-0 flex-1 space-y-4 overflow-y-auto p-4"
+        >
           {error
             ? <Alert variant="destructive">
                 <AlertDescription>{error}</AlertDescription>
@@ -515,23 +609,57 @@ function ApplicationDrawer({
               ? <p className="text-sm text-muted-foreground">
                   Loading the application
                 </p>
-              : <>
-                  <FlagPanel
+              : editing
+                ? <ApplicationEditForm
                     app={app}
-                    onChanged={(updated) => {
-                      setApp((prev) => ({
-                        ...prev,
-                        flagged: updated.flagged,
-                        flagReasons: updated.flagReasons,
-                        flaggedBy: updated.flaggedBy,
-                      }));
-                      onFlagChanged(updated);
+                    onSaved={saved}
+                    onCancel={() => {
+                      setEditing(false);
+                      showTop();
                     }}
                   />
-                  <ApplicationDetails app={app} />
-                </>}
+                : <>
+                    {newEmail && app.status === "accepted"
+                      ? <Alert variant="info" aria-live="polite">
+                          <Mail aria-hidden="true" />
+                          <AlertDescription className="space-y-2">
+                            <p>
+                              The acceptance email and QR code went to the old
+                              address. Send them to {newEmail}?
+                            </p>
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant="outline"
+                              loading={resending}
+                              onClick={resendAcceptance}
+                            >
+                              Resend acceptance email
+                            </Button>
+                          </AlertDescription>
+                        </Alert>
+                      : null}
+                    <FlagPanel
+                      app={app}
+                      onChanged={(updated) => {
+                        setApp((prev) => ({
+                          ...prev,
+                          flagged: updated.flagged,
+                          flagReasons: updated.flagReasons,
+                          flaggedBy: updated.flaggedBy,
+                        }));
+                        onFlagChanged(updated);
+                      }}
+                    />
+                    <ApplicationDetails app={app} />
+                  </>}
         </div>
-        <SheetFooter className="shrink-0 flex-row flex-wrap border-t">
+        <SheetFooter
+          className={cn(
+            "shrink-0 flex-row flex-wrap border-t",
+            editing && "hidden",
+          )}
+        >
           {DECISIONS.map(([decision, label, Icon]) => (
             <Button
               key={decision}
@@ -548,6 +676,46 @@ function ApplicationDrawer({
       </SheetContent>
     </Sheet>
   );
+}
+
+// "Edited by X on date" for the latest staff correction, with the full
+// history (who changed what) a click away.
+function EditHistory({ edits }) {
+  const latest = edits[edits.length - 1];
+  const who = (edit) => edit.by?.name || edit.by?.email || "a staff member";
+  return (
+    <details className="text-xs text-muted-foreground">
+      <summary className="cursor-pointer">
+        Edited by {who(latest)} on {formatDateTime(latest.at)}
+        {edits.length > 1 ? ` (${edits.length} edits)` : ""}
+      </summary>
+      <ul className="mt-1 space-y-1">
+        {[...edits].reverse().map((edit, index) => (
+          // biome-ignore lint/suspicious/noArrayIndexKey: edits never reorder
+          <li key={index}>
+            {formatDateTime(edit.at)}, {who(edit)}:{" "}
+            {(edit.fields || []).map(fieldLabel).join(", ")}
+          </li>
+        ))}
+      </ul>
+    </details>
+  );
+}
+
+const FIELD_LABELS = {
+  "user.email": "account email",
+  "user.name": "account name",
+  name: "name",
+  tshirtSize: "T-shirt size",
+  programmingSkills: "programming skills",
+  hardwareSkills: "hardware skills",
+  otherSkills: "other skills",
+};
+
+function fieldLabel(name) {
+  if (FIELD_LABELS[name]) return FIELD_LABELS[name];
+  if (name.startsWith("answers.")) return name.slice("answers.".length);
+  return name.replace(/^(socials|experience)\./, "");
 }
 
 function ApplicationDetails({ app }) {

@@ -33,7 +33,7 @@ were presumably tracked in spreadsheets, so B33–B37 are a new design.
 | Google sign-in | ➕ ✅ | — |
 | Roles: admin / organizer / attendee | ✅ as admin / moderator / applicant | — |
 | Mentor role | ✖ mentorship runs on Discord | B31 |
-| Judge role (judging app used a CSV of logins) | ✅ role, single-use invites, CSV preview/send, judge-only nav and admin management; Schedule, Judging, Skipped and Demo screens | B47, F27 |
+| Judge role (judging app used a CSV of logins) | ✅ role, single-use invites, CSV preview/send, judge-only nav and admin management (edit name, email and hardware flag, inline hardware toggle); Schedule, Judging, Skipped and Demo screens | B47, F27 |
 | Workshop organizer access | ✅ per-workshop assignments, email lookup and notifications; applicants retain their role | B17, F18, F19 |
 | Admin role management (`pages#permissions`) | ✅ Users page | — |
 | "Redeem code" to upgrade your own role | ✖ security hole (let anyone become admin) | B17 |
@@ -55,6 +55,7 @@ were presumably tracked in spreadsheets, so B33–B37 are a new design.
 | **Waitlisted email** | ✅ built-in `application_waitlisted` template | B41 |
 | Accepted status still visible after applications close | ✅ `latest` on `GET /api/applications/me`, shown on the home page | B27, F22 |
 | Application search | 🟡 status/round filters only | F14 |
+| Staff edit a submitted application (typos, wrong email) | ✅ edit mode on Review: every profile field, custom answers (form rules, consent boxes not re-ticked), account name and email (409 on duplicates, old links cancelled), audit trail, resend acceptance after an email fix | — |
 | Resume auto-check + flag suspicious applications, flag/unflag | 🟡 flag/unflag, list filter + count, optional auto-checks (short resume, name missing, duplicate phone/resume). Resume text is read for Word files and plain-text PDFs only; other PDFs skip the text rules | B42 |
 | Admin statistics (counts by school, gender, status, …) | 🟡 built; workshop attendance + hardware out wait on B21/B22 | B43, F26 |
 | CSV export of applications | ✅ admin only, answers flattened, formula-safe | B29 |

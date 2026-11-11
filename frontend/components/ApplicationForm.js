@@ -33,8 +33,8 @@ import { apiFetch, apiUpload } from "@/lib/api";
 import { config } from "@/lib/config";
 import { cn } from "@/lib/utils";
 
-const TSHIRT_SIZES = ["XS", "S", "M", "L", "XL", "XXL", "XXXL"];
-const EDUCATION_LEVELS = [
+export const TSHIRT_SIZES = ["XS", "S", "M", "L", "XL", "XXL", "XXXL"];
+export const EDUCATION_LEVELS = [
   "High School",
   "Undergraduate",
   "Graduate",
@@ -42,7 +42,7 @@ const EDUCATION_LEVELS = [
   "Bootcamp",
   "Other",
 ];
-const GENDERS = [
+export const GENDERS = [
   "Man",
   "Woman",
   "Non-binary",
@@ -757,7 +757,7 @@ function isWide(field) {
 }
 
 // A checkbox with its sentence, for yes/no statements.
-function CheckRow({ id, checked, onChange, invalid, children }) {
+export function CheckRow({ id, checked, onChange, invalid, children }) {
   return (
     <div className="flex items-start gap-2.5">
       <Checkbox
@@ -776,7 +776,14 @@ function CheckRow({ id, checked, onChange, invalid, children }) {
 
 // A single-choice dropdown over a list of strings. Optional questions get a
 // "No answer" row so a choice can be taken back.
-function ChoiceSelect({ id, value, onChange, options, required, invalid }) {
+export function ChoiceSelect({
+  id,
+  value,
+  onChange,
+  options,
+  required,
+  invalid,
+}) {
   return (
     <Select
       value={value || ""}
@@ -801,7 +808,7 @@ function ChoiceSelect({ id, value, onChange, options, required, invalid }) {
   );
 }
 
-function DynamicField({ id, field, value, onChange, error }) {
+export function DynamicField({ id, field, value, onChange, error }) {
   if (field.type === "checkbox") {
     return (
       <div className="space-y-1.5">
@@ -1064,7 +1071,15 @@ function FieldError({ id, error }) {
 }
 
 // Label, optional help text, the control, and its error underneath.
-function Field({ id, label, required, description, error, wide, children }) {
+export function Field({
+  id,
+  label,
+  required,
+  description,
+  error,
+  wide,
+  children,
+}) {
   return (
     <div className={cn("grid content-start gap-1.5", wide && "sm:col-span-2")}>
       <Label htmlFor={id} className="leading-snug">

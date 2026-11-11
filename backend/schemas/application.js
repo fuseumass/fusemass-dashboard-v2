@@ -13,7 +13,48 @@ var Schema = mongoose.Schema;
  *
  * Review status starts "pending"; an admin moves it to "accepted"/"rejected"
  * (or "waitlisted"). While still being filled out it can be saved as "draft".
+ *
+ * @typedef {object} Application
+ * @property {object} applicant - User who applied.
+ * @property {object} round - ApplicationRound applied to.
+ * @property {string} name - Full name as typed on the form.
+ * @property {string} phone
+ * @property {number} age
+ * @property {string} gender
+ * @property {string} pronouns
+ * @property {string} education
+ * @property {string} university
+ * @property {string} major
+ * @property {string} allergies
+ * @property {string} tshirtSize
+ * @property {object} socials - { linkedin, github, website, other: [{ label, url }] }.
+ * @property {object} experience - { attendedBefore, hackathonsAttended, attendedThisBefore }.
+ * @property {Array<string>} programmingSkills
+ * @property {Array<string>} hardwareSkills
+ * @property {Array<string>} otherSkills
+ * @property {object} answers - Custom question answers keyed by formConfig key.
+ * @property {string} status - Review status (utils/applicationStatus).
+ * @property {boolean} flagged - Staff "look closer" marker.
+ * @property {Array<ApplicationEdit>} edits - Staff corrections, oldest first.
  */
+
+/**
+ * One staff correction of a submitted application (PATCH
+ * /api/admin/applications/:id/details).
+ * @typedef {object} ApplicationEdit
+ * @property {object} by - User (moderator or admin) who made the edit.
+ * @property {Date} at - When.
+ * @property {Array<string>} fields - What changed, e.g. "name",
+ *   "socials.github", "answers.<key>", "user.email".
+ */
+var editSchema = new Schema(
+  {
+    by: { type: Schema.Types.ObjectId, ref: "User" },
+    at: { type: Date, default: Date.now },
+    fields: [{ type: String }],
+  },
+  { _id: false }
+);
 
 // Sub-shape for the social links section. All optional.
 var socialsSchema = new Schema(
@@ -138,6 +179,11 @@ var applicationSchema = new Schema(
     // already compare against earlier applications. Never sent to clients.
     phoneKey: { type: String, index: true, sparse: true },
     resumeHash: { type: String, index: true, sparse: true },
+
+    // ---- Staff corrections ---------------------------------------------------
+    // Audit trail of staff edits to the submitted answers (typo fixes).
+    // Staff-only, like the flags.
+    edits: { type: [editSchema], default: undefined },
   },
   { timestamps: true }
 );
@@ -151,7 +197,7 @@ applicationSchema.index({ autoAccepted: 1, reviewedAt: 1 }, { sparse: true });
 // an access-checked signed link. `resumeUrl` is the permanent blob URL older
 // builds stored — dropped so it can't leak from those documents either.
 //
-// Flags are for staff, so they are left out unless the caller asks with
+// Flags (and the staff edit history) are for staff, so they are left out unless the caller asks with
 // `application.toJSON({ includeFlags: true })`, which only the moderator
 // routes do. Leaving them out by default means a route that returns an
 // application to its applicant can't leak them by forgetting something.
@@ -168,6 +214,7 @@ applicationSchema.set("toJSON", {
       delete ret.flaggedBy;
       delete ret.flaggedAt;
       delete ret.autoAccepted;
+      delete ret.edits;
     }
     return ret;
   },
