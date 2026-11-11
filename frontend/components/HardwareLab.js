@@ -5,11 +5,10 @@ import Image from "next/image";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
-import CheckInStation from "@/components/CheckInStation";
 import DataTable from "@/components/DataTable";
 import EmptyState from "@/components/EmptyState";
+import HardwareStation from "@/components/HardwareStation";
 import PageHeader from "@/components/PageHeader";
-import QRScanner from "@/components/QRScanner";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import {
   AlertDialog,
@@ -36,15 +35,7 @@ import {
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Textarea } from "@/components/ui/textarea";
 import { apiDownload, apiFetch } from "@/lib/api";
 import { formatDateTime } from "@/lib/datetime";
 import { applyServerError, zodResolver } from "@/lib/forms";
@@ -183,14 +174,7 @@ export default function HardwareLab({ mode }) {
   const [csvText, setCsvText] = useState("");
   const [preview, setPreview] = useState(null);
   const [labels, setLabels] = useState(null);
-  const [attendee, setAttendee] = useState(null);
-  const [attendeeKey, setAttendeeKey] = useState(null);
-  const [attendeeQuery, setAttendeeQuery] = useState("");
-  const [attendees, setAttendees] = useState([]);
-  const [selectedItem, setSelectedItem] = useState("");
-  const [dueAt, setDueAt] = useState("");
-  const [notes, setNotes] = useState("");
-  const [view, setView] = useState("attendee");
+  const [defaultDueAt, setDefaultDueAt] = useState(null);
   const [confirm, setConfirm] = useState(null);
   const base = mode === "attendee" ? "/api/hardware" : `/api/${mode}/hardware`;
 
@@ -201,6 +185,7 @@ export default function HardwareLab({ mode }) {
       const data = await apiFetch(base);
       setItems(data.items);
       setFacilities(data.facilities);
+      setDefaultDueAt(data.defaultDueAt || null);
       if (mode === "attendee")
         setLoans((await apiFetch("/api/hardware/mine")).checkouts);
     } catch (err) {
@@ -212,6 +197,16 @@ export default function HardwareLab({ mode }) {
   useEffect(() => {
     if (allowed) load();
   }, [allowed, load]);
+  // Stock refresh after a desk checkout or return, without the skeleton.
+  async function reloadStock() {
+    try {
+      const data = await apiFetch(base);
+      setItems(data.items);
+      setDefaultDueAt(data.defaultDueAt || null);
+    } catch (err) {
+      setError(err.message);
+    }
+  }
 
   async function run(action, message) {
     if (busyRef.current) return;
@@ -229,27 +224,6 @@ export default function HardwareLab({ mode }) {
       setBusy(false);
     }
   }
-  async function lookup(key) {
-    setAttendee(null);
-    setAttendeeKey(null);
-    setLoans([]);
-    const data = await apiFetch(
-      `/api/staff/hardware/checkouts?open=1&${new URLSearchParams(key)}`,
-    );
-    setLoans(data.checkouts);
-    setAttendee(data.attendee);
-    setAttendeeKey(key);
-    setView("attendee");
-  }
-  async function outstanding() {
-    const data = await apiFetch("/api/staff/hardware/checkouts?open=1");
-    setLoans(data.checkouts);
-    setView("outstanding");
-  }
-  async function refreshLoans() {
-    if (view === "outstanding") await outstanding();
-    else if (attendeeKey) await lookup(attendeeKey);
-  }
   const filtered = items.filter(
     (item) =>
       (category === "all" || item.category === category) &&
@@ -257,7 +231,6 @@ export default function HardwareLab({ mode }) {
         .toLowerCase()
         .includes(search.toLowerCase()),
   );
-  const selected = items.find((item) => item._id === selectedItem);
   const itemColumns = [
     { accessorKey: "name", header: "Name" },
     { accessorKey: "category", header: "Category" },
@@ -312,36 +285,6 @@ export default function HardwareLab({ mode }) {
       header: "Item",
       cell: ({ row }) => row.original.item?.name || "Archived item",
     },
-    ...(mode === "staff"
-      ? [
-          {
-            id: "team",
-            header: "Team",
-            cell: ({ row }) => (
-              <div className="space-y-1">
-                <div>{row.original.team?.name || "No team"}</div>
-                {row.original.teamChanged && (
-                  <Badge variant="secondary">
-                    Changed team: {row.original.currentTeam?.name || "no team"}
-                  </Badge>
-                )}
-              </div>
-            ),
-          },
-          {
-            id: "borrower",
-            header: "Attendee",
-            cell: ({ row }) => (
-              <div>
-                {row.original.user?.name}
-                <div className="text-xs text-muted-foreground">
-                  {row.original.user?.email}
-                </div>
-              </div>
-            ),
-          },
-        ]
-      : []),
     {
       accessorKey: "checkedOutAt",
       header: "Checked out",
@@ -375,32 +318,6 @@ export default function HardwareLab({ mode }) {
           : <Badge variant="secondary">On loan</Badge>,
     },
   ];
-  if (mode === "staff")
-    loanColumns.push({
-      id: "return",
-      header: "Return",
-      cell: ({ row }) =>
-        !row.original.returnedAt && (
-          <Button
-            size="sm"
-            variant="outline"
-            disabled={busy}
-            onClick={() =>
-              run(async () => {
-                await apiFetch(
-                  `/api/staff/hardware/checkouts/${row.original._id}/return`,
-                  { method: "POST" },
-                );
-                await refreshLoans();
-                await load();
-              }, "Return recorded.")
-            }
-          >
-            Return
-          </Button>
-        ),
-    });
-
   if (!allowed)
     return (
       <Alert>
@@ -520,206 +437,11 @@ export default function HardwareLab({ mode }) {
         {notice && <p className="text-sm text-success">{notice}</p>}
       </div>
       {mode === "staff" && (
-        <section className="space-y-4">
-          <div className="flex flex-wrap gap-2">
-            <Button
-              variant="outline"
-              disabled={busy}
-              onClick={() => run(outstanding)}
-            >
-              View outstanding
-            </Button>
-            <Button
-              variant="outline"
-              disabled={busy}
-              onClick={() =>
-                run(
-                  () =>
-                    apiDownload(
-                      "/api/staff/hardware/export.csv",
-                      "hardware-checkouts.csv",
-                    ),
-                  "CSV downloaded.",
-                )
-              }
-            >
-              Export history
-            </Button>
-            <Button
-              variant="outline"
-              onClick={() =>
-                setConfirm({
-                  label: "Email everyone still holding hardware",
-                  action: async () => {
-                    const data = await apiFetch(
-                      "/api/staff/hardware/reminders",
-                      { method: "POST", body: "{}" },
-                    );
-                    setNotice(`${data.queued} reminders queued.`);
-                  },
-                })
-              }
-            >
-              Send return reminders
-            </Button>
-          </div>
-          <CheckInStation
-            title="Scan attendee QR"
-            submitLabel="Find attendee"
-            onCode={(qrId) => run(() => lookup({ qrId }))}
-            result={null}
-          />
-          <form
-            className="flex flex-wrap items-end gap-2"
-            onSubmit={(e) => {
-              e.preventDefault();
-              run(async () =>
-                setAttendees(
-                  (
-                    await apiFetch(
-                      `/api/staff/attendees?q=${encodeURIComponent(attendeeQuery)}`,
-                    )
-                  ).attendees,
-                ),
-              );
-            }}
-          >
-            <div className="min-w-64 flex-1 space-y-2">
-              <Label htmlFor="attendee-search">Attendee name or email</Label>
-              <Input
-                id="attendee-search"
-                value={attendeeQuery}
-                onChange={(e) => setAttendeeQuery(e.target.value)}
-              />
-            </div>
-            <Button variant="outline" loading={busy}>
-              Search attendees
-            </Button>
-          </form>
-          {attendees.map((person) => (
-            <Button
-              key={person.id}
-              variant="outline"
-              disabled={busy}
-              onClick={() => run(() => lookup({ userId: person.id }))}
-            >
-              {person.name} ({person.email})
-            </Button>
-          ))}
-          {attendee && (
-            <p className="text-sm font-medium">
-              {attendee.name} ({attendee.team?.name || "No team"}):{" "}
-              {attendee.checkedIn
-                ? "Checked in"
-                : "Not checked in to the event"}
-            </p>
-          )}
-          <h2 className="text-base font-semibold">
-            {view === "outstanding"
-              ? "Outstanding hardware"
-              : "Attendee hardware"}
-          </h2>
-          <DataTable
-            columns={loanColumns}
-            data={loans}
-            emptyState={
-              <EmptyState
-                title={
-                  attendee
-                    ? "No open hardware loans."
-                    : "Scan an attendee or view outstanding hardware."
-                }
-              />
-            }
-          />
-          {attendee && (
-            <form
-              className="space-y-4 rounded-md border p-4"
-              onSubmit={(e) => {
-                e.preventDefault();
-                setConfirm({
-                  label: `Check out ${selected?.name || "item"} to ${attendee.name}`,
-                  action: async () => {
-                    await apiFetch("/api/staff/hardware/checkouts", {
-                      method: "POST",
-                      body: JSON.stringify({
-                        ...attendeeKey,
-                        itemId: selectedItem,
-                        dueAt: dueAt ? new Date(dueAt).toISOString() : null,
-                        notes,
-                      }),
-                    });
-                    await lookup(attendeeKey);
-                    await load();
-                    setNotice("Checkout recorded.");
-                  },
-                });
-              }}
-            >
-              <h2 className="text-base font-semibold">Check out hardware</h2>
-              <QRScanner
-                onScan={async (code) => {
-                  const id = code.replace(/^hardware:/, "");
-                  if (!items.some((item) => item._id === id))
-                    throw new Error("No inventory item matches this label.");
-                  setSelectedItem(id);
-                }}
-              />
-              <div className="space-y-2">
-                <Label htmlFor="checkout-item">Item</Label>
-                {/* Keyed on the chosen item's stock so the trigger's label
-                    refreshes after a checkout or return. */}
-                <Select
-                  key={`${selectedItem}:${items.find((item) => item._id === selectedItem)?.availableQty ?? ""}`}
-                  value={selectedItem}
-                  onValueChange={setSelectedItem}
-                >
-                  <SelectTrigger id="checkout-item">
-                    <SelectValue placeholder="Select an item" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {filtered.map((item) => (
-                      <SelectItem key={item._id} value={item._id}>
-                        {item.name} ({item.availableQty} available)
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="due-at">
-                  Return deadline (your local time, optional)
-                </Label>
-                <Input
-                  id="due-at"
-                  type="datetime-local"
-                  value={dueAt}
-                  onChange={(e) => setDueAt(e.target.value)}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="loan-notes">
-                  Condition or collateral notes
-                </Label>
-                <Textarea
-                  id="loan-notes"
-                  value={notes}
-                  onChange={(e) => setNotes(e.target.value)}
-                />
-              </div>
-              <Button
-                disabled={
-                  busy ||
-                  !selected ||
-                  !selected.availableQty ||
-                  !attendee.checkedIn
-                }
-              >
-                Review checkout
-              </Button>
-            </form>
-          )}
-        </section>
+        <HardwareStation
+          items={items}
+          defaultDueAt={defaultDueAt}
+          onInventoryChange={reloadStock}
+        />
       )}
       {/* Participants see what they have and where to build first. */}
       {mode === "attendee" && myHardwareSection}

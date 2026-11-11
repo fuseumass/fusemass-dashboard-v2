@@ -255,6 +255,12 @@ guidelines). Close this when F14 is done.
 Folded into F13 (mobile shell) and F16 (accessibility baseline). Do a final
 audit with axe / Lighthouse on every page once F14 lands.
 - **Depends on:** F13, F14.
+- [x] Phone and tablet pass (375, 390, 768 px, plus 1280 for regressions):
+      no horizontal page scroll on any dashboard page, 44 px tap targets on
+      touch screens for the event-day screens (`pointer-coarse:`), dialogs
+      scroll inside the screen, long names and emails wrap, signed-out home
+      page has a header with "Sign in" (a side sheet on phones).
+- [ ] axe / Lighthouse audit; real-device camera check of the QR scanner.
 
 ---
 

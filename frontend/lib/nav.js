@@ -433,6 +433,8 @@ export function getBreadcrumbs(pathname) {
 
 // "reset-password" -> "Reset password"; ids are left alone.
 function humanize(segment) {
+  // A database id (24 hex characters) means nothing to a reader.
+  if (/^[a-f0-9]{24}$/i.test(segment)) return "Details";
   const text = decodeURIComponent(segment).replace(/[-_]+/g, " ");
   return text.charAt(0).toUpperCase() + text.slice(1);
 }

@@ -73,7 +73,14 @@ async function inventory(req, res) {
     items = items.filter(function match(item) {
       return (!req.query.category || item.category === req.query.category) && (!q || (String(item._id) + " " + item.name + " " + item.description).toLowerCase().includes(q));
     });
-    return res.json({ items: items, facilities: await Facility.find({}).sort({ name: 1 }).lean() });
+    var body = { items: items, facilities: await Facility.find({}).sort({ name: 1 }).lean() };
+    if (req.hardwareStaff) {
+      // The deadline checkout applies when staff leave the due time blank (null when unset or past).
+      var settings = await settingsCache.get();
+      var deadline = settings && settings.hardwareReturnBy ? new Date(settings.hardwareReturnBy) : null;
+      body.defaultDueAt = deadline && deadline > new Date() ? deadline.toISOString() : null;
+    }
+    return res.json(body);
   } catch (err) { return failure(res, err); }
 }
 /** @param {object} req - Request. @param {object} res - Response. @returns {Promise<object>} Own history only. */

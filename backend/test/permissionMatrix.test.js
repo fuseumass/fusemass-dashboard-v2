@@ -123,6 +123,7 @@ var MATRIX = [
   row("POST", "/api/admin/judges/bulk", "admin"),
   row("POST", "/api/admin/judges/:id/resend", "admin"),
   row("DELETE", "/api/admin/judges/:id", "admin"),
+  row("PATCH", "/api/admin/judges/:id", "admin", { body: { hardware: true } }),
   row("GET", "/api/admin/judging/rooms", "admin"),
   row("POST", "/api/admin/judging/rooms", "admin"),
   row("PATCH", "/api/admin/judging/rooms/:id", "admin"),
@@ -229,6 +230,10 @@ var MATRIX = [
     body: { reason: "Matrix check" },
   }),
   row("DELETE", "/api/admin/applications/:id/flag", "moderator", { use: { id: "application" } }),
+  row("PATCH", "/api/admin/applications/:id/details", "moderator", {
+    use: { id: "application" },
+    body: { fields: { name: "Matrix Edit" }, user: { email: "matrix-edit@example.com" } },
+  }),
   row("GET", "/api/admin/teams", "moderator"),
   row("GET", "/api/staff/attendees", "moderator"),
   row("GET", "/api/staff/attendee", "moderator"),

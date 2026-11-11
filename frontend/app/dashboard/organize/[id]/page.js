@@ -123,7 +123,7 @@ export default function WorkshopConsole() {
                     type="number"
                     min={1}
                     max={180}
-                    className="w-24"
+                    className="w-24 pointer-coarse:h-11"
                     value={minutes}
                     onChange={(e) => setMinutes(e.target.value)}
                   />
@@ -132,6 +132,7 @@ export default function WorkshopConsole() {
                   <Button
                     key={verb}
                     variant="outline"
+                    className="pointer-coarse:h-11"
                     loading={pending}
                     onClick={() =>
                       action(
@@ -144,13 +145,18 @@ export default function WorkshopConsole() {
                     {verb.charAt(0).toUpperCase() + verb.slice(1)} attendance
                   </Button>
                 ))}
-                <Button asChild variant="outline">
+                <Button
+                  asChild
+                  variant="outline"
+                  className="pointer-coarse:h-11"
+                >
                   <Link href={`/dashboard/organize/${id}/present`}>
                     Present
                   </Link>
                 </Button>
                 <Button
                   variant="outline"
+                  className="pointer-coarse:h-11"
                   loading={pending}
                   onClick={async () => {
                     setPending(true);
@@ -217,10 +223,16 @@ export default function WorkshopConsole() {
                     id="attendee-id"
                     value={userId}
                     onChange={(e) => setUserId(e.target.value)}
+                    className="pointer-coarse:h-11"
                     required
                   />
                 </div>
-                <Button type="submit" variant="outline" loading={pending}>
+                <Button
+                  type="submit"
+                  variant="outline"
+                  className="pointer-coarse:h-11"
+                  loading={pending}
+                >
                   Add attendee
                 </Button>
               </form>
@@ -258,13 +270,14 @@ export default function WorkshopConsole() {
                           maxLength={200}
                           required
                           onChange={(e) => setPrize(e.target.value)}
+                          className="pointer-coarse:h-11"
                         />
                       </div>
                       <div className="space-y-2">
                         <Label htmlFor="count">Winners</Label>
                         <Input
                           id="count"
-                          className="w-24"
+                          className="w-24 pointer-coarse:h-11"
                           type="number"
                           min={1}
                           required
@@ -272,7 +285,7 @@ export default function WorkshopConsole() {
                           onChange={(e) => setCount(e.target.value)}
                         />
                       </div>
-                      <div className="flex items-center gap-2">
+                      <div className="flex items-center gap-2 pointer-coarse:min-h-11">
                         <Checkbox
                           id="early"
                           checked={early}
@@ -282,6 +295,7 @@ export default function WorkshopConsole() {
                       </div>
                       <Button
                         type="submit"
+                        className="pointer-coarse:h-11"
                         loading={pending}
                         disabled={
                           !prize.trim() ||

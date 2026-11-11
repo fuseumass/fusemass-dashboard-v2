@@ -5,6 +5,7 @@ import { useCallback, useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
 import DataTable from "@/components/DataTable";
+import JudgeEditDialog from "@/components/JudgeEditDialog";
 import PageHeader from "@/components/PageHeader";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import {
@@ -36,6 +37,7 @@ import {
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Switch } from "@/components/ui/switch";
 import { apiFetch } from "@/lib/api";
 import { useFeatures } from "@/lib/features";
 import { applyServerError, zodResolver } from "@/lib/forms";
@@ -62,6 +64,11 @@ export default function JudgesPage() {
   const [busy, setBusy] = useState(false);
   const [csv, setCsv] = useState("");
   const [preview, setPreview] = useState(null);
+  const [editing, setEditing] = useState(null);
+  const [toggling, setToggling] = useState(null);
+  // "Regenerate assignments" reminder after a hardware change while an
+  // assignment version is active.
+  const [warning, setWarning] = useState("");
   const form = useForm({
     resolver: zodResolver(schema),
     defaultValues: { name: "", email: "", hardware: false },
@@ -113,6 +120,32 @@ export default function JudgesPage() {
       setBusy(false);
     }
   }
+  // Put a saved judge back into the list, and tell the admin what to do next.
+  function judgeSaved(data) {
+    setJudges((list) =>
+      list.map((j) => (j._id === data.judge._id ? data.judge : j)),
+    );
+    if (data.warning) setWarning(data.warning);
+    if (data.inviteNeedsResend)
+      notifySuccess("Judge updated. Resend the invite to the new email.");
+    else notifySuccess("Judge updated");
+  }
+  async function toggleHardware(judge, hardware) {
+    setToggling(judge._id);
+    setError("");
+    try {
+      judgeSaved(
+        await apiFetch(`${base}/${judge._id}`, {
+          method: "PATCH",
+          body: JSON.stringify({ hardware }),
+        }),
+      );
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setToggling(null);
+    }
+  }
   async function readCsv(event) {
     setPreview(null);
     setCsv("");
@@ -161,7 +194,15 @@ export default function JudgesPage() {
     {
       accessorKey: "hardware",
       header: "Hardware",
-      cell: ({ row }) => (row.original.hardware ? "Yes" : "No"),
+      cell: ({ row }) => (
+        <Switch
+          size="sm"
+          checked={Boolean(row.original.hardware)}
+          disabled={toggling === row.original._id}
+          aria-label={`Hardware judge: ${row.original.name}`}
+          onCheckedChange={(value) => toggleHardware(row.original, value)}
+        />
+      ),
     },
     {
       accessorKey: "inviteStatus",
@@ -182,6 +223,14 @@ export default function JudgesPage() {
       header: "Actions",
       cell: ({ row }) => (
         <div className="flex gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={busy}
+            onClick={() => setEditing(row.original)}
+          >
+            Edit
+          </Button>
           <Button
             variant="outline"
             size="sm"
@@ -215,6 +264,16 @@ export default function JudgesPage() {
       {error
         ? <Alert variant="destructive">
             <AlertDescription>{error}</AlertDescription>
+          </Alert>
+        : null}
+      {warning
+        ? <Alert variant="warning" aria-live="polite">
+            <AlertDescription className="flex flex-wrap items-center justify-between gap-2">
+              <span>{warning}</span>
+              <Button variant="ghost" size="sm" onClick={() => setWarning("")}>
+                Dismiss
+              </Button>
+            </AlertDescription>
           </Alert>
         : null}
       <DataTable
@@ -353,6 +412,14 @@ export default function JudgesPage() {
           </Form>
         </DialogContent>
       </Dialog>
+      <JudgeEditDialog
+        judge={editing}
+        onClose={() => setEditing(null)}
+        onSaved={(data) => {
+          setEditing(null);
+          judgeSaved(data);
+        }}
+      />
       <AlertDialog
         open={Boolean(removing)}
         onOpenChange={(value) => {

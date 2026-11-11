@@ -74,6 +74,7 @@ export default function PresentAttendance() {
       <div className="flex gap-3">
         <Button
           variant="outline"
+          className="pointer-coarse:h-11"
           onClick={async () => {
             try {
               await screen.current.requestFullscreen();
@@ -86,7 +87,7 @@ export default function PresentAttendance() {
         >
           Full screen
         </Button>
-        <Button asChild variant="outline">
+        <Button asChild variant="outline" className="pointer-coarse:h-11">
           <Link href={`/dashboard/organize/${id}`}>Back to console</Link>
         </Button>
       </div>

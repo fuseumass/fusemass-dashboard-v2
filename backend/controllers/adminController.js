@@ -82,7 +82,8 @@ function listApplications(req, res) {
 /**
  * GET /api/admin/applications/:id
  * One application in full, with its round's form (which labels the custom
- * answers), for the review drawer.
+ * answers, and the built-in questions' settings the edit form needs) and its
+ * staff edit history, for the review drawer.
  *
  * @param {object} req - Express request (req.params.id is the application id).
  * @param {object} res - Express response.
@@ -96,8 +97,9 @@ function getApplication(req, res) {
 
   return Application.findById(req.params.id)
     .populate("applicant", "name email role")
-    .populate("round", "name formConfig")
+    .populate("round", "name formConfig profileFields")
     .populate("flaggedBy", "name email")
+    .populate("edits.by", "name email")
     .then(function afterFind(application) {
       if (!application) {
         res.status(404).json({ error: "Application not found." });

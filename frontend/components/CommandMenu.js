@@ -41,7 +41,7 @@ export default function CommandMenu({ groups }) {
       <Button
         variant="outline"
         size="sm"
-        className="text-muted-foreground max-sm:size-8 max-sm:p-0 sm:w-44 sm:justify-start"
+        className="text-muted-foreground max-sm:size-8 max-sm:p-0 sm:w-44 sm:justify-start pointer-coarse:h-11 max-sm:pointer-coarse:w-11"
         onClick={() => setOpen(true)}
         aria-label="Go to page"
       >

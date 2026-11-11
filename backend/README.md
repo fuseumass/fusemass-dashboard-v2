@@ -149,6 +149,25 @@ Optional environment variables:
 database (with no SMTP settings, so requests can't send email either). Leave it
 unset in production. It is deliberately not editable from Technical settings.
 
+## Correcting applications and judges
+
+`PATCH /api/admin/applications/:id/details` (moderators and admins) fixes
+typos in a submitted application: `{ fields?, answers?, user?: { name, email } }`.
+Answers follow the round's form rules (required stays required, choices must
+be options) except that staff never have to tick a consent checkbox. Status,
+flags, owner, round and resume can't be set there (400). A new account email
+is normalized, refused with 409 when another account has it, keeps
+`emailVerified` as it was and cancels reset / setup / verification links sent
+to the old address. Each change is appended to the application's `edits`
+(staff only). After an accepted applicant's email is fixed, the Review drawer
+offers to resend the acceptance email through
+`POST /api/staff/attendee/resend-qr`.
+
+`PATCH /api/admin/judges/:id` (admins, judging feature) takes
+`{ name?, email?, hardware? }`. A new email cancels a pending invite link (the
+admin resends it from the list); changing `hardware` while an assignment
+version is active answers with a `warning` to regenerate assignments.
+
 ## User groups
 
 `/api/admin/groups*` (admin only, `controllers/userGroupsController.js`,
@@ -259,7 +278,7 @@ emailed on acceptance (or via "Forgot password").
 | ------ | ------------------------------- | --------- | -------------------------------------- |
 | GET | `/api/hardware?q=&category=` | accepted user | Inventory availability and facilities; no borrower identities |
 | GET | `/api/hardware/mine` | accepted user | Own open and returned hardware with deadlines |
-| GET | `/api/staff/hardware` | moderator | Inventory and facilities |
+| GET | `/api/staff/hardware` | moderator | Inventory, facilities and `defaultDueAt` (the future return deadline blank due times get, or null) |
 | GET | `/api/staff/hardware/checkouts?itemId=&userId=&qrId=&open=1&overdue=1` | moderator | Borrower lookup, item history or outstanding loans, overdue first |
 | POST | `/api/staff/hardware/checkouts` | moderator | Checkout `{ qrId or userId, itemId, dueAt?, notes? }`; accepted and event checked-in required |
 | POST | `/api/staff/hardware/checkouts/:id/return` | moderator | Idempotent return; retains history |

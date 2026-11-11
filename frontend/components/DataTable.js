@@ -148,7 +148,7 @@ export default function DataTable({
                           ? <button
                               type="button"
                               onClick={header.column.getToggleSortingHandler()}
-                              className="-ml-1 inline-flex items-center gap-1 rounded-sm px-1 py-0.5 hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none"
+                              className="-ml-1 inline-flex items-center gap-1 rounded-sm px-1 py-0.5 pointer-coarse:py-2.5 hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none"
                             >
                               {flexRender(
                                 header.column.columnDef.header,

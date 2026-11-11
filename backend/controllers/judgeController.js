@@ -135,18 +135,144 @@ async function list(req, res, next) {
         var profile = profiles.find(function match(p) {
           return String(p.user) === String(user._id);
         });
-        return Object.assign(user.toJSON(), {
-          hardware: Boolean(profile && profile.hardware),
-          calibrationDone: Boolean(profile && profile.calibrationDone),
-          inviteStatus: !user.judgeInvitePending
-            ? "accepted"
-            : user.resetPasswordExpires > new Date()
-              ? "pending"
-              : "expired",
-        });
+        return serializeJudge(user, profile);
       }),
     });
   } catch (err) {
+    next(err);
+  }
+}
+
+// One judge as the Judges page lists them.
+function serializeJudge(user, profile) {
+  return Object.assign(user.toJSON(), {
+    hardware: Boolean(profile && profile.hardware),
+    calibrationDone: Boolean(profile && profile.calibrationDone),
+    inviteStatus: !user.judgeInvitePending
+      ? "accepted"
+      : user.resetPasswordExpires > new Date()
+        ? "pending"
+        : "expired",
+  });
+}
+
+var EDITABLE_JUDGE_KEYS = ["name", "email", "hardware"];
+
+// Check a PATCH body; returns { error } or { changes }.
+function cleanJudgeEdit(body) {
+  if (!body || typeof body !== "object" || Array.isArray(body))
+    return { error: "Send { name, email, hardware }." };
+  var unknown = Object.keys(body).filter(function notEditable(key) {
+    return EDITABLE_JUDGE_KEYS.indexOf(key) === -1;
+  });
+  if (unknown.length)
+    return {
+      error: "Only name, email and hardware can be changed here.",
+    };
+  var changes = {};
+  if (body.name !== undefined) {
+    if (typeof body.name !== "string" || !body.name.trim())
+      return { error: "Enter a name.", field: "name" };
+    if (body.name.trim().length > 200)
+      return { error: "Use a name of 200 characters or fewer.", field: "name" };
+    changes.name = body.name.trim();
+  }
+  if (body.email !== undefined) {
+    var email = typeof body.email === "string" ? body.email.trim().toLowerCase() : "";
+    if (!isEmail(email)) return { error: "Enter a valid email.", field: "email" };
+    changes.email = email;
+  }
+  if (body.hardware !== undefined) {
+    if (typeof body.hardware !== "boolean")
+      return { error: "Hardware must be true or false.", field: "hardware" };
+    changes.hardware = body.hardware;
+  }
+  return { changes: changes };
+}
+
+var JUDGE_EMAIL_TAKEN = {
+  error: "Another account already uses this email.",
+  field: "email",
+};
+
+/**
+ * PATCH /api/admin/judges/:id
+ * Change a judge's name, email or hardware flag. Body: { name?, email?,
+ * hardware? }. A new email drops the pending invite link sent to the old
+ * address (the admin resends it from the list when ready). Changing hardware
+ * while an assignment version is active returns a `warning`: queues only
+ * pick it up when assignments are regenerated.
+ * @param {object} req - Request.
+ * @param {object} res - Response.
+ * @param {function} next - Error callback.
+ * @returns {Promise<void>}
+ */
+async function update(req, res, next) {
+  if (!mongoose.isValidObjectId(req.params.id)) {
+    res.status(400).json({ error: "Invalid judge id." });
+    return;
+  }
+  var cleaned = cleanJudgeEdit(req.body);
+  if (cleaned.error) {
+    res.status(400).json({ error: cleaned.error, field: cleaned.field });
+    return;
+  }
+  var changes = cleaned.changes;
+  try {
+    var user = await User.findOne({ _id: req.params.id, role: "judge" });
+    if (!user) {
+      res.status(404).json({ error: "Judge not found." });
+      return;
+    }
+    var emailChanged = changes.email !== undefined && changes.email !== user.email;
+    if (emailChanged) {
+      var taken = await User.exists({
+        email: changes.email,
+        _id: { $ne: user._id },
+      });
+      if (taken) {
+        res.status(409).json(JUDGE_EMAIL_TAKEN);
+        return;
+      }
+      user.email = changes.email;
+      // Links mailed to the old (wrong) address must not work any more.
+      user.resetPasswordToken = undefined;
+      user.resetPasswordExpires = undefined;
+      user.emailVerificationToken = undefined;
+      user.emailVerificationExpires = undefined;
+      user.emailVerificationSentAt = undefined;
+    }
+    if (changes.name !== undefined) user.name = changes.name;
+    if (user.isModified()) await user.save();
+
+    var profile = await JudgeProfile.findOne({ user: user._id });
+    var warning = null;
+    if (
+      changes.hardware !== undefined &&
+      Boolean(profile && profile.hardware) !== changes.hardware
+    ) {
+      profile = await JudgeProfile.findOneAndUpdate(
+        { user: user._id },
+        { $set: { hardware: changes.hardware } },
+        { upsert: true, new: true },
+      );
+      var state = await require("../schemas/judgingState")
+        .findById("judging")
+        .lean();
+      if (state && state.activeVersion)
+        warning = "Regenerate assignments for this to affect queues.";
+    }
+    res.json({
+      judge: serializeJudge(user, profile),
+      emailChanged: emailChanged,
+      inviteNeedsResend: emailChanged && Boolean(user.judgeInvitePending),
+      warning: warning,
+    });
+  } catch (err) {
+    if (err && err.code === 11000) {
+      res.status(409).json(JUDGE_EMAIL_TAKEN);
+      return;
+    }
     next(err);
   }
 }
@@ -376,6 +502,7 @@ module.exports = {
   bulk: bulk,
   resend: resend,
   remove: remove,
+  update: update,
   accept: accept,
   status: status,
 };

@@ -500,7 +500,7 @@ export default function JudgingAdminPage() {
         </Alert>
       )}
       <Tabs defaultValue="rooms">
-        <TabsList className="h-auto flex-wrap">
+        <TabsList className="max-w-full justify-start overflow-x-auto">
           <TabsTrigger value="progress">Progress</TabsTrigger>
           <TabsTrigger value="results">Results</TabsTrigger>
           <TabsTrigger value="rooms">Rooms</TabsTrigger>

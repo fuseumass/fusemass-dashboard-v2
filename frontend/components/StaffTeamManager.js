@@ -115,8 +115,9 @@ export default function StaffTeamManager({ attendeeId }) {
             required
             value={lookupEmail}
             onChange={(event) => setLookupEmail(event.target.value)}
+            className="pointer-coarse:h-11"
           />
-          <Button type="submit" loading={busy}>
+          <Button type="submit" loading={busy} className="pointer-coarse:h-11">
             Find team
           </Button>
         </div>
@@ -149,7 +150,7 @@ export default function StaffTeamManager({ attendeeId }) {
       {data?.team && (
         <Card>
           <CardHeader>
-            <CardTitle>{data.team.name}</CardTitle>
+            <CardTitle className="wrap-anywhere">{data.team.name}</CardTitle>
             <p className="text-sm text-muted-foreground">
               {data.team.lockedAt
                 ? "Checked in for judging: team locked"
@@ -169,11 +170,12 @@ export default function StaffTeamManager({ attendeeId }) {
                     key={member._id}
                     className="flex flex-wrap items-center justify-between gap-2 py-2 text-sm"
                   >
-                    <span>
+                    <span className="min-w-0 wrap-anywhere">
                       {member.name} ({member.email})
                     </span>
                     <Button
                       variant="outline"
+                      className="pointer-coarse:h-11"
                       onClick={() =>
                         setConfirmation({
                           path: `/members/${member._id}`,
@@ -192,9 +194,12 @@ export default function StaffTeamManager({ attendeeId }) {
                     key={invite.email}
                     className="flex flex-wrap items-center justify-between gap-2 py-2 text-sm"
                   >
-                    <span>{invite.email}</span>
+                    <span className="min-w-0 wrap-anywhere">
+                      {invite.email}
+                    </span>
                     <Button
                       variant="outline"
+                      className="pointer-coarse:h-11"
                       onClick={() =>
                         setConfirmation({
                           path: `/invites/${encodeURIComponent(invite.email)}`,
@@ -227,11 +232,18 @@ export default function StaffTeamManager({ attendeeId }) {
                     type="email"
                     value={email}
                     onChange={(event) => setEmail(event.target.value)}
+                    className="pointer-coarse:h-11"
                   />
-                  <Button type="submit">Send invite</Button>
+                  <Button type="submit" className="pointer-coarse:h-11">
+                    Send invite
+                  </Button>
                 </div>
               </form>
-              <Button variant="outline" onClick={() => setAdding(!adding)}>
+              <Button
+                variant="outline"
+                className="pointer-coarse:h-11"
+                onClick={() => setAdding(!adding)}
+              >
                 {adding ? "Find team by scan" : "Add attendee by scan"}
               </Button>
               {user.role === "admin" && data.team.lockedAt && (

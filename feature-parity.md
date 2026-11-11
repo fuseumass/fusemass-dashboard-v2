@@ -33,7 +33,7 @@ were presumably tracked in spreadsheets, so B33–B37 are a new design.
 | Google sign-in | ➕ ✅ | — |
 | Roles: admin / organizer / attendee | ✅ as admin / moderator / applicant | — |
 | Mentor role | ✖ mentorship runs on Discord | B31 |
-| Judge role (judging app used a CSV of logins) | ✅ role, single-use invites, CSV preview/send, judge-only nav and admin management; Schedule, Judging, Skipped and Demo screens | B47, F27 |
+| Judge role (judging app used a CSV of logins) | ✅ role, single-use invites, CSV preview/send, judge-only nav and admin management (edit name, email and hardware flag, inline hardware toggle); Schedule, Judging, Skipped and Demo screens | B47, F27 |
 | Staff workshop overview | ✅ host/organizers, readiness filters, bulk publishing, attendance/raffle totals and private sign-up JSON/CSV | B18, B19, B21, F19 |
 | Workshop organizer access | ✅ per-workshop assignments, email lookup and notifications; applicants retain their role | B17, F18, F19 |
 | Admin role management (`pages#permissions`) | ✅ Users page | — |
@@ -56,6 +56,7 @@ were presumably tracked in spreadsheets, so B33–B37 are a new design.
 | **Waitlisted email** | ✅ built-in `application_waitlisted` template | B41 |
 | Accepted status still visible after applications close | ✅ `latest` on `GET /api/applications/me`, shown on the home page | B27, F22 |
 | Application search | 🟡 status/round filters only | F14 |
+| Staff edit a submitted application (typos, wrong email) | ✅ edit mode on Review: every profile field, custom answers (form rules, consent boxes not re-ticked), account name and email (409 on duplicates, old links cancelled), audit trail, resend acceptance after an email fix | — |
 | Resume auto-check + flag suspicious applications, flag/unflag | 🟡 flag/unflag, list filter + count, optional auto-checks (short resume, name missing, duplicate phone/resume). Resume text is read for Word files and plain-text PDFs only; other PDFs skip the text rules | B42 |
 | Admin statistics (counts by school, gender, status, …) | 🟡 built; workshop attendance + hardware out wait on B21/B22 | B43, F26 |
 | CSV export of applications | ✅ admin only, answers flattened, formula-safe | B29 |
@@ -94,7 +95,7 @@ were presumably tracked in spreadsheets, so B33–B37 are a new design.
 | ----------- | ------ | ---- |
 | Inventory CRUD (name, category, location, link, count) | ✅ | B22, F20 |
 | Search by item id / name | ✅ | B23, F20 |
-| Checkout / return, per-item history log | ✅ staff-only, atomic stock, checkout team snapshots and retained history | B22 |
+| Checkout / return, per-item history log | ✅ staff-only, atomic stock, checkout team snapshots and retained history; phone-friendly desk flow (attendee card with one-tap returns, type-ahead item search, back-to-back checkouts) | B22, F20 |
 | "All checked out" list | ✅ snapshot/current teams and changed-team badges | B22, F20 |
 | Barcode label CSV | ✅ printable item QR labels | B22 |
 | Slack reminders to return hardware | ✅ background email reminders, event return deadline and one-time team-change notices | B22, B26 |

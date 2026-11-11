@@ -47,7 +47,7 @@ export default function UserMenu({ user }) {
         <Button
           variant="ghost"
           size="icon"
-          className="rounded-full"
+          className="rounded-full pointer-coarse:size-11"
           aria-label="Account menu"
         >
           <Avatar className="size-7">
