@@ -103,6 +103,7 @@ function createApp() {
   app.use("/api/applications", applicationRoutes);
   app.use("/api/admin", adminRoutes);
   app.use("/api/meta", metaRoutes);
+  app.use("/api/staff/communications", require("./routes/communications"));
   app.use("/api/staff", staffRoutes);
   app.use("/api/teams", teamRoutes);
   app.use("/api/workshops", workshopRoutes);

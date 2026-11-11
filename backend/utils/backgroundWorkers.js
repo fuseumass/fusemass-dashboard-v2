@@ -2,10 +2,13 @@
 
 var outbox = require("./outbox");
 var autoAccept = require("./autoAccept");
+var communications = require("./communications");
 
 // The timers that act without a request: the email outbox (sends and retries
-// emails) and domain auto-accept (accepts applications). server.js starts them
-// once it is listening. DISABLE_BACKGROUND_WORKERS=true (or 1) keeps both off,
+// emails), domain auto-accept (accepts applications) and the communications
+// scheduler (scheduled announcements, workshop reminders and digests).
+// server.js starts them once it is listening. DISABLE_BACKGROUND_WORKERS=true
+// (or 1) keeps all three off,
 // so a local copy can point at a real database without emailing anyone or
 // changing applications.
 
@@ -20,7 +23,7 @@ function disabled(env) {
 }
 
 /**
- * Start the outbox and auto-accept workers, unless disabled.
+ * Start the outbox, auto-accept and communications workers, unless disabled.
  * @param {object} env - Environment (process.env).
  * @returns {boolean} Whether the workers were started.
  */
@@ -31,6 +34,7 @@ function start(env) {
   }
   outbox.startWorker();
   autoAccept.startWorker();
+  communications.startWorker();
   return true;
 }
 

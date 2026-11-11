@@ -2,6 +2,7 @@
 
 var EmailLog = require("../schemas/emailLog");
 var User = require("../schemas/user");
+var emailCategories = require("./emailCategories");
 
 /**
  * The email outbox: a log row per email, plus retries.
@@ -203,6 +204,9 @@ function baseDoc(entry, redacted) {
   if (entry.segment) {
     doc.segment = entry.segment;
   }
+  if (entry.preferenceCategory) {
+    doc.preferenceCategory = entry.preferenceCategory;
+  }
   if (!redacted) {
     if (entry.values) {
       doc.values = entry.values;
@@ -247,12 +251,12 @@ function send(entry, deliver) {
   // first attempt is still running.
   doc.lockedUntil = new Date(now + LEASE_MS);
 
-  // Finding the recipient's account is only needed before the send when the
-  // category depends on it (announcements check their consent and carry an
-  // unsubscribe link built from the id). For everything else it happens
-  // alongside the send, so the log adds as little delay as possible.
+  // Finding the recipient's account is needed before the send whenever the
+  // email can be opted out of (their preferences are checked and the
+  // unsubscribe link is built from the id). Security email doesn't need it
+  // first, so the log adds as little delay as possible to a password link.
   var userPromise = entry.user ? Promise.resolve(entry.user) : lookupUserId(entry.to);
-  var userFirst = (entry.category || "transactional") !== "transactional";
+  var userFirst = emailCategories.forRow(entry) !== emailCategories.SECURITY;
 
   return (userFirst ? userPromise : Promise.resolve(entry.user))
     .then(function afterUser(userId) {
@@ -331,25 +335,53 @@ function recordUnsent(entry, message) {
 }
 
 /**
- * Whether an announcement may still go to its recipient. Other categories
- * always may. Checked at send time, not only when queued, so someone who
- * unsubscribes while a blast is draining stops getting it.
+ * Whether an email may still go to its recipient, given their email
+ * preferences (utils/emailCategories). Security email always may. Checked at
+ * send time, not only when queued, so someone who opts out while a blast is
+ * draining stops getting it.
+ * @param {object} row - EmailLog document.
+ * @returns {Promise<{allowed: boolean, reason: (string|undefined)}>}
+ */
+function preferencesAllow(row) {
+  var category = emailCategories.forRow(row);
+  if (!emailCategories.isOptional(category)) {
+    return Promise.resolve({ allowed: true });
+  }
+  if (!row.user) {
+    // Bulk announcements are opt-in, so nobody without an account gets one.
+    // Other email to an address with no account can't have been turned off.
+    return Promise.resolve(
+      row.category === "announcement"
+        ? { allowed: false, reason: "Not sent: the recipient hasn't opted in to announcements (or unsubscribed)." }
+        : { allowed: true }
+    );
+  }
+  return User.findById(row.user)
+    .select("marketingEmailConsent emailPreferences")
+    .lean()
+    .then(function afterFind(user) {
+      if (emailCategories.allows(user, category)) {
+        return { allowed: true };
+      }
+      return {
+        allowed: false,
+        reason:
+          category === "announcements"
+            ? "Not sent: the recipient hasn't opted in to announcements (or unsubscribed)."
+            : "Not sent: the recipient turned off " + emailCategories.NOUNS[category] + ".",
+      };
+    });
+}
+
+/**
+ * Whether an email may still go to its recipient (see preferencesAllow).
  * @param {object} row - EmailLog document.
  * @returns {Promise<boolean>}
  */
 function consentAllows(row) {
-  if (row.category !== "announcement") {
-    return Promise.resolve(true);
-  }
-  if (!row.user) {
-    return Promise.resolve(false);
-  }
-  return User.findById(row.user)
-    .select("marketingEmailConsent")
-    .lean()
-    .then(function afterFind(user) {
-      return Boolean(user && user.marketingEmailConsent);
-    });
+  return preferencesAllow(row).then(function pick(result) {
+    return result.allowed;
+  });
 }
 
 /**
@@ -362,11 +394,11 @@ function consentAllows(row) {
  * @returns {Promise<void>}
  */
 function runDelivery(row, deliver) {
-  return consentAllows(row).then(function afterConsent(allowed) {
-    if (!allowed) {
+  return preferencesAllow(row).then(function afterConsent(check) {
+    if (!check.allowed) {
       return finish(row, {
         status: "cancelled",
-        lastError: "Not sent: the recipient hasn't opted in to announcements (or unsubscribed).",
+        lastError: check.reason,
         lockedUntil: null,
         nextAttemptAt: null,
       });
@@ -892,6 +924,8 @@ module.exports = {
   dailyLimit: dailyLimit,
   committedInLastDay: committedInLastDay,
   isPermanentError: isPermanentError,
+  consentAllows: consentAllows,
+  preferencesAllow: preferencesAllow,
   isSensitive: isSensitive,
   containsSecret: containsSecret,
   describeError: describeError,

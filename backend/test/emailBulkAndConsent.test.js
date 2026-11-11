@@ -189,7 +189,7 @@ test("B26: bulk email segments and marketing consent", async function bulkAndCon
     assert.equal(mail.calls[0].to, "yes@example.com");
     assert.match(mail.calls[0].text, /Hi Yes, big news \(accepted\)!/);
     assert.match(mail.calls[0].text, /Unsubscribe: http/);
-    assert.match(mail.calls[0].headers["List-Unsubscribe"], /^<http.*\/unsubscribe\?u=/);
+    assert.match(mail.calls[0].headers["List-Unsubscribe"], /^<http.*\/unsubscribe\?token=/);
     var row = await EmailLog.findOne({ to: "yes@example.com" });
     assert.equal(row.category, "announcement");
     assert.equal(row.batchId, sent.body.batchId);
@@ -209,7 +209,9 @@ test("B26: bulk email segments and marketing consent", async function bulkAndCon
       ["no@example.com", "yes@example.com"]
     );
     assert.ok(mail.calls[1].attachments, "the acceptance email keeps its QR code");
-    assert.equal(mail.calls[1].headers, undefined, "no unsubscribe link on transactional mail");
+    // Decision emails can be turned off too, so they carry their own link.
+    assert.match(mail.calls[1].headers["List-Unsubscribe"], /\/unsubscribe\?token=/);
+    assert.match(mail.calls[1].text, /turn off application decision emails/);
     assert.ok(pending);
   });
 

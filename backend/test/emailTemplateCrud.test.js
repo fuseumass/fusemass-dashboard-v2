@@ -42,6 +42,7 @@ test("B1: email template CRUD", async function emailTemplateCrud(t) {
       keys.sort(),
       [
         "account_setup",
+        "announcement",
         "judge_invite",
         "judging_table_assigned",
         "application_accepted",
@@ -57,6 +58,8 @@ test("B1: email template CRUD", async function emailTemplateCrud(t) {
         "team_invite",
         "verify_email",
         "workshop_organizer_added",
+        "workshop_reminder",
+        "workshop_digest",
         "workshop_signup",
         "workshop_changed",
         "workshop_cancelled",

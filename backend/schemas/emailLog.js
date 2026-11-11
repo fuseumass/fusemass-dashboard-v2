@@ -10,7 +10,7 @@ var Schema = mongoose.Schema;
 // failed    gave up (out of attempts, or a permanent error) or was interrupted
 //           mid-send; waits for an admin to resend it
 // cancelled never sent on purpose: an admin cancelled it, or the recipient
-//           unsubscribed from announcements while it waited
+//           turned that kind of email off (see utils/emailCategories)
 var EMAIL_STATUSES = ["queued", "sent", "failed", "cancelled"];
 
 // transactional  always sent (decisions, QR codes, check-in, password links)
@@ -56,6 +56,8 @@ var EMAIL_CATEGORIES = ["transactional", "announcement", "test"];
  *   have been delivered. Never retried in bulk; only an admin's single resend.
  * @property {string} [batchId] - Groups the rows of one bulk send.
  * @property {string} [segment] - The bulk-send audience, for the duplicate guard.
+ * @property {string} [preferenceCategory] - Email-preference category it is
+ *   sent under, when it isn't the template's own (utils/emailCategories).
  * @property {ObjectId} [resendOf] - The row this one re-sends.
  * @property {Date} [lastResentAt] - Guards against a double-clicked "send again".
  * @property {ObjectId} [requestedBy] - Admin who started a bulk send / resend.
@@ -84,6 +86,7 @@ var emailLogSchema = new Schema(
     interrupted: { type: Boolean, default: false },
     batchId: { type: String },
     segment: { type: String },
+    preferenceCategory: { type: String },
     resendOf: { type: Schema.Types.ObjectId, ref: "EmailLog" },
     lastResentAt: { type: Date },
     requestedBy: { type: Schema.Types.ObjectId, ref: "User" },
