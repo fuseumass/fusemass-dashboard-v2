@@ -122,11 +122,11 @@ export const NAV_ITEMS = [
     feature: "workshops",
   },
   {
-    href: "/dashboard/admin/raffles",
+    href: "/dashboard/staff/raffles",
     label: "Raffles",
     icon: ClipboardList,
-    group: "admin",
-    roles: ADMIN,
+    group: "organize",
+    roles: STAFF,
     feature: "workshops",
   },
   {
@@ -246,11 +246,11 @@ export const NAV_ITEMS = [
     roles: ADMIN,
   },
   {
-    href: "/dashboard/admin/workshops",
+    href: "/dashboard/staff/workshops",
     label: "Workshops",
     icon: CalendarDays,
-    group: "admin",
-    roles: ADMIN,
+    group: "organize",
+    roles: STAFF,
     feature: "workshops",
   },
   {

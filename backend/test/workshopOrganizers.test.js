@@ -37,7 +37,7 @@ test("workshop organizer assignments, discovery and scoped controls", async func
   var judge = await fixtures.createUser({ role: "judge" });
   var base = "/api/admin/workshops";
   var data = { title: "Build together", startsAt: "2026-10-24T12:00:00Z", endsAt: "2026-10-24T13:00:00Z", published: true, raffleEnabled: true };
-  await t.test("admin email lookup returns only safe fields and rejects judges", async function () {
+  await t.test("staff email lookup returns only safe fields and rejects judges", async function () {
     var found = await call(admin, "get", base + "/organizer-lookup?email=" + encodeURIComponent(host.user.email.toUpperCase()));
     assert.equal(found.status, 200);
     assert.deepEqual(found.body.user, { id: String(host.user._id), name: host.user.name, email: host.user.email, role: "applicant" });
@@ -45,7 +45,9 @@ test("workshop organizer assignments, discovery and scoped controls", async func
     assert.equal(missing.status, 404);
     assert.equal(missing.body.error, "No account with that email. Ask them to sign up first.");
     assert.equal((await call(admin, "get", base + "/organizer-lookup?email=" + judge.user.email)).status, 400);
-    for (var user of [host, mod, judge]) assert.equal((await call(user, "get", base + "/organizer-lookup?email=" + host.user.email)).status, 403);
+    // Moderators manage workshops too; participants and judges can't look people up.
+    for (var user of [host, judge]) assert.equal((await call(user, "get", base + "/organizer-lookup?email=" + host.user.email)).status, 403);
+    assert.equal((await call(mod, "get", base + "/organizer-lookup?email=" + host.user.email)).status, 200);
   });
   var created = await call(admin, "post", base, Object.assign({}, data, { organizers: [String(host.user._id), String(host.user._id)] }));
   assert.equal(created.status, 201);
@@ -110,5 +112,17 @@ test("workshop organizer assignments, discovery and scoped controls", async func
     var exists = t.mock.method(Workshop, "exists", function unexpected() { throw new Error("Disabled module must not query workshops"); });
     assert.equal((await call(host, "get", "/api/auth/me")).body.user.organizesWorkshops, false);
     exists.mock.restore();
+  });
+  await t.test("moderators create, edit and delete workshops and set organizers later", async function () {
+    await Settings.findOneAndUpdate({ key: "default" }, { $set: { "features.workshops": true } }, { upsert: true });
+    cache.clear();
+    var helper = await fixtures.createUser();
+    var created = await call(mod, "post", base, Object.assign({}, data, { title: "Mod run" }));
+    assert.equal(created.status, 201);
+    assert.deepEqual(created.body.workshop.organizers, []);
+    var edited = await call(mod, "patch", base + "/" + created.body.workshop._id, { organizers: [String(helper.user._id)] });
+    assert.equal(edited.status, 200);
+    assert.deepEqual(edited.body.workshop.organizers.map(String), [String(helper.user._id)]);
+    assert.equal((await call(mod, "delete", base + "/" + created.body.workshop._id)).status, 200);
   });
 });
