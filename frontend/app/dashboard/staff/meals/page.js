@@ -119,7 +119,10 @@ export default function StaffMealCheckInPage() {
                       log.clear();
                     }}
                   >
-                    <SelectTrigger id="meal" className="h-10 w-full">
+                    <SelectTrigger
+                      id="meal"
+                      className="w-full data-[size=default]:h-10 pointer-coarse:data-[size=default]:h-11"
+                    >
                       <SelectValue placeholder="Pick a meal" />
                     </SelectTrigger>
                     <SelectContent position="popper">

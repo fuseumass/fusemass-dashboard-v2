@@ -12,13 +12,17 @@ export default function PageHeader({ title, description, actions, className }) {
       )}
     >
       <div className="min-w-0 space-y-1">
-        <h1 className="text-2xl font-semibold tracking-tight">{title}</h1>
+        <h1 className="text-2xl font-semibold tracking-tight wrap-break-word">
+          {title}
+        </h1>
         {description
-          ? <p className="text-sm text-muted-foreground">{description}</p>
+          ? <p className="text-sm text-muted-foreground wrap-anywhere">
+              {description}
+            </p>
           : null}
       </div>
       {actions
-        ? <div className="flex items-center gap-2">{actions}</div>
+        ? <div className="flex flex-wrap items-center gap-2">{actions}</div>
         : null}
     </div>
   );

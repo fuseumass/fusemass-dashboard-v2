@@ -99,7 +99,7 @@ export default function DashboardHome() {
       <PageHeader title={user.name.split(" ")[0]} description={user.email} />
 
       <WorkshopHomeUpdates />
-      <div className="grid items-start gap-4 md:grid-cols-2">
+      <div className="grid items-start gap-4 lg:grid-cols-2">
         {state.loading
           ? <CardSkeleton lines={2} />
           : <Card>

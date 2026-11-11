@@ -99,7 +99,7 @@ export function NavGroups({ groups, onNavigate }) {
                       asChild
                       isActive={active}
                       tooltip={item.label}
-                      className="data-active:bg-brand/12 data-active:text-link data-active:[&_svg]:text-link"
+                      className="pointer-coarse:h-10 data-active:bg-brand/12 data-active:text-link data-active:[&_svg]:text-link"
                     >
                       <Link
                         href={item.href}

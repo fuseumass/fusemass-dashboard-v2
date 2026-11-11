@@ -89,7 +89,7 @@ export default function JudgeQueue({ userId, view = "schedule" }) {
                   {!reason && data.current
                     ? <>
                         <p>{data.current.name}</p>
-                        <Button asChild>
+                        <Button asChild className="pointer-coarse:h-11">
                           <Link href="/dashboard/judging/score">Judge now</Link>
                         </Button>
                       </>
@@ -132,7 +132,7 @@ export default function JudgeQueue({ userId, view = "schedule" }) {
                       href={project.devpostUrl}
                       target="_blank"
                       rel="noreferrer"
-                      className="text-sm text-link"
+                      className="inline-flex min-h-6 items-center text-sm text-link pointer-coarse:min-h-11"
                     >
                       View Devpost project
                     </a>
@@ -165,6 +165,7 @@ export default function JudgeQueue({ userId, view = "schedule" }) {
                       {data.current?._id === project._id && (
                         <Button
                           variant="outline"
+                          className="pointer-coarse:h-11"
                           disabled={!data.judgingOpen || busy}
                           loading={busy}
                           onClick={async () => {
@@ -178,7 +179,12 @@ export default function JudgeQueue({ userId, view = "schedule" }) {
                         </Button>
                       )}
                       {selected && (
-                        <Button asChild variant="ghost" disabled={busy}>
+                        <Button
+                          asChild
+                          variant="ghost"
+                          className="pointer-coarse:h-11"
+                          disabled={busy}
+                        >
                           <Link href="/dashboard/judging/score">
                             Return to current project
                           </Link>

@@ -27,6 +27,7 @@ import {
 } from "@/components/ui/sheet";
 import { SidebarTrigger } from "@/components/ui/sidebar";
 import { getBreadcrumbs } from "@/lib/nav";
+import { cn } from "@/lib/utils";
 
 // Menu for the kiosk layout, which has no sidebar: the same links in a drawer,
 // so a scanner can still get to another screen without the browser's back
@@ -38,7 +39,12 @@ function KioskMenu({ groups }) {
   return (
     <Sheet open={open} onOpenChange={setOpen}>
       <SheetTrigger asChild>
-        <Button variant="ghost" size="icon-sm" aria-label="Open menu">
+        <Button
+          variant="ghost"
+          size="icon-sm"
+          className="pointer-coarse:size-11"
+          aria-label="Open menu"
+        >
           <Menu aria-hidden="true" />
         </Button>
       </SheetTrigger>
@@ -72,7 +78,18 @@ function Crumbs({ pathname }) {
           const last = index === crumbs.length - 1;
           return (
             <Fragment key={`${crumb.label}-${crumb.href || index}`}>
-              <BreadcrumbItem className={last ? "min-w-0" : "max-md:hidden"}>
+              <BreadcrumbItem
+                className={
+                  last
+                    ? "min-w-0"
+                    : cn(
+                        "whitespace-nowrap max-md:hidden",
+                        // A group label is not a link; drop it first when
+                        // the sidebar leaves the top bar narrow (tablets).
+                        !crumb.href && "max-lg:hidden",
+                      )
+                }
+              >
                 {last
                   ? <BreadcrumbPage className="truncate font-medium">
                       {crumb.label}
@@ -83,7 +100,14 @@ function Crumbs({ pathname }) {
                       </BreadcrumbLink>
                     : <span>{crumb.label}</span>}
               </BreadcrumbItem>
-              {last ? null : <BreadcrumbSeparator className="max-md:hidden" />}
+              {last
+                ? null
+                : <BreadcrumbSeparator
+                    className={cn(
+                      "max-md:hidden",
+                      !crumb.href && "max-lg:hidden",
+                    )}
+                  />}
             </Fragment>
           );
         })}
@@ -100,7 +124,9 @@ export default function Topbar({ user, groups, kiosk }) {
 
   return (
     <header className="sticky top-0 z-20 flex h-12 shrink-0 items-center gap-2 border-b bg-background px-3 md:px-4">
-      {kiosk ? <KioskMenu groups={groups} /> : <SidebarTrigger />}
+      {kiosk
+        ? <KioskMenu groups={groups} />
+        : <SidebarTrigger className="pointer-coarse:size-11" />}
       <Separator
         orientation="vertical"
         className="mx-1 data-vertical:h-4 data-vertical:self-center"

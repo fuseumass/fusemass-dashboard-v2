@@ -190,6 +190,12 @@
     @apply bg-background text-foreground;
     -webkit-font-smoothing: antialiased;
   }
+  /* A fieldset is as wide as its widest line by default (min-inline-size:
+     min-content), so one long email pushes a whole form off a phone screen.
+     Let it shrink like a div. */
+  fieldset {
+    min-inline-size: 0;
+  }
   /* Overlay motion is short and ease-out; honour the OS "reduce motion" flag
      by turning it off entirely. */
   @media (prefers-reduced-motion: reduce) {

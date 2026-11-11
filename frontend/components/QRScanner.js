@@ -12,6 +12,21 @@ import { Button } from "@/components/ui/button";
 const REPEAT_MS = 3000;
 
 /**
+ * Size of the square scan target: 70% of the shorter side of the camera view,
+ * capped at 250 px, so it fits inside a narrow phone screen too.
+ * @param {number} width - Width of the video, in px.
+ * @param {number} height - Height of the video, in px.
+ * @returns {{width: number, height: number}}
+ */
+function scanBox(width, height) {
+  const side = Math.max(
+    50,
+    Math.min(250, Math.floor(Math.min(width, height) * 0.7)),
+  );
+  return { width: side, height: side };
+}
+
+/**
  * Camera QR scanner (html5-qrcode). The camera keeps running between scans so
  * a meal line can be scanned back to back; while `onScan` is still working on
  * one code, further frames are ignored.
@@ -83,7 +98,7 @@ export default function QRScanner({ onScan }) {
       scannerRef.current = scanner;
       await scanner.start(
         { facingMode: "environment" },
-        { fps: 10, qrbox: { width: 250, height: 250 } },
+        { fps: 10, qrbox: scanBox },
         handleDecode,
         () => {
           // Called for every frame without a QR code; nothing to do.
@@ -132,7 +147,7 @@ export default function QRScanner({ onScan }) {
         type="button"
         size="lg"
         variant={running ? "outline" : "default"}
-        className="max-sm:w-full"
+        className="max-sm:w-full pointer-coarse:h-11"
         loading={starting}
         onClick={running ? stopScanner : startScanner}
       >
