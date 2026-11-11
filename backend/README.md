@@ -484,8 +484,8 @@ an admin. Capacity 0 means unlimited. Signups always use the caller's account.
 | DELETE | `/api/workshops/:id/signup` | Cancel caller's signup, free the seat and email a cancellation |
 
 Managers are current moderators/admins or users assigned in `Workshop.organizers`.
-Manager access does not require an accepted application. B17's organizer role and
-assignment editor remain deferred. All routes below use the workshops feature gate.
+Manager access does not require an accepted application. Admins assign existing
+non-judge accounts using the workshop editor without changing roles. All routes below use the workshops feature gate.
 
 | Method | Route | Access and purpose |
 | --- | --- | --- |
@@ -528,8 +528,8 @@ the event settings. Background `raffle_winner` template emails and attendee
 winner cards use that location. Lists also include attendanceOpen, attended,
 only the caller's wins (`prize`, `claimed`), and organizerRoom.
 
-Calendar emails use stable workshop UIDs and increasing sequences. Organizer
-assignment, waitlists and subscription feeds are deferred.
+Calendar emails use stable workshop UIDs and increasing sequences. Waitlists
+and subscription feeds are deferred.
 
 ## Judge accounts (B47)
 
@@ -841,3 +841,28 @@ Anonymous ordinal labels are stored per version and survive room moves and
 queue removals. Labels use no names, emails or identity-derived values.
 `ownTeam` contains only `table`, `room`, `done` and `assigned`, or null. Responses
 are not cached; `/dashboard/judging-sheet` polls every 30 seconds.
+
+## Workshop organizer assignment
+
+Admins assign `organizers: [userId]` on `POST /api/admin/workshops` and
+`PATCH /api/admin/workshops/:id`. The array accepts at most 10 valid ObjectIds
+of existing non-judge accounts and removes duplicates. Invalid arrays, missing
+accounts and judges return 400. Omitting the field on PATCH preserves assignments;
+`[]` removes all. `GET /api/admin/workshops` populates organizer name/email.
+Attendee workshop responses omit organizers. `host` is optional display text.
+
+`GET /api/admin/workshops/organizer-lookup?email=` is admin-only and requires the
+workshops module. It returns `{ user: { id, name, email, role } }`, 404 with
+“No account with that email. Ask them to sign up first.” for missing accounts,
+or 400 for judges. Emails are trimmed and matched case-insensitively.
+
+Assignments grant applicants access to their workshop attendance and raffle tools
+without changing their role. Moderators/admins retain access to all workshops.
+`GET /api/auth/me` includes boolean `user.organizesWorkshops`, computed per request
+with an exists query for non-cancelled assigned workshops, only while the module
+is on. Judges always receive false. Organizer attendance responses populate names.
+
+The built-in `workshop_organizer_added` template sends in the background only to
+newly assigned organizers. Subject: `You're an organizer for {{title}}`.
+Body: `Hi {{name}},\n\nYou've been added as an organizer for {{title}} ({{when}}, {{location}}).\n\nOpen Organize workshops on your dashboard to run attendance and the raffle: {{organizeUrl}}`.
+`organizeUrl` uses the primary configured client origin plus `/dashboard/organize`.

@@ -34,7 +34,7 @@ were presumably tracked in spreadsheets, so B33–B37 are a new design.
 | Roles: admin / organizer / attendee | ✅ as admin / moderator / applicant | — |
 | Mentor role | ✖ mentorship runs on Discord | B31 |
 | Judge role (judging app used a CSV of logins) | ✅ role, single-use invites, CSV preview/send, judge-only nav and admin management; Schedule, Judging, Skipped and Demo screens | B47, F27 |
-| Workshop organizer role | ➕ 📋 | B17 |
+| Workshop organizer access | ✅ per-workshop assignments, email lookup and notifications; applicants retain their role | B17, F18, F19 |
 | Admin role management (`pages#permissions`) | ✅ Users page | — |
 | "Redeem code" to upgrade your own role | ✖ security hole (let anyone become admin) | B17 |
 | Slack: join gate, DMs, account re-association | ✖ replaced by Discord link + email | B26 |
@@ -80,7 +80,7 @@ were presumably tracked in spreadsheets, so B33–B37 are a new design.
 
 | Old feature | Status | Task |
 | ----------- | ------ | ---- |
-| Events with `rsvpable` + `max_seats` | ✅ admin CRUD, publication and atomic capacity; organizer assignment deferred | B18, B19 |
+| Events with `rsvpable` + `max_seats` | ✅ admin CRUD, publication and atomic capacity; organizer assignment by account email | B18, B19 |
 | RSVP / un-RSVP to an event | ✅ accepted attendees, overlap warnings and My workshops; waitlist deferred | B19, F17 |
 | Per-event attendance check-in | ✅ Rotating attendance code, staff QR add, event check-in guard, counts and CSV | B21 |
 | Workshop materials / announcements | ➕ 📋 visible to every accepted attendee | B20 |

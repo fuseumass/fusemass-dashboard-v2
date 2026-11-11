@@ -4,6 +4,9 @@ var crypto = require("crypto");
 var validator = require("validator");
 var mongoose = require("mongoose");
 var User = require("../schemas/user");
+var Workshop = require("../schemas/workshop");
+var orgSettingsCache = require("../utils/orgSettingsCache");
+var features = require("../utils/features");
 var signToken = require("../utils/signToken");
 var mailer = require("../utils/mailer");
 var passwordToken = require("../utils/passwordToken");
@@ -171,7 +174,7 @@ function me(req, res) {
   }
 
   return User.findById(claims.id)
-    .then(function afterLookup(user) {
+    .then(async function afterLookup(user) {
       if (!user) {
         res.status(404).json({ error: "User not found." });
         return;
@@ -179,11 +182,18 @@ function me(req, res) {
       if (user.role === "judge") {
         return require("../schemas/judgeProfile").findOne({ user: user._id }).lean().then(function afterProfile(profile) {
           var safeUser = user.toJSON();
+          safeUser.organizesWorkshops = false;
           safeUser.judgeProfile = profile ? { hardware: profile.hardware, calibrationDone: profile.calibrationDone, active: profile.active } : null;
           res.status(200).json({ user: safeUser });
         });
       }
-      res.status(200).json({ user: user.toJSON() });
+      var safeUser = user.toJSON();
+      // Shows "Organize workshops" in the nav for people assigned to one.
+      var settings = await orgSettingsCache.get();
+      safeUser.organizesWorkshops = features.isEnabled(settings, "workshops")
+        ? Boolean(await Workshop.exists({ organizers: user._id, cancelled: false }))
+        : false;
+      res.status(200).json({ user: safeUser });
     })
     .catch(function onError(err) {
       console.error("me failed:", err);

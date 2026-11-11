@@ -32,12 +32,14 @@ import {
 import {
   Form,
   FormControl,
+  FormDescription,
   FormField,
   FormItem,
   FormLabel,
   FormMessage,
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { apiFetch } from "@/lib/api";
 import { formatRange } from "@/lib/datetime";
@@ -83,6 +85,11 @@ export default function WorkshopsAdminPage() {
   const user = useUser();
   const router = useRouter();
   const admin = user.role === "admin";
+  const [organizers, setOrganizers] = useState([]);
+  const [email, setEmail] = useState("");
+  const [lookup, setLookup] = useState(null);
+  const [lookupMessage, setLookupMessage] = useState("");
+  const [looking, setLooking] = useState(false);
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -109,9 +116,39 @@ export default function WorkshopsAdminPage() {
     if (!admin) router.replace("/dashboard");
     else load();
   }, [admin, router, load]);
+  useEffect(() => {
+    setLookup(null);
+    setLookupMessage("");
+    if (!open || !admin || !email.trim()) {
+      setLooking(false);
+      return;
+    }
+    let active = true;
+    setLooking(true);
+    const timer = setTimeout(async () => {
+      try {
+        const result = await apiFetch(
+          `/api/admin/workshops/organizer-lookup?email=${encodeURIComponent(email.trim())}`,
+        );
+        if (active) setLookup(result.user);
+      } catch (err) {
+        if (active) setLookupMessage(err.message);
+      } finally {
+        if (active) setLooking(false);
+      }
+    }, 350);
+    return () => {
+      active = false;
+      clearTimeout(timer);
+    };
+  }, [email, open, admin]);
   if (!admin) return null;
   function edit(item) {
     setEditing(item);
+    setOrganizers(item?.organizers || []);
+    setEmail("");
+    setLookup(null);
+    setLookupMessage("");
     form.reset(
       item
         ? {
@@ -133,6 +170,7 @@ export default function WorkshopsAdminPage() {
           method: editing ? "PATCH" : "POST",
           body: JSON.stringify({
             ...values,
+            organizers: organizers.map((person) => person.id || person._id),
             startsAt: new Date(values.startsAt).toISOString(),
             endsAt: new Date(values.endsAt).toISOString(),
           }),
@@ -275,7 +313,7 @@ export default function WorkshopsAdminPage() {
             >
               {[
                 ["title", "Title"],
-                ["host", "Host"],
+                ["host", "Host name"],
                 ["location", "Location"],
                 ["startsAt", "Starts", "datetime-local"],
                 ["endsAt", "Ends", "datetime-local"],
@@ -294,11 +332,94 @@ export default function WorkshopsAdminPage() {
                           ? <Textarea {...field} />
                           : <Input {...field} type={type || "text"} />}
                       </FormControl>
+                      {name === "host" && (
+                        <FormDescription>
+                          Shown to attendees, e.g. Jane Doe or the club name.
+                        </FormDescription>
+                      )}
                       <FormMessage />
                     </FormItem>
                   )}
                 />
               ))}
+              <div className="space-y-2">
+                <Label htmlFor="organizer-email">Organizers</Label>
+                <p className="text-xs text-muted-foreground">
+                  Add up to 10 people by their account email.
+                </p>
+                <div className="flex flex-wrap gap-2">
+                  {organizers.map((person) => (
+                    <Badge
+                      key={person.id || person._id}
+                      variant="secondary"
+                      className="max-w-full whitespace-normal break-all"
+                    >
+                      {person.name} ({person.email})
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        aria-label={`Remove ${person.name}`}
+                        disabled={form.formState.isSubmitting}
+                        onClick={() =>
+                          setOrganizers((people) =>
+                            people.filter((entry) => entry !== person),
+                          )
+                        }
+                      >
+                        Remove
+                      </Button>
+                    </Badge>
+                  ))}
+                </div>
+                <Input
+                  id="organizer-email"
+                  type="email"
+                  value={email}
+                  disabled={
+                    organizers.length >= 10 || form.formState.isSubmitting
+                  }
+                  onChange={(event) => {
+                    setEmail(event.target.value);
+                    setLookup(null);
+                  }}
+                />
+                <div aria-live="polite" className="text-sm">
+                  {looking && (
+                    <p className="text-muted-foreground">
+                      Looking up account...
+                    </p>
+                  )}
+                  {lookupMessage && (
+                    <p className="text-destructive">{lookupMessage}</p>
+                  )}
+                  {lookup && (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      disabled={
+                        organizers.length >= 10 ||
+                        form.formState.isSubmitting ||
+                        organizers.some(
+                          (person) => (person.id || person._id) === lookup.id,
+                        )
+                      }
+                      onClick={() => {
+                        if (
+                          organizers.length === 0 &&
+                          !form.getValues("host").trim()
+                        )
+                          form.setValue("host", lookup.name);
+                        setOrganizers((people) => [...people, lookup]);
+                        setEmail("");
+                        setLookup(null);
+                      }}
+                    >
+                      Add {lookup.name} ({lookup.email})
+                    </Button>
+                  )}
+                </div>
+              </div>
               {[
                 ["published", "Published"],
                 ["raffleEnabled", "Raffle enabled"],

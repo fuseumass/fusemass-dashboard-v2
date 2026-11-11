@@ -328,8 +328,9 @@ serving.
 
 ### F18. Workshop organizer screens
 Assigned users can manage their workshops; moderators/admins can manage all.
-B17 will add the dedicated `workshop_organizer` role.
-- [x] `/dashboard/organize`: assigned workshops for users; all workshops for moderators/admins (B17 role deferred).
+Assignments use the per-workshop organizers list instead of a separate
+`workshop_organizer` role. Applicants retain their existing role.
+- [x] `/dashboard/organize`: assigned workshops for users; all workshops for moderators/admins (including applicant organizers).
 - [ ] Workshop console `/dashboard/organize/[id]`:
   - **Announcements composer**, chat-style: multiline text + drag-and-drop
     files (multiple, with per-file progress and type/size errors before
@@ -361,10 +362,11 @@ walkthrough remain unverified in this environment.
 - [x] `/dashboard/admin/workshops`: `DataTable` + create/edit `Dialog` (title,
       host, location, time, capacity, published, raffle on/off);
       cancel-workshop flow that warns how many people will be notified.
-- [ ] Deferred with B17: assign organizers: user search (`Command`) → add/remove. **Moderators
-      and admins can be assigned as-is**; for an applicant, offer to make them
-      a `workshop_organizer` first; judges can't be picked. Assigned mods and
-      admins see the workshop under "Organize" too.
+- [x] Assign organizers by debounced email lookup, with removable name/email
+      chips (maximum 10). Applicants, moderators and admins can be assigned;
+      judges cannot. Host name remains optional display text and prefills from
+      the first organizer when blank. Assignment does not change roles.
+- [x] Organizer navigation uses active workshop assignments; consoles show names.
 - **Depends on:** B17, B18.
 
 ---

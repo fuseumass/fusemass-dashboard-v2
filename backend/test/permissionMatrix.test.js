@@ -150,6 +150,7 @@ var MATRIX = [
   row("GET", "/api/workshops/mine", "accepted"),
   row("POST", "/api/workshops/:id/signup", "accepted"),
   row("DELETE", "/api/workshops/:id/signup", "accepted"),
+  row("GET", "/api/admin/workshops/organizer-lookup", "admin"),
   row("GET", "/api/admin/workshops", "admin"),
   row("POST", "/api/admin/workshops", "admin", { body: { title: "Workshop", startsAt: "2026-10-24T12:00:00Z", endsAt: "2026-10-24T13:00:00Z" } }),
   row("PATCH", "/api/admin/workshops/:id", "admin"),

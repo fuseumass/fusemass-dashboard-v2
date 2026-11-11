@@ -158,105 +158,20 @@ platform had to bolt on a `/check-failed-emails` page for the same reason.
 
 ## Roles & permissions
 
-### B17. `workshop_organizer` role, scoped to assigned workshops
-New role for workshop hosts: they can see and manage **only the workshops an
-admin assigned them to**, and nothing else (no applications, users, settings
-or check-in).
-- [ ] Add `workshop_organizer` to the `User.role` enum and to
-      `PATCH /api/admin/users/:id/role` validation.
-- [ ] `Workshop.organizers: [User]` holds the assignment (B18). Admins assign
-      or unassign through `PUT /api/admin/workshops/:id/organizers`.
-- [ ] Guard `utils/canManageWorkshop(req, res, next)`: let through admins, and
-      `workshop_organizer`s listed in that workshop's `organizers`. Read the
-      workshop id from `req.params`, never from the body; 403 otherwise.
-      Unknown workshop → 404.
-- [ ] Every organizer endpoint uses this guard, and list endpoints filter to
-      the caller's workshops on the server (don't rely on the UI hiding
-      them).
-- [ ] **Decided: moderators and admins can run workshops too.** The guard
-      checks the **assignment**, not the role: anyone in `organizers` who is a
-      `workshop_organizer`, `moderator` or `admin` can manage that workshop
-      (admins can manage every workshop regardless). The `workshop_organizer`
-      role is for hosts who aren't otherwise staff. Assigning an applicant
-      offers to make them a `workshop_organizer` first; judges can't be
-      assigned.
-- [ ] Judges get their own role: see B47.
-- **Don't repeat:** the old dashboard's `redeem_code` let any attendee who
-  hadn't RSVP'd or checked in become an organizer or **admin** by typing a
-  code from a config file. Roles change only through admin endpoints.
-- **Depends on:** none. **Related:** B18–B21, F18, F19, T12.
-
-### B47. `judge` role
-Judges become dashboard users. No CSV logins, no passwords handled by
-organizers. Judges are usually external (faculty, sponsors, alumni), so they
-see **only** judging: no application form, QR card, workshops, meals or
-staff screens.
-
-**Steps (one PR; coordinate with B17, which also edits the role enum):**
-1. [x] **Schema:** add `"judge"` to the `role` enum in `backend/schemas/user.js`
-   and update the roles comment at the top of that file.
-2. [x] **Role validation:** add `"judge"` to the `validateBody` enum on
-   `PATCH /users/:id/role` in `backend/routes/admin.js`.
-3. [x] **Guard:** new `backend/utils/isJudge.js`, in the same shape as
-   `isModerator.js`: 401 without a user, 403 unless `role` is `judge` or
-   `admin` (admins can test the flow). JSDoc like the other guards.
-4. [x] **Keep judges out of everything else:** check that `isModerator`/`isAdmin`
-   reject `judge` (they test exact roles, so they should). Also make
-   `POST /api/applications` and `/api/applications/me/qr` return 403 for
-   judges, so a judge account can't apply or get an attendee QR.
-5. [x] **Invite flow** (`POST /api/admin/judges { name, email, hardware }`,
-   isAdmin): create the user with `role: "judge"` (or promote an existing
-   account), create their `JudgeProfile` (B24d), and email an invite whose link
-   sets their password. Reuse the password-reset token code in
-   `authController` (hashed token, expiry), with a longer expiry (e.g. 7
-   days) and an "invite" email template. Re-sending an invite rotates the
-   token. Google sign-in also works if their Google email matches.
-6. [x] **Bulk invite:** CSV upload of name, email, hardware → the same flow per
-   row, with a preview. This replaces `judges_auth.csv`.
-7. [x] **List/remove:** `GET /api/admin/judges` with calibration and invite
-   status; removing a judge demotes them to `applicant` and deactivates their
-   profile. Progress awaits B24g; active assignment removal awaits B24e.
-8. [x] **`/api/auth/me`:** include the judge's profile summary (hardware flag,
-   calibration done) so the frontend can route them.
-9. [x] **Docs:** update the roles line in `AGENTS.md` and the README role table.
-10. [x] **Tests (T12, T11):** every guard with a judge token; judges get 403 on
-    `/api/admin/*`, `/api/staff/*`, applications and the QR endpoint; the
-    invite token can be used once and expires; a demoted judge loses access
-    immediately (JWT role is re-checked against the database for judging
-    routes, or tokens are short-lived; decide which in the PR).
-
-Implemented B47. Assignment removal is implemented in B24e;
-progress awaits B24g. Minimal JudgeProfile is ready for B24d.
-- **Depends on:** none. **Related:** B24a–B24i, F27, T11, T12.
-
-### B25. Feature flags per module
-Let each hackathon switch modules on or off at runtime: meals, hardware,
-workshops, judging, raffles. The old dashboard had this; we should too.
-- [x] `OrgSettings.features: { meals, hardware, workshops, judging, raffle }`
-      (booleans, default on), editable via `PATCH /api/admin/settings`.
-      Partial updates; values must be real booleans (`"false"` is a 400, not
-      coerced to true); unknown keys are a 400.
-- [x] `utils/requireFeature("hardware")` middleware: answers **404** for
-      everyone when the feature is off (admins too, so a disabled module
-      can't be half-used). Mount it on each module's router. **Mounted today
-      on `meals`** (`/api/admin/meals`, `/api/staff/meals`); the other four
-      flags default on and gate nothing until their modules exist.
-      **Rule for B17-B24: every router of a flag-gated module must mount
-      `requireFeature("<key>")` before its auth guards, with a test that it
-      404s for admin, moderator and anonymous callers while off** (see
-      `backend/README.md`, "Feature flags").
-- [x] Expose the flags to the frontend (public part of
-      `GET /api/meta/branding`, see B28) so the nav hides disabled modules.
-      (Sidebar hides the meals items; the full nav config is F13.)
-- **Don't repeat:** the old `check_feature_flag?` called `.value` before its
-  nil check (crashed when a flag was missing). Its bypass,
-  `(not admin or not organizer)`, was true for everyone who wasn't both, so
-  admins were locked out too.
-- **Depends on:** none. **Related:** F13.
-
----
-
-## Workshops
+### B17. Workshop organizers scoped to assigned workshops
+- [x] Use `Workshop.organizers: [User]` instead of a separate
+      `workshop_organizer` role. Applicants retain their role; moderators and
+      admins can manage all workshops. Judges cannot be assigned or use these tools.
+- [x] Admin create/PATCH accepts up to 10 existing non-judge user ids,
+      deduplicates them and notifies newly added organizers in the background.
+- [x] Admin email lookup supports assignment; admin lists populate name/email.
+- [x] `canManageWorkshop` gates organizer endpoints by workshop assignment;
+      manageable lists filter on the server for applicants.
+- [x] `/api/auth/me` computes `organizesWorkshops` for navigation from active
+      assignments while the workshops module is enabled.
+- [x] Organizer consoles display assigned names. Judges use their own role (B47).
+- **Don't repeat:** attendance codes never grant roles or organizer access.
+- **Related:** B18–B21, F18, F19, T12. Regression tests written; MongoDB run pending.
 
 ### B18. Workshop model + admin CRUD
 - [x] `schemas/workshop.js`: `title`, `description`, `host` (speaker name),
