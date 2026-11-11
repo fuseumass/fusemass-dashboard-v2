@@ -7,6 +7,7 @@ var Draw = require("../schemas/raffleDraw");
 var Settings = require("../schemas/orgSettings");
 var Application = require("../schemas/application");
 var User = require("../schemas/user");
+var csv = require("../utils/csv");
 var calendar = require("../utils/calendar");
 var mailer = require("../utils/mailer");
 var primaryClientOrigin = require("../utils/clientOrigin").primaryClientOrigin;
@@ -167,10 +168,86 @@ function notifyInBackground(workshop, key, method) {
 /** @param {object} req @param {object} res @param {function} next @returns {Promise<void>} */
 async function listAdmin(req, res, next) {
   try {
-    res.json({ workshops: await Workshop.find({}).sort({ startsAt: 1 }).populate("organizers", "name email") });
+    var workshops = await Workshop.find({}).sort({ startsAt: 1 }).populate("organizers", "name email").lean();
+    var ids = workshops.map(function id(workshop) { return workshop._id; });
+    var counts = await Promise.all([
+      Attendance.aggregate([
+        { $match: { workshop: { $in: ids } } },
+        { $group: { _id: "$workshop", attendedCount: { $sum: 1 } } },
+      ]),
+      Draw.aggregate([
+        { $match: { workshop: { $in: ids } } },
+        { $project: { workshop: 1, winners: { $filter: {
+          input: "$winners", as: "winner", cond: { $ne: ["$$winner.noShow", true] },
+        } } } },
+        { $group: {
+          _id: "$workshop", drawCount: { $sum: 1 },
+          winnerCount: { $sum: { $size: "$winners" } },
+          claimedCount: { $sum: { $size: { $filter: {
+            input: "$winners", as: "winner", cond: { $eq: ["$$winner.claimed", true] },
+          } } } },
+        } },
+      ]),
+    ]);
+    var totals = {};
+    counts.forEach(function group(rows) {
+      rows.forEach(function row(value) {
+        var id = String(value._id);
+        totals[id] = Object.assign(totals[id] || {}, value);
+      });
+    });
+    res.json({ workshops: workshops.map(function decorate(workshop) {
+      var total = totals[String(workshop._id)] || {};
+      ["attendedCount", "drawCount", "winnerCount", "claimedCount"].forEach(function count(key) {
+        workshop[key] = total[key] || 0;
+      });
+      return workshop;
+    }) });
   } catch (err) {
     next(err);
   }
+}
+/** @param {object} req @param {object} res @param {function} next @returns {Promise<void>} */
+async function signups(req, res, next) {
+  try {
+    if (!mongoose.isValidObjectId(req.params.id) || !(await Workshop.exists({ _id: req.params.id }))) {
+      res.status(404).json({ error: "Workshop not found." });
+      return;
+    }
+    var attendance = await Attendance.find({ workshop: req.params.id }).select("user").lean();
+    var attended = new Set(attendance.map(function id(row) { return String(row.user); }));
+    function person(row) {
+      return {
+        name: row.user ? row.user.name : "Deleted account",
+        email: row.user ? row.user.email : "",
+        signedUpAt: row.createdAt,
+        attended: !!row.user && attended.has(String(row.user._id)),
+      };
+    }
+    var query = { workshop: req.params.id };
+    if (req.path.endsWith(".csv")) {
+      var cursor = Signup.find(query).sort({ createdAt: 1, _id: 1 }).populate("user", "name email").lean().cursor();
+      try {
+        await csv.sendCsv(res, {
+          filename: csv.datedFilename("workshop-signups", "csv"),
+          header: ["Name", "Email", "Signed up at", "Attended"],
+          nextRows: async function nextRows() {
+            var rows = [];
+            for (var i = 0; i < 250; i++) {
+              var row = await cursor.next();
+              if (!row) break;
+              var value = person(row);
+              rows.push([value.name, value.email, value.signedUpAt, value.attended]);
+            }
+            return rows;
+          },
+        });
+      } finally { await cursor.close(); }
+      return;
+    }
+    var rows = await Signup.find(query).sort({ createdAt: 1, _id: 1 }).populate("user", "name email").lean();
+    res.json({ signups: rows.map(person) });
+  } catch (err) { next(err); }
 }
 /** @param {object} req @param {object} res @param {function} next @returns {Promise<void>} */
 async function create(req, res, next) {
@@ -457,6 +534,7 @@ module.exports = {
   organizerLookup: organizerLookup,
   accepted: accepted,
   listAdmin: listAdmin,
+  signups: signups,
   create: create,
   update: update,
   remove: remove,

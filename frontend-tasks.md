@@ -359,13 +359,22 @@ Delivered detail pages show workshop details, attendance and own wins. Home show
 open attendance notices and wins. Organizer console includes attendee list and
 CSV, session controls, QR staff add, raffle draws, claims, redraw and history.
 Admin workshops link to consoles; admin raffle audit has a separate page.
-Announcements/materials, signup list/export, optional projector QR, countdown
+Announcements/materials, optional projector QR, countdown
 ring and animated winner reveal remain deferred. Present mode shows rotating
 codes and the latest draw's winner names. Browser screenshots and keyboard
 walkthrough remain unverified in this environment.
 
 ### F19. Admin workshop management
-- [x] `/dashboard/admin/workshops`: `DataTable` + create/edit `Dialog` (title,
+- [x] Staff overview includes host, organizers, missing-room badges, signup/capacity,
+      attendance and raffle totals. Search title/host/location, filter status or
+      needs attention, and show draft/missing-organizer/missing-room totals.
+- [x] Publish/unpublish per row, select drafts and confirm bulk publishing with
+      missing room/organizer warnings. Sign-up dialog includes search, attendance
+      counts and a staff-only formula-safe CSV download. Consoles remain linked.
+- Verification: backend syntax and frontend lint checks run for this change;
+      database tests cannot run without MongoDB. Light/dark/375 px screenshots
+      and keyboard walkthrough remain unverified without browser tooling.
+- [x] `/dashboard/staff/workshops`: `DataTable` + create/edit `Dialog` (title,
       host, location, time, capacity, published, raffle on/off);
       cancel-workshop flow that warns how many people will be notified.
 - [x] Assign organizers by debounced email lookup, with removable name/email

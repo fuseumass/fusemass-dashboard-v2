@@ -29,6 +29,8 @@ router.use("/judging", require("./adminJudging"));
 router.get("/raffles", requireFeature("workshops"), isModerator, workshopRaffleController.history);
 router.use("/workshops", requireFeature("workshops"));
 router.get("/workshops/organizer-lookup", isModerator, workshopController.organizerLookup);
+router.get("/workshops/:id/signups", isModerator, workshopController.signups);
+router.get("/workshops/:id/signups.csv", isModerator, workshopController.signups);
 router.get("/workshops", isModerator, workshopController.listAdmin);
 router.post("/workshops", isModerator, workshopController.create);
 router.patch("/workshops/:id", isModerator, workshopController.update);
