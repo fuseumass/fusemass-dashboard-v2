@@ -60,6 +60,10 @@ test("hardware lab", async function hardware(t) {
     var team = await Team.create({ name: "Original team", nameKey: "original team", leader: p.other.user._id, members: [p.attendee.user._id, p.other.user._id] });
     var deadline = new Date(Date.now() + 86400000).toISOString();
     await OrgSettings.create({ key: "default", hardwareReturnBy: deadline });
+    var station = (await request(app).get("/api/staff/hardware").set(auth(p.mod)).expect(200)).body;
+    assert.equal(station.defaultDueAt, deadline);
+    var catalog = (await request(app).get("/api/hardware").set(auth(p.attendee)).expect(200)).body;
+    assert.equal(catalog.defaultDueAt, undefined);
     var created = await checkout(p, p.attendee);
     assert.equal(created.status, 201);
     assert.deepEqual(created.body.checkout.team, { id: team.id, name: team.name });
@@ -83,6 +87,7 @@ test("hardware lab", async function hardware(t) {
     assert.equal((await checkout(p, p.other, { dueAt: explicit })).body.checkout.dueAt, explicit);
     await OrgSettings.updateOne({}, { $set: { hardwareReturnBy: new Date(Date.now() - 1000) } });
     assert.equal((await checkout(p, p.other)).body.checkout.dueAt, null);
+    assert.equal((await request(app).get("/api/staff/hardware").set(auth(p.mod)).expect(200)).body.defaultDueAt, null);
   });
   await t.test("membership changes queue one email per open loan, addressed to the borrower", async function (sub) {
     var p = await seed();

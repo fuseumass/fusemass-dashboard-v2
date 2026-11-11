@@ -259,7 +259,7 @@ emailed on acceptance (or via "Forgot password").
 | ------ | ------------------------------- | --------- | -------------------------------------- |
 | GET | `/api/hardware?q=&category=` | accepted user | Inventory availability and facilities; no borrower identities |
 | GET | `/api/hardware/mine` | accepted user | Own open and returned hardware with deadlines |
-| GET | `/api/staff/hardware` | moderator | Inventory and facilities |
+| GET | `/api/staff/hardware` | moderator | Inventory, facilities and `defaultDueAt` (the future return deadline blank due times get, or null) |
 | GET | `/api/staff/hardware/checkouts?itemId=&userId=&qrId=&open=1&overdue=1` | moderator | Borrower lookup, item history or outstanding loans, overdue first |
 | POST | `/api/staff/hardware/checkouts` | moderator | Checkout `{ qrId or userId, itemId, dueAt?, notes? }`; accepted and event checked-in required |
 | POST | `/api/staff/hardware/checkouts/:id/return` | moderator | Idempotent return; retains history |
