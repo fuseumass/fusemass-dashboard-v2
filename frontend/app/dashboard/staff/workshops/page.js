@@ -1,5 +1,6 @@
 "use client";
 
+import { MoreHorizontal } from "lucide-react";
 import Link from "next/link";
 
 import { useRouter } from "next/navigation";
@@ -30,6 +31,13 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import {
   Form,
   FormControl,
   FormDescription,
@@ -40,9 +48,16 @@ import {
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
-import { apiFetch } from "@/lib/api";
-import { formatRange } from "@/lib/datetime";
+import { apiDownload, apiFetch } from "@/lib/api";
+import { formatDateTime, formatRange } from "@/lib/datetime";
 import { applyServerError, zodResolver } from "@/lib/forms";
 import { notifySuccess } from "@/lib/notify";
 import { useUser } from "@/lib/userContext";
@@ -95,8 +110,21 @@ export default function WorkshopsAdminPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [editing, setEditing] = useState(null);
+  const [saveConfirmation, setSaveConfirmation] = useState(null);
+  const [savingConfirmed, setSavingConfirmed] = useState(false);
   const [open, setOpen] = useState(false);
   const [cancelling, setCancelling] = useState(null);
+  const [search, setSearch] = useState("");
+  const [status, setStatus] = useState("all");
+  const [attention, setAttention] = useState(false);
+  const [selected, setSelected] = useState([]);
+  const [publishing, setPublishing] = useState(null);
+  const [signupWorkshop, setSignupWorkshop] = useState(null);
+  const [signupSearch, setSignupSearch] = useState("");
+  const [signups, setSignups] = useState([]);
+  const [signupLoading, setSignupLoading] = useState(false);
+  const [signupError, setSignupError] = useState("");
+  const [downloading, setDownloading] = useState(false);
   const [pending, setPending] = useState(false);
   const form = useForm({
     resolver: zodResolver(schema),
@@ -143,7 +171,88 @@ export default function WorkshopsAdminPage() {
       clearTimeout(timer);
     };
   }, [email, open, staff]);
+  useEffect(() => {
+    if (!signupWorkshop || !staff) return;
+    let active = true;
+    setSignupLoading(true);
+    setSignupError("");
+    setSignups([]);
+    apiFetch(`/api/admin/workshops/${signupWorkshop._id}/signups`)
+      .then((data) => {
+        if (active) setSignups(data.signups);
+      })
+      .catch((err) => {
+        if (active) setSignupError(err.message);
+      })
+      .finally(() => {
+        if (active) setSignupLoading(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, [signupWorkshop, staff]);
   if (!staff) return null;
+  const needsRoom = (item) => !item.location?.trim();
+  const needsOrganizers = (item) => !item.organizers?.length;
+  const itemStatus = (item) =>
+    item.cancelled ? "cancelled" : item.published ? "published" : "draft";
+  const filtered = items.filter(
+    (item) =>
+      [item.title, item.host, item.location].some((value) =>
+        (value || "").toLowerCase().includes(search.toLowerCase()),
+      ) &&
+      (status === "all" || itemStatus(item) === status) &&
+      (!attention ||
+        needsRoom(item) ||
+        needsOrganizers(item) ||
+        itemStatus(item) === "draft"),
+  );
+  const publishable = items.filter(
+    (item) => selected.includes(item._id) && !item.cancelled && !item.published,
+  );
+  async function publish(rows, published) {
+    setPending(true);
+    setError("");
+    const results = await Promise.allSettled(
+      rows.map((item) =>
+        apiFetch(`/api/admin/workshops/${item._id}`, {
+          method: "PATCH",
+          body: JSON.stringify({ published }),
+        }),
+      ),
+    );
+    const failures = results.flatMap((result, index) =>
+      result.status === "rejected"
+        ? [`${rows[index].title}: ${result.reason.message}`]
+        : [],
+    );
+    const succeeded = rows
+      .filter((_, index) => results[index].status === "fulfilled")
+      .map((item) => item._id);
+    setSelected((ids) => ids.filter((id) => !succeeded.includes(id)));
+    setPublishing(null);
+    await load();
+    if (failures.length) setError(failures.join("; "));
+    if (succeeded.length)
+      notifySuccess(
+        `${succeeded.length} workshops ${published ? "published" : "unpublished"}`,
+      );
+    setPending(false);
+  }
+  async function downloadSignups() {
+    setDownloading(true);
+    try {
+      await apiDownload(
+        `/api/admin/workshops/${signupWorkshop._id}/signups.csv`,
+        "workshop-signups.csv",
+      );
+      notifySuccess("Sign-ups downloaded");
+    } catch (err) {
+      setSignupError(err.message);
+    } finally {
+      setDownloading(false);
+    }
+  }
   function edit(item) {
     setEditing(item);
     setOrganizers(item?.organizers || []);
@@ -162,7 +271,11 @@ export default function WorkshopsAdminPage() {
     );
     setOpen(true);
   }
-  async function save(values) {
+  async function save(values, confirmed = false) {
+    if (values.published && !values.location.trim() && confirmed !== true) {
+      setSaveConfirmation(values);
+      return;
+    }
     form.clearErrors("root.server");
     try {
       await apiFetch(
@@ -201,35 +314,130 @@ export default function WorkshopsAdminPage() {
   }
   const columns = [
     {
-      accessorKey: "title",
-      header: "Title",
+      id: "select",
+      enableSorting: false,
+      header: () => (
+        <Checkbox
+          aria-label="Select filtered drafts"
+          disabled={pending}
+          checked={
+            filtered.some((item) => !item.cancelled && !item.published) &&
+            filtered
+              .filter((item) => !item.cancelled && !item.published)
+              .every((item) => selected.includes(item._id))
+          }
+          onCheckedChange={(checked) =>
+            setSelected((ids) =>
+              checked
+                ? [
+                    ...new Set([
+                      ...ids,
+                      ...filtered
+                        .filter((item) => !item.cancelled && !item.published)
+                        .map((item) => item._id),
+                    ]),
+                  ]
+                : ids.filter((id) => !filtered.some((item) => item._id === id)),
+            )
+          }
+        />
+      ),
       cell: ({ row }) => (
-        <Link
-          className="text-link underline"
-          href={`/dashboard/organize/${row.original._id}`}
-        >
-          {row.original.title}
-        </Link>
+        <Checkbox
+          aria-label={`Select ${row.original.title}`}
+          disabled={pending || row.original.cancelled || row.original.published}
+          checked={selected.includes(row.original._id)}
+          onCheckedChange={(checked) =>
+            setSelected((ids) =>
+              checked
+                ? [...ids, row.original._id]
+                : ids.filter((id) => id !== row.original._id),
+            )
+          }
+        />
+      ),
+    },
+    {
+      accessorKey: "title",
+      header: "Workshop",
+      meta: { className: "min-w-48 max-w-72 whitespace-normal" },
+      cell: ({ row }) => (
+        <div className="space-y-1">
+          <Link
+            className="text-link underline"
+            href={`/dashboard/organize/${row.original._id}`}
+          >
+            {row.original.title}
+          </Link>
+          <p className="text-xs text-muted-foreground">
+            {row.original.host ? `Host: ${row.original.host}` : "Host not set"}
+          </p>
+        </div>
       ),
     },
     {
       accessorKey: "startsAt",
-      header: "Time",
-      cell: ({ row }) =>
-        formatRange(row.original.startsAt, row.original.endsAt),
+      header: "When and where",
+      meta: { className: "min-w-40 whitespace-normal" },
+      cell: ({ row }) => (
+        <div className="space-y-1">
+          <p>{formatRange(row.original.startsAt, row.original.endsAt)}</p>
+          {needsRoom(row.original)
+            ? <Badge variant="warning">Room needed</Badge>
+            : <p className="text-xs text-muted-foreground">
+                {row.original.location}
+              </p>}
+        </div>
+      ),
     },
-    { accessorKey: "location", header: "Location" },
+    {
+      id: "organizers",
+      header: "Organizers",
+      meta: { className: "min-w-28 max-w-48 whitespace-normal" },
+      cell: ({ row }) =>
+        needsOrganizers(row.original)
+          ? <Badge variant="warning">None yet</Badge>
+          : row.original.organizers.map((person) => person.name).join(", "),
+    },
     {
       id: "capacity",
-      header: "Signups / capacity",
+      header: "Sign-ups",
+      cell: ({ row }) => (
+        <span>
+          {row.original.signupCount} / {row.original.capacity || "unlimited"}
+          <span className="block text-xs text-muted-foreground">
+            {row.original.attendedCount} attended
+          </span>
+        </span>
+      ),
+    },
+    {
+      id: "raffle",
+      header: "Raffle",
       cell: ({ row }) =>
-        `${row.original.signupCount} / ${row.original.capacity || "Unlimited"}`,
+        row.original.raffleEnabled
+          ? <span>
+              On{" "}
+              <span className="block text-xs text-muted-foreground">
+                {row.original.winnerCount} winners, {row.original.claimedCount}{" "}
+                claimed
+              </span>
+            </span>
+          : "Off",
     },
     {
       id: "status",
       header: "Status",
       cell: ({ row }) => (
-        <Badge variant="secondary">
+        <Badge
+          variant={
+            row.original.cancelled
+              ? "destructive"
+              : row.original.published
+                ? "success"
+                : "secondary"
+          }
+        >
           {row.original.cancelled
             ? "Cancelled"
             : row.original.published
@@ -246,25 +454,64 @@ export default function WorkshopsAdminPage() {
           <Button
             variant="outline"
             size="sm"
-            disabled={row.original.cancelled}
+            disabled={pending || row.original.cancelled}
             onClick={() => edit(row.original)}
           >
             Edit
           </Button>
-          <Button
-            variant="destructive"
-            size="sm"
-            disabled={row.original.cancelled}
-            onClick={() => setCancelling(row.original)}
-          >
-            Cancel workshop
-          </Button>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button
+                variant="ghost"
+                size="icon-sm"
+                aria-label={`Actions for ${row.original.title}`}
+                disabled={pending}
+              >
+                <MoreHorizontal aria-hidden="true" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="min-w-44">
+              <DropdownMenuItem
+                disabled={row.original.cancelled}
+                onSelect={() =>
+                  row.original.published
+                    ? publish([row.original], false)
+                    : needsRoom(row.original)
+                      ? setPublishing([row.original])
+                      : publish([row.original], true)
+                }
+              >
+                {row.original.published ? "Unpublish" : "Publish"}
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                onSelect={() => {
+                  setSignupSearch("");
+                  setSignupWorkshop(row.original);
+                }}
+              >
+                View sign-ups
+              </DropdownMenuItem>
+              <DropdownMenuItem asChild>
+                <Link href={`/dashboard/organize/${row.original._id}`}>
+                  Open console
+                </Link>
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem
+                variant="destructive"
+                disabled={row.original.cancelled}
+                onSelect={() => setCancelling(row.original)}
+              >
+                Cancel workshop
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
       ),
     },
   ];
   return (
-    <div className="space-y-6">
+    <div className="min-w-0 space-y-6">
       <PageHeader
         title="Workshops"
         actions={<Button onClick={() => edit(null)}>Create workshop</Button>}
@@ -279,21 +526,217 @@ export default function WorkshopsAdminPage() {
           </AlertDescription>
         </Alert>
       )}
+      <p className="text-sm text-muted-foreground" aria-live="polite">
+        {items.length} workshops:{" "}
+        {items.filter((item) => itemStatus(item) === "draft").length} drafts,{" "}
+        {items.filter(needsOrganizers).length} without organizers,{" "}
+        {items.filter(needsRoom).length} without a room
+      </p>
+      <div className="flex flex-wrap items-end gap-3">
+        <div className="space-y-2">
+          <Label htmlFor="workshop-search">Search workshops</Label>
+          <Input
+            id="workshop-search"
+            value={search}
+            onChange={(event) => setSearch(event.target.value)}
+            placeholder="Title, host or location"
+          />
+        </div>
+        <div className="space-y-2">
+          <Label htmlFor="workshop-status">Status</Label>
+          <Select value={status} onValueChange={setStatus}>
+            <SelectTrigger id="workshop-status">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {["all", "draft", "published", "cancelled"].map((value) => (
+                <SelectItem key={value} value={value}>
+                  {value[0].toUpperCase() + value.slice(1)}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+        <Label className="flex items-center gap-2">
+          <Checkbox checked={attention} onCheckedChange={setAttention} />
+          Needs attention
+        </Label>
+        <Button
+          variant="outline"
+          disabled={pending || !publishable.length}
+          onClick={() => setPublishing(publishable)}
+        >
+          Publish selected ({publishable.length})
+        </Button>
+      </div>
       <DataTable
+        className="min-w-0 max-w-full"
+        dense
         columns={columns}
-        data={items}
+        data={filtered}
         loading={loading}
         emptyState={
           <EmptyState
-            title="No workshops yet"
-            description="Create a workshop to open signups."
+            title={items.length ? "No matching workshops" : "No workshops yet"}
+            description={
+              items.length
+                ? "Adjust your search or filters."
+                : "Create a workshop to open signups."
+            }
           />
         }
       />
+      <AlertDialog
+        open={Boolean(saveConfirmation)}
+        onOpenChange={(value) => {
+          if (!value && !savingConfirmed) setSaveConfirmation(null);
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Publish without a room?</AlertDialogTitle>
+            <AlertDialogDescription>
+              {saveConfirmation?.title} has no room. Attendees will see this
+              workshop without a location.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={savingConfirmed}>
+              Return to editor
+            </AlertDialogCancel>
+            <Button
+              loading={savingConfirmed}
+              onClick={async () => {
+                setSavingConfirmed(true);
+                await save(saveConfirmation, true);
+                setSavingConfirmed(false);
+                setSaveConfirmation(null);
+              }}
+            >
+              Save and publish
+            </Button>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+      <AlertDialog
+        open={Boolean(publishing)}
+        onOpenChange={(value) => {
+          if (!value && !pending) setPublishing(null);
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              Publish {publishing?.length} workshops?
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              These workshops will be visible to attendees. Review missing rooms
+              and organizers before publishing.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <ul className="max-h-60 overflow-y-auto text-sm">
+            {publishing
+              ?.filter((item) => needsRoom(item) || needsOrganizers(item))
+              .map((item) => (
+                <li key={item._id}>
+                  {item.title}:{" "}
+                  {[
+                    needsRoom(item) && "room needed",
+                    needsOrganizers(item) && "no organizers",
+                  ]
+                    .filter(Boolean)
+                    .join(", ")}
+                </li>
+              ))}
+          </ul>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={pending}>
+              Keep drafts
+            </AlertDialogCancel>
+            <Button loading={pending} onClick={() => publish(publishing, true)}>
+              Publish workshops
+            </Button>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+      <Dialog
+        open={Boolean(signupWorkshop)}
+        onOpenChange={(value) => {
+          if (!value) setSignupWorkshop(null);
+        }}
+      >
+        <DialogContent className="max-h-[90dvh] overflow-y-auto sm:max-w-3xl">
+          <DialogHeader>
+            <DialogTitle>Sign-ups: {signupWorkshop?.title}</DialogTitle>
+            <DialogDescription>
+              People signed up and their workshop attendance.
+            </DialogDescription>
+          </DialogHeader>
+          <Label htmlFor="signup-search">Search people</Label>
+          <Input
+            id="signup-search"
+            value={signupSearch}
+            onChange={(event) => setSignupSearch(event.target.value)}
+          />
+          {signupError && (
+            <Alert variant="destructive">
+              <AlertDescription>
+                {signupError}{" "}
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setSignupWorkshop({ ...signupWorkshop })}
+                >
+                  Retry
+                </Button>
+              </AlertDescription>
+            </Alert>
+          )}
+          <p className="text-sm" aria-live="polite">
+            {signupLoading
+              ? "Loading sign-ups..."
+              : `${signups.length} signed up, ${signups.filter((person) => person.attended).length} attended`}
+          </p>
+          <Button
+            variant="outline"
+            loading={downloading}
+            onClick={downloadSignups}
+          >
+            Download CSV
+          </Button>
+          <DataTable
+            loading={signupLoading}
+            data={signups.filter((person) =>
+              `${person.name} ${person.email}`
+                .toLowerCase()
+                .includes(signupSearch.toLowerCase()),
+            )}
+            columns={[
+              { accessorKey: "name", header: "Name" },
+              { accessorKey: "email", header: "Email" },
+              {
+                accessorKey: "signedUpAt",
+                header: "Signed up",
+                cell: ({ row }) => formatDateTime(row.original.signedUpAt),
+              },
+              {
+                accessorKey: "attended",
+                header: "Attended",
+                cell: ({ row }) => (row.original.attended ? "Yes" : "No"),
+              },
+            ]}
+            emptyState={
+              <p className="p-4 text-sm text-muted-foreground">
+                No matching sign-ups.
+              </p>
+            }
+          />
+        </DialogContent>
+      </Dialog>
       <Dialog
         open={open}
         onOpenChange={(value) => {
-          if (!form.formState.isSubmitting) setOpen(value);
+          if (!form.formState.isSubmitting && !savingConfirmed) setOpen(value);
         }}
       >
         <DialogContent className="max-h-[90dvh] overflow-y-auto">

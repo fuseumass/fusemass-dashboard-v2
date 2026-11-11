@@ -898,3 +898,20 @@ The built-in `workshop_organizer_added` template sends in the background only to
 newly assigned organizers. Subject: `You're an organizer for {{title}}`.
 Body: `Hi {{name}},\n\nYou've been added as an organizer for {{title}} ({{when}}, {{location}}).\n\nOpen Organize workshops on your dashboard to run attendance and the raffle: {{organizeUrl}}`.
 `organizeUrl` uses the primary configured client origin plus `/dashboard/organize`.
+
+## Staff workshop overview
+
+Moderators and admins use `/dashboard/staff/workshops`. All routes below require
+`isModerator` and the workshops module (404 when disabled). Assigned organizers
+without a staff role use `/dashboard/organize` and cannot access these exports.
+
+| Method | Route | Response |
+| --- | --- | --- |
+| GET | `/api/admin/workshops` | `{ workshops }`, with organizer name/email, stored `signupCount`, `attendedCount`, `drawCount`, `winnerCount`, `claimedCount`. Counts use two aggregate queries across all workshops. Winners and claims exclude no-shows; draws include redraws. |
+| GET | `/api/admin/workshops/:id/signups` | `{ signups: [{ name, email, signedUpAt, attended }] }`, ordered by signup time. Attendance is specific to this workshop. Missing or invalid workshop IDs return 404. |
+| GET | `/api/admin/workshops/:id/signups.csv` | CSV with Name, Email, Signed up at (ISO), Attended (true/false). Uses the shared streaming writer with UTF-8 BOM, quoting and formula escaping. |
+
+Sign-up identities and overview counts are not added to attendee endpoints.
+Publish/unpublish and bulk publish use the existing `PATCH /api/admin/workshops/:id`
+with `{ published }`. Cancelled workshops remain immutable. Bulk publishing
+reports failures per workshop and retains failed selections for retry.

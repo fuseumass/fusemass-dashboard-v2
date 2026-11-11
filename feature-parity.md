@@ -34,6 +34,7 @@ were presumably tracked in spreadsheets, so B33–B37 are a new design.
 | Roles: admin / organizer / attendee | ✅ as admin / moderator / applicant | — |
 | Mentor role | ✖ mentorship runs on Discord | B31 |
 | Judge role (judging app used a CSV of logins) | ✅ role, single-use invites, CSV preview/send, judge-only nav and admin management; Schedule, Judging, Skipped and Demo screens | B47, F27 |
+| Staff workshop overview | ✅ host/organizers, readiness filters, bulk publishing, attendance/raffle totals and private sign-up JSON/CSV | B18, B19, B21, F19 |
 | Workshop organizer access | ✅ per-workshop assignments, email lookup and notifications; applicants retain their role | B17, F18, F19 |
 | Admin role management (`pages#permissions`) | ✅ Users page | — |
 | "Redeem code" to upgrade your own role | ✖ security hole (let anyone become admin) | B17 |
