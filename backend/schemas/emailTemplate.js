@@ -6,6 +6,11 @@ var Schema = mongoose.Schema;
 
 var DEFAULT_TEMPLATES = [
   {
+    key: "workshop_organizer_added",
+    subject: "You're an organizer for {{title}}",
+    body: "Hi {{name}},\n\nYou've been added as an organizer for {{title}} ({{when}}, {{location}}).\n\nOpen Organize workshops on your dashboard to run attendance and the raffle: {{organizeUrl}}",
+  },
+  {
     key: "judging_table_assigned",
     subject: "Your judging table: {{table}} in {{room}}",
     body: "Hi {{name}},\n\nYour table is {{table}} in {{room}}. Go to your table, then scan the QR on the table from your dashboard to finish judging check-in.",

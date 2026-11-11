@@ -10,7 +10,7 @@ var mongoose = require("mongoose");
  * @property {Date} endsAt
  * @property {number} capacity - Zero means unlimited.
  * @property {number} signupCount
- * @property {Array<object>} organizers - Reserved User references.
+ * @property {Array<object>} organizers - Users assigned to run this workshop.
  * @property {boolean} published
  * @property {boolean} raffleEnabled
  * @property {boolean} cancelled
@@ -48,4 +48,5 @@ var schema = new mongoose.Schema(
     },
   },
 );
+schema.index({ organizers: 1, cancelled: 1 });
 module.exports = mongoose.model("Workshop", schema);

@@ -24,12 +24,13 @@ var workshopRaffleController = require("../controllers/workshopRaffleController"
 var router = express.Router();
 router.use("/judges", require("./judges"));
 router.use("/judging", require("./adminJudging"));
-router.get("/raffles", requireFeature("workshops"), isAdmin, workshopRaffleController.history);
+router.get("/raffles", requireFeature("workshops"), isModerator, workshopRaffleController.history);
 router.use("/workshops", requireFeature("workshops"));
-router.get("/workshops", isAdmin, workshopController.listAdmin);
-router.post("/workshops", isAdmin, workshopController.create);
-router.patch("/workshops/:id", isAdmin, workshopController.update);
-router.delete("/workshops/:id", isAdmin, workshopController.remove);
+router.get("/workshops/organizer-lookup", isModerator, workshopController.organizerLookup);
+router.get("/workshops", isModerator, workshopController.listAdmin);
+router.post("/workshops", isModerator, workshopController.create);
+router.patch("/workshops/:id", isModerator, workshopController.update);
+router.delete("/workshops/:id", isModerator, workshopController.remove);
 
 // Logo / favicon uploads: kept in memory (capped at 1 MiB) and handed to the
 // branding controller, which checks the real image type from the bytes.

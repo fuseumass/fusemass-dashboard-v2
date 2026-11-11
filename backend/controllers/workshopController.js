@@ -9,6 +9,7 @@ var Application = require("../schemas/application");
 var User = require("../schemas/user");
 var calendar = require("../utils/calendar");
 var mailer = require("../utils/mailer");
+var primaryClientOrigin = require("../utils/clientOrigin").primaryClientOrigin;
 
 /** @param {object} req @param {object} res @param {function} next @returns {Promise<void>} */
 async function accepted(req, res, next) {
@@ -68,6 +69,50 @@ function fields(body, existing) {
   return result;
 }
 
+/** @param {*} input @returns {Promise<Array<string>>} Validated organizer ids. */
+async function organizerIds(input) {
+  if (!Array.isArray(input) || input.length > 10 || input.some(function invalid(id) {
+    return typeof id !== "string" || !/^[a-f0-9]{24}$/i.test(id);
+  })) throw new Error("Organizers must be an array of at most 10 valid user ids.");
+  var ids = Array.from(new Set(input.map(function normalize(id) { return id.toLowerCase(); })));
+  var users = await User.find({ _id: { $in: ids } }).select("role").lean();
+  if (users.length !== ids.length) throw new Error("Every organizer must have an existing account.");
+  if (users.some(function judge(user) { return user.role === "judge"; }))
+    throw new Error("Judges cannot be workshop organizers.");
+  return ids;
+}
+
+/** @param {object} workshop @param {Array<string>} previous @returns {void} */
+function notifyOrganizers(workshop, previous) {
+  var added = workshop.organizers.filter(function newlyAdded(id) {
+    return previous.indexOf(String(id)) === -1;
+  });
+  Promise.all(added.map(async function send(id) {
+    var user = await User.findById(id).select("name email").lean();
+    if (!user) return;
+    await mailer.sendTemplateEmail(user.email, "workshop_organizer_added", {
+      name: user.name,
+      title: workshop.title,
+      when: calendar.formatTimeRange(workshop.startsAt, workshop.endsAt),
+      location: workshop.location,
+      organizeUrl: primaryClientOrigin() + "/dashboard/organize",
+    });
+  })).catch(function failed(err) {
+    console.error("Workshop organizer notifications failed:", err.message);
+  });
+}
+
+/** @param {object} req @param {object} res @param {function} next @returns {Promise<void>} */
+async function organizerLookup(req, res, next) {
+  try {
+    var email = typeof req.query.email === "string" ? req.query.email.trim().toLowerCase() : "";
+    var user = await User.findOne({ email: email }).select("name email role").lean();
+    if (!user) return res.status(404).json({ error: "No account with that email. Ask them to sign up first." });
+    if (user.role === "judge") return res.status(400).json({ error: "Judges cannot be workshop organizers." });
+    res.json({ user: { id: String(user._id), name: user.name, email: user.email, role: user.role } });
+  } catch (err) { next(err); }
+}
+
 /** @param {object} workshop @param {string} userId @param {string} key @param {string} method @returns {Promise<void>} */
 async function email(workshop, userId, key, method) {
   var user = await User.findById(userId).select("email name").lean();
@@ -122,7 +167,7 @@ function notifyInBackground(workshop, key, method) {
 /** @param {object} req @param {object} res @param {function} next @returns {Promise<void>} */
 async function listAdmin(req, res, next) {
   try {
-    res.json({ workshops: await Workshop.find({}).sort({ startsAt: 1 }) });
+    res.json({ workshops: await Workshop.find({}).sort({ startsAt: 1 }).populate("organizers", "name email") });
   } catch (err) {
     next(err);
   }
@@ -132,12 +177,15 @@ async function create(req, res, next) {
   var data;
   try {
     data = fields(req.body || {});
+    if (req.body && req.body.organizers !== undefined) data.organizers = await organizerIds(req.body.organizers);
   } catch (err) {
     res.status(400).json({ error: err.message });
     return;
   }
   try {
-    res.status(201).json({ workshop: await Workshop.create(data) });
+    var workshop = await Workshop.create(data);
+    notifyOrganizers(workshop, []);
+    res.status(201).json({ workshop: workshop });
   } catch (err) {
     next(err);
   }
@@ -159,10 +207,12 @@ async function update(req, res, next) {
     var data;
     try {
       data = fields(req.body || {}, workshop.toObject());
+      if (req.body && req.body.organizers !== undefined) data.organizers = await organizerIds(req.body.organizers);
     } catch (err) {
       res.status(400).json({ error: err.message });
       return;
     }
+    var previousOrganizers = workshop.organizers.map(String);
     var changed =
       +data.startsAt !== +workshop.startsAt ||
       +data.endsAt !== +workshop.endsAt ||
@@ -182,6 +232,7 @@ async function update(req, res, next) {
     ].forEach(function pick(key) {
       editable[key] = data[key];
     });
+    if (req.body && req.body.organizers !== undefined) editable.organizers = data.organizers;
     var query = { _id: workshop._id, cancelled: false };
     if (data.capacity) query.signupCount = { $lte: data.capacity };
     var mutation = { $set: editable };
@@ -200,6 +251,7 @@ async function update(req, res, next) {
     // Emails go out in the background (the mailer spaces sends a second
     // apart), so a workshop with many sign-ups doesn't hold the request open.
     if (changed) notifyInBackground(workshop, "workshop_changed", "PUBLISH");
+    notifyOrganizers(workshop, previousOrganizers);
     res.json({ workshop: workshop });
   } catch (err) {
     next(err);
@@ -402,6 +454,7 @@ async function cancelSignup(req, res, next) {
   }
 }
 module.exports = {
+  organizerLookup: organizerLookup,
   accepted: accepted,
   listAdmin: listAdmin,
   create: create,

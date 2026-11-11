@@ -295,7 +295,7 @@ async function attendance(req, res, next) {
     };
     var settings = await Settings.getSingleton();
     res.json({
-      workshop: req.workshop,
+      workshop: await req.workshop.populate("organizers", "name"),
       attendees: rows,
       counts: counts,
       organizerRoom: settings.organizerRoom || "the organizer room",

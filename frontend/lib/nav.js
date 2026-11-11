@@ -29,6 +29,7 @@ import {
 //   roles    roles allowed to see it; omit for everyone who is logged in
 //   feature  module flag from B25 (meals, hardware, workshops, judging,
 //            raffle); the item is hidden while that flag is explicitly off
+//   when     optional predicate for user-specific visibility
 //   exact    true when only the href itself counts as a match (Home), so it is
 //            not "active" on every page below /dashboard
 //   kiosk    true for scanning screens that use the full-width layout without
@@ -115,15 +116,17 @@ export const NAV_ITEMS = [
     label: "Organize workshops",
     icon: CalendarDays,
     group: "organize",
-    roles: STAFF,
+    roles: PARTICIPANTS,
+    when: (user) =>
+      STAFF.includes(user?.role) || user?.organizesWorkshops === true,
     feature: "workshops",
   },
   {
-    href: "/dashboard/admin/raffles",
+    href: "/dashboard/staff/raffles",
     label: "Raffles",
     icon: ClipboardList,
-    group: "admin",
-    roles: ADMIN,
+    group: "organize",
+    roles: STAFF,
     feature: "workshops",
   },
   {
@@ -243,11 +246,11 @@ export const NAV_ITEMS = [
     roles: ADMIN,
   },
   {
-    href: "/dashboard/admin/workshops",
+    href: "/dashboard/staff/workshops",
     label: "Workshops",
     icon: CalendarDays,
-    group: "admin",
-    roles: ADMIN,
+    group: "organize",
+    roles: STAFF,
     feature: "workshops",
   },
   {
@@ -295,6 +298,7 @@ export function canSee(item, user, features) {
   if (item.roles && !item.roles.includes(role)) {
     return false;
   }
+  if (item.when && !item.when(user)) return false;
   if (item.feature && features && features[item.feature] === false) {
     return false;
   }

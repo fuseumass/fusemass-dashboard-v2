@@ -11,7 +11,7 @@ async function canManageWorkshop(req, res, next) {
     if (!role)
       return res.status(401).json({ error: "Authentication required." });
     var staff = ["moderator", "admin"].indexOf(role) !== -1;
-    // Assignment remains independent of role so B17 can add its role here later.
+    // Workshop assignments grant applicants access without changing their role.
     if (
       !staff &&
       !(

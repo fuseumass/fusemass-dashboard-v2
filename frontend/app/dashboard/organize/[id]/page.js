@@ -96,6 +96,12 @@ export default function WorkshopConsole() {
       {!data
         ? <CardSkeleton />
         : <>
+            <p className="text-sm text-muted-foreground">
+              Organizers:{" "}
+              {data.workshop.organizers
+                ?.map((person) => person.name)
+                .join(", ") || "None assigned"}
+            </p>
             <section className="space-y-4" aria-labelledby="attendance-title">
               <h2 id="attendance-title" className="text-base font-semibold">
                 Attendance
