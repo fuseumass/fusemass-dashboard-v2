@@ -93,7 +93,7 @@ were presumably tracked in spreadsheets, so B33–B37 are a new design.
 | ----------- | ------ | ---- |
 | Inventory CRUD (name, category, location, link, count) | ✅ | B22, F20 |
 | Search by item id / name | ✅ | B23, F20 |
-| Checkout / return, per-item history log | ✅ staff-only, atomic stock, checkout team snapshots and retained history | B22 |
+| Checkout / return, per-item history log | ✅ staff-only, atomic stock, checkout team snapshots and retained history; phone-friendly desk flow (attendee card with one-tap returns, type-ahead item search, back-to-back checkouts) | B22, F20 |
 | "All checked out" list | ✅ snapshot/current teams and changed-team badges | B22, F20 |
 | Barcode label CSV | ✅ printable item QR labels | B22 |
 | Slack reminders to return hardware | ✅ background email reminders, event return deadline and one-time team-change notices | B22, B26 |
