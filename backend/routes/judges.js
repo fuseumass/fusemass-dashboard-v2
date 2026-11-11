@@ -8,5 +8,6 @@ router.post("/", controller.invite);
 router.post("/preview", controller.preview);
 router.post("/bulk", controller.bulk);
 router.post("/:id/resend", controller.resend);
+router.patch("/:id", controller.update);
 router.delete("/:id", controller.remove);
 module.exports = router;

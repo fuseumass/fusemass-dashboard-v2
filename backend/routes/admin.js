@@ -4,6 +4,7 @@ var express = require("express");
 var rateLimit = require("express-rate-limit");
 var multer = require("multer");
 var adminController = require("../controllers/adminController");
+var applicationEditController = require("../controllers/applicationEditController");
 var outboxController = require("../controllers/outboxController");
 var resumeController = require("../controllers/resumeController");
 var teamController = require("../controllers/teamController");
@@ -81,6 +82,9 @@ router.post(
   adminController.flagApplication
 );
 router.delete("/applications/:id/flag", isModerator, adminController.unflagApplication);
+// Correct typos in a submitted application and its account's name / email
+// (never its status, flags or owner). Recorded in the application's `edits`.
+router.patch("/applications/:id/details", isModerator, applicationEditController.editApplicationDetails);
 // Resumes live in a private container; this hands out a short-lived signed link.
 router.get("/applications/:id/resume", isModerator, resumeController.getApplicationResume);
 // Every team with members and Devpost links (staff view, judging matching).
