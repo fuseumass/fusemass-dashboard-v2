@@ -8,6 +8,7 @@ var db = require("./helpers/db");
 var fixtures = require("./helpers/fixtures");
 var app = require("../server");
 var MealService = require("../schemas/mealService");
+var MealCheckIn = require("../schemas/mealCheckin");
 
 test("B6: admin meal service CRUD", async function adminMealCrud(t) {
   await db.connect();
@@ -94,6 +95,38 @@ test("B6: admin meal service CRUD", async function adminMealCrud(t) {
     assert.equal(res.status, 200);
     assert.equal(res.body.ok, true);
     assert.equal(await MealService.findById(createdMealId), null);
+  });
+
+  await t.test("a served meal needs its exact name, then goes with its check-ins", async function () {
+    var meal = await MealService.create({ name: "Served dinner", startsAt: new Date(), endsAt: new Date(Date.now() + 3600000) });
+    var guest = await fixtures.createUser();
+    var staff = await fixtures.createUser({ role: "moderator" });
+    await MealCheckIn.create({ mealService: meal._id, user: guest.user._id, checkedInBy: staff.user._id });
+
+    var noName = await request(app).delete("/api/admin/meals/" + meal._id).set("Authorization", auth);
+    assert.equal(noName.status, 409);
+    assert.equal(noName.body.served, 1);
+
+    var wrongName = await request(app)
+      .delete("/api/admin/meals/" + meal._id)
+      .set("Authorization", auth)
+      .send({ confirmName: "served dinner" });
+    assert.equal(wrongName.status, 409, "the name must match exactly, including case");
+    assert.ok(await MealService.findById(meal._id));
+
+    var res = await request(app)
+      .delete("/api/admin/meals/" + meal._id)
+      .set("Authorization", auth)
+      .send({ confirmName: "Served dinner" });
+    assert.equal(res.status, 200);
+    assert.equal(res.body.checkInsRemoved, 1);
+    assert.equal(await MealService.findById(meal._id), null);
+    assert.equal(await MealCheckIn.countDocuments({ mealService: meal._id }), 0);
+  });
+
+  await t.test("deleting an unknown or invalid id is a 404", async function () {
+    assert.equal((await request(app).delete("/api/admin/meals/507f1f77bcf86cd799439011").set("Authorization", auth)).status, 404);
+    assert.equal((await request(app).delete("/api/admin/meals/not-an-id").set("Authorization", auth)).status, 404);
   });
 
   await db.closeDatabase();

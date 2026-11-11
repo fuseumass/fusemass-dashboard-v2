@@ -943,28 +943,44 @@ function updateMeal(req, res) {
 }
 
 /**
- * DELETE /api/admin/meals/:id — remove a meal service.
+ * DELETE /api/admin/meals/:id   Body: { confirmName? }
+ * Remove a meal service. A meal nobody has been served is deleted outright.
+ * Once anyone has been served, the request must repeat the meal's exact name
+ * (`confirmName`), and its check-in records are deleted with it so none are
+ * left pointing at a missing meal. Recreating a meal with the same name later
+ * starts with nobody served.
+ *
  * @param {object} req
  * @param {object} res
  * @returns {Promise<void>}
  */
 function deleteMeal(req, res) {
-  // Once anyone has been served, deleting the meal would orphan its check-ins
-  // and let a re-created copy serve the same people twice. Deactivate instead.
-  return MealCheckIn.countDocuments({ mealService: req.params.id })
-    .then(function afterCount(served) {
-      if (served > 0) {
-        res.status(409).json({
-          error: "This meal already has " + served + " check-in(s). Deactivate it instead of deleting it.",
-        });
+  if (!mongoose.isValidObjectId(req.params.id)) {
+    res.status(404).json({ error: "Meal service not found." });
+    return Promise.resolve();
+  }
+  var confirmName = req.body && typeof req.body.confirmName === "string" ? req.body.confirmName : null;
+  return MealService.findById(req.params.id)
+    .then(function afterFind(meal) {
+      if (!meal) {
+        res.status(404).json({ error: "Meal service not found." });
         return undefined;
       }
-      return MealService.findByIdAndDelete(req.params.id).then(function afterDelete(meal) {
-        if (!meal) {
-          res.status(404).json({ error: "Meal service not found." });
-          return;
+      return MealCheckIn.countDocuments({ mealService: meal._id }).then(function afterCount(served) {
+        if (served > 0 && confirmName !== meal.name) {
+          res.status(409).json({
+            error: meal.name + " has been served to " + served + " people. Type its exact name to delete it and its check-ins.",
+            served: served,
+          });
+          return undefined;
         }
-        res.status(200).json({ ok: true });
+        return MealService.deleteOne({ _id: meal._id })
+          .then(function removeCheckIns() {
+            return MealCheckIn.deleteMany({ mealService: meal._id });
+          })
+          .then(function afterDelete(result) {
+            res.status(200).json({ ok: true, checkInsRemoved: result.deletedCount || 0 });
+          });
       });
     })
     .catch(function onError(err) {
