@@ -11,6 +11,7 @@ var settingsController = require("../controllers/settingsController");
 var scheduleController = require("../controllers/scheduleController");
 var brandingController = require("../controllers/brandingController");
 var statsController = require("../controllers/statsController");
+var userGroupsController = require("../controllers/userGroupsController");
 var systemConfigController = require("../controllers/systemConfigController");
 var exportRoutes = require("./exports");
 var isAdmin = require("../utils/isAdmin");
@@ -180,6 +181,13 @@ router.delete("/schedule/:id", isAdmin, scheduleController.deleteScheduleEvent);
 
 // Statistics for the admin Statistics page (counts only, computed in MongoDB).
 router.get("/stats", isAdmin, statsController.getStats);
+
+// User groups: filter one round's applicants (domain, status, dietary, form
+// answers, check-in, flag), see the group's breakdowns, export or copy emails.
+router.get("/groups/options", isAdmin, userGroupsController.getOptions);
+router.get("/groups/emails", isAdmin, userGroupsController.getGroupEmails);
+router.get("/groups/export.csv", isAdmin, userGroupsController.exportGroup);
+router.get("/groups", isAdmin, userGroupsController.getGroup);
 
 // CSV / ZIP exports of applications, check-ins, meals and sponsor resumes.
 router.use("/exports", exportRoutes);

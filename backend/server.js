@@ -11,8 +11,7 @@ var parseToken = require("./utils/parseToken");
 var passportUtil = require("./utils/passport");
 var EmailTemplate = require("./schemas/emailTemplate");
 var discord = require("./utils/discord");
-var outbox = require("./utils/outbox");
-var autoAccept = require("./utils/autoAccept");
+var backgroundWorkers = require("./utils/backgroundWorkers");
 var clientOrigin = require("./utils/clientOrigin");
 var healthController = require("./controllers/healthController");
 var systemConfig = require("./utils/systemConfig");
@@ -157,11 +156,10 @@ if (require.main !== module) {
       module.exports = app;
       var server = app.listen(PORT, function onListen() {
         console.log("HackUMass backend listening on port " + PORT + ".");
-        // Retries emails that failed to send (see utils/outbox). Started only
-        // here, so requiring this module in tests never starts a timer.
-        outbox.startWorker();
-        // Domain auto-accept, when an admin switched it on in Settings.
-        autoAccept.startWorker();
+        // Email outbox + domain auto-accept, unless DISABLE_BACKGROUND_WORKERS
+        // is set. Started only here, so requiring this module in tests never
+        // starts a timer.
+        backgroundWorkers.start(process.env);
       });
       systemConfig.registerServer(server);
     })

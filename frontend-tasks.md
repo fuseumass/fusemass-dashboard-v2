@@ -585,6 +585,18 @@ every other role (also enforced by the API, B33–B36).
       check-ins, meals CSV; resume ZIP for sponsors with a consent question).
 - **Depends on:** B43.
 
+### F28. User groups (applicant segments)
+- [x] `/dashboard/admin/groups` (admins only, in the sidebar): pick a round's
+      applicants by email domain (with subdomains, plus one-click top
+      domains), status, dietary needs (food restrictions and the form's
+      meal-accommodations question), any choice question on the round's
+      form (built from its `formConfig`, with answer counts), check-in and
+      flag. Shows the group's size and breakdowns (status, domain, school,
+      T-shirt size, dietary, check-in) with the Statistics page's bar lists
+      (shared in `components/StatsParts.js`), downloads the group as a CSV
+      and copies its emails. API: `/api/admin/groups*` (backend README,
+      "User groups").
+
 ---
 
 ## Supporting

@@ -502,4 +502,8 @@ module.exports = {
   exportMeals: exportMeals,
   exportResumes: exportResumes,
   resumeFileName: resumeFileName,
+  // Shared with the user-groups export (controllers/userGroupsController).
+  customColumns: customColumns,
+  answerCell: answerCell,
+  yesNo: yesNo,
 };
