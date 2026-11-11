@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useId, useRef, useState } from "react";
 import EmptyState from "@/components/EmptyState";
 import PageHeader from "@/components/PageHeader";
+import SetupReminderButton from "@/components/SetupReminderButton";
 import {
   BarList,
   downloadFile,
@@ -228,6 +229,7 @@ export default function UserGroupsPage() {
         }
         actions={
           <>
+            <SetupReminderButton />
             <Button
               type="button"
               variant="outline"
