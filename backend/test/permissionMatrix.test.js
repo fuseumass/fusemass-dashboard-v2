@@ -286,6 +286,16 @@ var MATRIX = [
   row("GET", "/api/admin/groups/options", "admin"),
   row("GET", "/api/admin/groups/emails", "admin"),
   row("GET", "/api/admin/groups/export.csv", "admin"),
+  row("GET", "/api/admin/team-builder/proposals", "admin"),
+  row("POST", "/api/admin/team-builder/apply", "admin", {
+    body: function body(ids) {
+      return { proposals: [{ memberEmails: [ids.attendeeEmail, "sneaky@example.com"], name: "Sneaky team" }] };
+    },
+  }),
+  row("GET", "/api/admin/team-builder/unteamed", "admin"),
+  row("GET", "/api/admin/team-builder/unteamed.csv", "admin"),
+  row("GET", "/api/admin/setup-reminders", "admin"),
+  row("POST", "/api/admin/setup-reminders", "admin"),
   row("GET", "/api/admin/exports/applications.csv", "admin"),
   row("GET", "/api/admin/exports/checkins.csv", "admin"),
   row("GET", "/api/admin/exports/meals.csv", "admin"),

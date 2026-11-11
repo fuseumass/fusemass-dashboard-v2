@@ -132,6 +132,11 @@ var userSchema = new Schema(
       type: Date,
       default: null,
     },
+    // Last "set up your account" reminder (admin User groups page), so the
+    // same person isn't reminded twice within 24 hours.
+    setupReminderSentAt: {
+      type: Date,
+    },
   },
   { timestamps: true }
 );

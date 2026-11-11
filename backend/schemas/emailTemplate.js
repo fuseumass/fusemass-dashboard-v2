@@ -139,6 +139,15 @@ var DEFAULT_TEMPLATES = [
       "Hi {{name}},\n\nYou've been accepted to {{orgName}}, and we've created an account for you so you can see your status and check-in QR code on the dashboard.\n\nSet your password here (this link works for 7 days):\n{{setupUrl}}\n\nIf it has expired, use \"Forgot password\" on the login page with this email address.",
   },
   {
+    // Sent from the User groups page to accepted applicants who still haven't
+    // set a password. Each send issues a fresh {{setupUrl}} (7 days) and
+    // replaces any earlier link.
+    key: "account_setup_reminder",
+    subject: "Reminder: set up your {{orgName}} account",
+    body:
+      "Hi {{name}},\n\nYou're accepted to {{orgName}}, but your dashboard account isn't set up yet. You'll need it to see your check-in QR code, join a team and get event updates.\n\nSet your password here (this link works for 7 days and replaces any earlier link we sent):\n{{setupUrl}}\n\nIf it has expired, use \"Forgot password\" on the login page with this email address.",
+  },
+  {
     // Sent when someone invites this email to their team. The invitee may
     // not have a password yet (applied without an account).
     key: "team_invite",
