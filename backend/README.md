@@ -140,6 +140,34 @@ Optional environment variables:
 | `EMAIL_RETRY_INTERVAL_MS` | `30000` | How often the retry worker looks for due emails |
 | `EMAIL_LOG_RETENTION_DAYS`| `90`    | How long outbox rows are kept                 |
 
+### Background workers
+
+`server.js` starts two timers once it is listening: the outbox worker above
+(sends and retries emails) and domain auto-accept (accepts applications). Set
+`DISABLE_BACKGROUND_WORKERS=true` (or `1`) to keep both off; the server logs
+"Background workers disabled." Use it for a local instance pointed at a real
+database (with no SMTP settings, so requests can't send email either). Leave it
+unset in production. It is deliberately not editable from Technical settings.
+
+## User groups
+
+`/api/admin/groups*` (admin only, `controllers/userGroupsController.js`,
+filters in `utils/userGroups.js`) segment one round's applicants. Every filter
+is optional and they combine with AND:
+
+| Parameter | Values |
+| --------- | ------ |
+| `round` | Round id; default the newest open round, else the newest round |
+| `domain` | Email domain(s), repeated or comma separated, normalized like auto-accept (`someone@umass.edu` reads as `umass.edu`); at most 20 |
+| `subdomains` | `true` also matches `cs.umass.edu` for `umass.edu` |
+| `status` | One or more of `accepted, pending, waitlisted, rejected, draft`; default every submitted (non-draft) application |
+| `dietary` | `any`, `restrictions` (the food-restrictions field says something other than empty, none, n/a, na or no), `accommodations` (a yes to the form's meal-accommodations question, found by its wording), `none` |
+| `answer` | `<question key>:<choice>`, repeated; the key must be a select, multiselect or checkbox question on the round's form (checkboxes take `Yes` / `No`). Choices of one question are OR'd, different questions AND'd |
+| `checkedIn`, `flagged` | `true` / `false` |
+
+Unknown parameters and non-string values are a 400. User input only ever
+reaches MongoDB as a value (an `$in` list, an equality or an escaped pattern).
+
 ## Technical settings
 
 Admins can see and change the server's environment variables from
@@ -301,6 +329,10 @@ emailed on acceptance (or via "Forgot password").
 | PUT    | `/api/admin/branding/:slot`     | admin     | Upload `logo` / `logo-dark` / `favicon` (multipart `file`) |
 | DELETE | `/api/admin/branding/:slot`     | admin     | Remove that image (back to the server default) |
 | GET    | `/api/admin/stats`              | admin     | Application + event-day statistics (`?round=&status=`) |
+| GET    | `/api/admin/groups/options`     | admin     | User groups: rounds, status counts, top email domains, the round's choice questions with answer counts, the meal-accommodations question (`?round=`, default the newest open round) |
+| GET    | `/api/admin/groups`             | admin     | Counts and breakdowns of one group, no names or emails (filters below) |
+| GET    | `/api/admin/groups/emails`      | admin     | The group's emails, for "Copy emails" (`no-store`) |
+| GET    | `/api/admin/groups/export.csv`  | admin     | The group as a formula-safe CSV: contact and event fields plus every form answer |
 | GET    | `/api/admin/exports/applications.csv` | admin | Applications CSV, answers flattened (`?round=&status=`) |
 | GET    | `/api/admin/exports/checkins.csv` | admin   | Check-ins CSV (who, when, by whom, forced)  |
 | GET    | `/api/admin/exports/meals.csv`  | admin     | Meals CSV with served counts           |

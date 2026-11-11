@@ -148,6 +148,7 @@ Technical settings is a new platform feature under review on `feature/tech-setti
 | ----------- | ------ | ---- |
 | Feature flags per module | 🟡 backend ✅ (`OrgSettings.features`, `requireFeature`, gates meals; each new module must mount it); nav hides meals items; full nav config is F13 | B25, F13 |
 | Per-hackathon config repo (names, texts, branding) | 🟡 backend ✅ runtime branding API (`GET /api/meta/branding`, admin settings, logo upload) + admin card; the site still needs to apply it (colour flags fix) | B28, F12 |
+| Applicant segments (filter by domain, status, diet, form answers; export / copy emails) | ➕ ✅ admin User groups page | F28 |
 | CSV exports (applications, events, judging, projects) | 🟡 applications, check-ins, meals done; hardware done; workshops, judging, projects pending | B29 |
 | Resume bulk download (`download_resumes.py`) | ✅ ZIP of consenting accepted applicants | B29 |
 | Error reporting (Sentry/Raven) | 📋 | B46 |
