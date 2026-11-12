@@ -52,6 +52,16 @@ export const NAV_GROUPS = [
   { id: "admin", label: "Admin" },
 ];
 
+/**
+ * Participant pages that only make sense after acceptance (workshops,
+ * hardware, judging sheet). Staff always see them.
+ * @param {object|null} user - The logged-in user from /api/auth/me.
+ * @returns {boolean}
+ */
+export function isAcceptedOrStaff(user) {
+  return STAFF.includes(user?.role) || user?.accepted === true;
+}
+
 export const NAV_ITEMS = [
   {
     href: "/dashboard/judging-sheet",
@@ -60,6 +70,7 @@ export const NAV_ITEMS = [
     group: "me",
     roles: PARTICIPANTS,
     feature: "judging",
+    when: isAcceptedOrStaff,
   },
   {
     href: "/dashboard/staff/judging/progress",
@@ -161,6 +172,7 @@ export const NAV_ITEMS = [
     roles: PARTICIPANTS,
     group: "me",
     feature: "workshops",
+    when: isAcceptedOrStaff,
   },
   {
     href: "/dashboard/hardware",
@@ -168,6 +180,7 @@ export const NAV_ITEMS = [
     icon: Package,
     group: "me",
     feature: "hardware",
+    when: isAcceptedOrStaff,
   },
   {
     href: "/dashboard/staff/hardware",
