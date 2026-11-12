@@ -18,6 +18,12 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import WorkshopHomeUpdates from "@/components/WorkshopHomeUpdates";
 import { apiFetch } from "@/lib/api";
 import { formatDateTime } from "@/lib/datetime";
@@ -51,6 +57,7 @@ export default function DashboardHome() {
   const [links, setLinks] = useState(null);
   // Track the local link result so the UI updates after the callback completes.
   const [discordLinked, setDiscordLinked] = useState(Boolean(user.discordId));
+  const [discordResponse, setDiscordResponse] = useState(user.discordId || null);
   const [discordCallbackComplete, setDiscordCallbackComplete] = useState(false);
   const [attemptFailed, setAttemptFailed] = useState(false);
 
@@ -67,7 +74,8 @@ export default function DashboardHome() {
         method: "POST",
         body: JSON.stringify({ code: discordCode }),
       })
-        .then(() => {
+        .then((data) => {
+          setDiscordResponse(data.user || null);
           setDiscordLinked(true);
           window.history.replaceState({}, "", window.location.pathname);
         })
@@ -124,7 +132,6 @@ export default function DashboardHome() {
 
   return (
     <div>
-      // Block dashboard interaction while the Discord callback is in progress.
       {discordCode && !discordCallbackComplete
         ? <div
             className="fixed inset-0 z-50 flex items-center justify-center bg-background/80 p-6 backdrop-blur-sm"
@@ -235,7 +242,25 @@ export default function DashboardHome() {
                   {/* Show relinking controls when an account is already linked. */}
                   {discordLinked
                     ? <div className="mt-1 flex items-center gap-3">
-                        <p className="text-sm text-success">Discord Account Linked</p>
+                        <TooltipProvider>
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <p className="text-sm text-success">
+                                Discord Account Linked
+                              </p>
+                            </TooltipTrigger>
+                            {discordResponse
+                              ? <TooltipContent
+                                  side="bottom"
+                                  sideOffset={0}
+                                  collisionPadding={8}
+                                  className="max-w-[calc(100vw-2rem)] break-all px-2 py-1 text-[10px]"
+                                >
+                                  Discord ID: {discordResponse}
+                                </TooltipContent>
+                              : null}
+                          </Tooltip>
+                        </TooltipProvider>
                         <a
                           className="text-sm text-link hover:underline"
                           href={DISCORD_AUTH_URL}

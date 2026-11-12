@@ -30,6 +30,7 @@ async function handler(req, res) { //for currently logged in user, map user id (
   // The frontend sends the one-time OAuth authorization code in the POST body.
   var code = req.body && req.body.code;
   if (!code) {
+
     res.status(400).json({ error: "Discord authorization code is required." });
     return;
   }
@@ -93,8 +94,7 @@ async function handler(req, res) { //for currently logged in user, map user id (
     // Store Discord's ID on the currently authenticated MongoDB user.
     currentUser.discordId = String(discordId);
     await currentUser.save();
-
-    res.status(200).json({ user: user });
+    res.status(200).json({ user: discordId });
   } catch (err) {
     console.error("Discord OAuth callback failed:", err);
     res.status(502).json({ error: "Could not link the Discord account." });
