@@ -524,6 +524,8 @@ function attendeeDetails(user, application) {
     checkedInAt: user.checkedInAt || null,
     // False for people who applied without an account and haven't set a password.
     accountReady: !passwordToken.needsPasswordSetup(user),
+    // Read-only, so staff can tell why an email didn't arrive.
+    emailPreferences: require("../utils/emailCategories").preferencesOf(user),
   });
 }
 

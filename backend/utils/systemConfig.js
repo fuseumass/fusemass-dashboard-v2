@@ -261,7 +261,7 @@ var REGISTRY = [
     editable: false,
     defaultValue: "http://localhost:3000",
   }),
-  def("API_PUBLIC_URL", "Public API address", "Server", "The public address of this server, used to build links to uploaded logos. Leave empty for relative links.", {
+  def("API_PUBLIC_URL", "Public API address", "Server", "The public address of this server, used for links to uploaded logos and the one-click unsubscribe address in emails. Leave empty for relative links (mail clients then show no one-click unsubscribe).", {
     validate: url(false),
     type: "url",
     allowEmpty: true,
@@ -364,6 +364,16 @@ var REGISTRY = [
     type: "url",
   }),
   def("DISCORD_APPLICATIONS_WEBHOOK_URL", "Applications webhook", "Discord", "A Discord webhook that receives a post for every submitted application.", {
+    validate: url(true),
+    secret: true,
+    type: "url",
+  }),
+  def("DISCORD_ANNOUNCEMENTS_WEBHOOK_URL", "Announcements webhook", "Discord", "A Discord webhook for the announcements channel. The Communications page posts announcements here.", {
+    validate: url(true),
+    secret: true,
+    type: "url",
+  }),
+  def("DISCORD_WORKSHOPS_WEBHOOK_URL", "Workshops webhook", "Discord", "A Discord webhook for the workshops channel: starting-soon posts, the daily sign-up list and workshop updates.", {
     validate: url(true),
     secret: true,
     type: "url",

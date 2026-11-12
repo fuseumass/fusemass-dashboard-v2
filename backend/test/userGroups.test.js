@@ -9,6 +9,7 @@ var db = require("./helpers/db");
 var fixtures = require("./helpers/fixtures");
 var app = require("../server");
 var backgroundWorkers = require("../utils/backgroundWorkers");
+var communications = require("../utils/communications");
 var outbox = require("../utils/outbox");
 var autoAccept = require("../utils/autoAccept");
 var Application = require("../schemas/application");
@@ -287,13 +288,16 @@ test("admin user groups", async function (root) {
     assert.equal((await request(app).get("/api/admin/groups/emails?dietary=nope").set(as(admin))).status, 400);
   });
 
-  await root.test("DISABLE_BACKGROUND_WORKERS keeps the outbox and auto-accept off", async function (t) {
+  await root.test("DISABLE_BACKGROUND_WORKERS keeps the outbox, auto-accept and communications off", async function (t) {
     var started = [];
     t.mock.method(outbox, "startWorker", function () {
       started.push("outbox");
     });
     t.mock.method(autoAccept, "startWorker", function () {
       started.push("autoAccept");
+    });
+    t.mock.method(communications, "startWorker", function () {
+      started.push("communications");
     });
     var logged = [];
     t.mock.method(console, "log", function (message) {
@@ -307,7 +311,7 @@ test("admin user groups", async function (root) {
 
     assert.equal(backgroundWorkers.start({}), true);
     assert.equal(backgroundWorkers.start({ DISABLE_BACKGROUND_WORKERS: "false" }), true);
-    assert.deepEqual(started, ["outbox", "autoAccept", "outbox", "autoAccept"]);
+    assert.deepEqual(started, ["outbox", "autoAccept", "communications", "outbox", "autoAccept", "communications"]);
   });
 
   // Nothing above may have changed an application or a user.

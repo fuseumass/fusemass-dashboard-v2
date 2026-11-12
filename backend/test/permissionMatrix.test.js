@@ -194,6 +194,9 @@ var MATRIX = [
   row("POST", "/api/auth/reset-password", "public"),
   row("POST", "/api/auth/verify-email", "public"),
   row("POST", "/api/auth/unsubscribe", "public"),
+  row("POST", "/api/auth/unsubscribe/one-click", "public"),
+  row("POST", "/api/auth/email-preferences/lookup", "public"),
+  row("POST", "/api/auth/email-preferences/update", "public"),
   row("POST", "/api/auth/setup-admin", "public"),
   row("GET", "/api/auth/google", "public"),
   row("GET", "/api/auth/google/callback", "public"),
@@ -201,6 +204,8 @@ var MATRIX = [
   // ---- Any logged-in user --------------------------------------------------
   row("GET", "/api/auth/me", "authenticated"),
   row("PATCH", "/api/auth/me", "authenticated"),
+  row("GET", "/api/auth/me/email-preferences", "authenticated"),
+  row("PUT", "/api/auth/me/email-preferences", "authenticated"),
   row("GET", "/api/meta/links", "authenticated"),
   row("POST", "/api/auth/resend-verification", "authenticated"),
   row("POST", "/api/applications", "participant", { body: { name: "Sneaky" } }),
@@ -247,6 +252,17 @@ var MATRIX = [
       return { email: ids.attendeeEmail };
     },
   }),
+  row("GET", "/api/staff/communications", "moderator"),
+  row("GET", "/api/staff/communications/announcements", "moderator"),
+  row("POST", "/api/staff/communications/preview", "moderator", {
+    body: { title: "Hi", message: "Hello", channels: ["email"], audience: { segment: "accepted" } },
+  }),
+  row("POST", "/api/staff/communications/announcements", "moderator", {
+    body: { title: "Sneaky", message: "Hello", channels: ["email"], audience: { segment: "accepted" } },
+  }),
+  row("POST", "/api/staff/communications/announcements/:id/cancel", "moderator"),
+  row("POST", "/api/staff/communications/announcements/:id/send-again", "moderator"),
+  row("PATCH", "/api/staff/communications/settings", "admin", { body: { digestEmail: { enabled: true } } }),
   row("GET", "/api/staff/checkin/stats", "moderator"),
   row("GET", "/api/staff/checkin/:userId", "moderator", { use: { userId: "attendee" } }),
   row("POST", "/api/staff/checkin", "moderator", {

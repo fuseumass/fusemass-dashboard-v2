@@ -167,6 +167,47 @@ function buildProfile(body) {
 }
 
 /**
+ * The application form's "Email me announcements and reminders" checkbox.
+ * Multipart forms send it as a string. Missing means the form didn't ask.
+ * @param {object} body - Request body.
+ * @returns {boolean|null} The answer, or null when absent.
+ */
+function emailOptIn(body) {
+  var value = body && body.marketingEmailConsent;
+  if (value === true || value === "true") {
+    return true;
+  }
+  if (value === false || value === "false") {
+    return false;
+  }
+  return null;
+}
+
+/**
+ * Save the checkbox on the applicant's account: it sets their announcement
+ * and event-email preferences. Never fails the application.
+ * @param {*} userId - User _id.
+ * @param {boolean|null} optIn - From emailOptIn.
+ * @returns {Promise<void>}
+ */
+function saveEmailOptIn(userId, optIn) {
+  if (optIn === null) {
+    return Promise.resolve();
+  }
+  return User.updateOne(
+    { _id: userId },
+    { $set: { marketingEmailConsent: optIn, "emailPreferences.event": optIn, emailPreferencesUpdatedAt: new Date() } }
+  ).then(
+    function done() {
+      return undefined;
+    },
+    function onError(err) {
+      console.error("Could not save the email opt-in:", err);
+    }
+  );
+}
+
+/**
  * POST /api/applications
  * Create or update the current applicant's application for the open round.
  * Accepts multipart/form-data so a resume file can be uploaded alongside the
@@ -294,9 +335,11 @@ function apply(req, res) {
             // The pre-image is not what the client should get back, so reload
             // the saved document. The write has already landed, so this read
             // is not part of the decision and cannot race it.
-            return Application.findOne({ applicant: claims.id, round: round._id }).then(function afterReload(
-              application
-            ) {
+            return Promise.all([
+              Application.findOne({ applicant: claims.id, round: round._id }),
+              saveEmailOptIn(claims.id, emailOptIn(req.body)),
+            ]).then(function afterReload(reloaded) {
+              var application = reloaded[0];
               res.status(200).json({ application: application.toJSON() });
 
               if (status === "pending" && !alreadySubmitted) {
@@ -564,15 +607,20 @@ function applyPublic(req, res) {
         // Unverified until they set a password through an emailed link, which
         // is what proves the address is theirs (see authController.resetPassword).
         // The form is multipart, so the opt-in checkbox arrives as a string.
-        var wantsAnnouncements = body.marketingEmailConsent === true || body.marketingEmailConsent === "true";
+        var optIn = emailOptIn(body);
+        var wantsAnnouncements = optIn === true;
         var userStep = existing
-          ? Promise.resolve(existing)
+          ? saveEmailOptIn(existing._id, optIn).then(function keep() {
+              return existing;
+            })
           : User.create({
               name: name,
               email: email,
               role: "applicant",
               emailVerified: false,
               marketingEmailConsent: wantsAnnouncements,
+              emailPreferences: { event: optIn !== false },
+              emailPreferencesUpdatedAt: optIn === null ? null : new Date(),
             });
 
         return userStep.then(function afterUserReady(user) {

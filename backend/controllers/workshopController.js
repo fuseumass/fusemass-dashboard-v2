@@ -10,6 +10,7 @@ var User = require("../schemas/user");
 var csv = require("../utils/csv");
 var calendar = require("../utils/calendar");
 var mailer = require("../utils/mailer");
+var communications = require("../utils/communications");
 var primaryClientOrigin = require("../utils/clientOrigin").primaryClientOrigin;
 
 /** @param {object} req @param {object} res @param {function} next @returns {Promise<void>} */
@@ -262,6 +263,8 @@ async function create(req, res, next) {
   try {
     var workshop = await Workshop.create(data);
     notifyOrganizers(workshop, []);
+    // Posts to the Discord workshops channel when that automation is on.
+    if (workshop.published) communications.notifyWorkshopUpdate(workshop, "published");
     res.status(201).json({ workshop: workshop });
   } catch (err) {
     next(err);
@@ -290,6 +293,7 @@ async function update(req, res, next) {
       return;
     }
     var previousOrganizers = workshop.organizers.map(String);
+    var wasPublished = workshop.published;
     var changed =
       +data.startsAt !== +workshop.startsAt ||
       +data.endsAt !== +workshop.endsAt ||
@@ -329,6 +333,9 @@ async function update(req, res, next) {
     // apart), so a workshop with many sign-ups doesn't hold the request open.
     if (changed) notifyInBackground(workshop, "workshop_changed", "PUBLISH");
     notifyOrganizers(workshop, previousOrganizers);
+    // Posts to the Discord workshops channel when that automation is on.
+    if (workshop.published && !wasPublished) communications.notifyWorkshopUpdate(workshop, "published");
+    else if (workshop.published && changed) communications.notifyWorkshopUpdate(workshop, "changed");
     res.json({ workshop: workshop });
   } catch (err) {
     next(err);
