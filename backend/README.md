@@ -187,6 +187,38 @@ is optional and they combine with AND:
 Unknown parameters and non-string values are a 400. User input only ever
 reaches MongoDB as a value (an `$in` list, an equality or an escaped pattern).
 
+## Team builder
+
+`/dashboard/admin/team-builder` (admin; `controllers/teamBuilderController.js`,
+parsing and grouping in the pure `utils/teamProposals.js`) turns the
+application's "list your teammates" answers into teams. The questions are
+found by key (`teammates`, `has_team`, `research_study`, `team_pairing`,
+`team_formation_event`) or, failing that, by label, so other events' forms
+work too.
+
+- **Parsing:** every email in an answer (lowercased; Gmail dots, `+tags` and
+  googlemail.com fold to one match key), with the name written next to it.
+  Full names without an email are matched when exactly one applicant in the
+  round has that name; other names ("Didy, Jeffrey") are shown raw.
+- **Grouping:** in-scope applicants (default: accepted) are joined to what
+  they listed; connected components are the proposals. Listed people with no
+  account or application are members too and get an invite.
+- **Applying:** the server rebuilds the proposals and only acts on people in
+  one of them. A new team's leader is the earliest applicant who can lead;
+  members with an account on no team are added, everyone else is sent the
+  normal `team_invite` (inviter: the leader). Merging invites people to the
+  member's existing team. Nobody is moved off a team, locked teams and full
+  seats are skipped and reported, and re-running skips anyone already on a
+  team or invited. Each proposal is applied under the team lock
+  (`utils/judging/state`). Runs are kept in `teambuilderruns`, and each team
+  logs `builder_add` / `builder_invite` in `staffChanges`.
+
+Account setup reminders (`utils/setupReminders.js`) issue each accepted
+person who still can't sign in a fresh 7-day link and send it with the
+`account_setup_reminder` template, one at a time through the mailer (logged
+redacted in the outbox). `User.setupReminderSentAt` is claimed atomically, so
+nobody is reminded twice within 24 hours; a failed send releases the claim.
+
 ## Technical settings
 
 Admins can see and change the server's environment variables from
@@ -352,6 +384,12 @@ emailed on acceptance (or via "Forgot password").
 | GET    | `/api/admin/groups`             | admin     | Counts and breakdowns of one group, no names or emails (filters below) |
 | GET    | `/api/admin/groups/emails`      | admin     | The group's emails, for "Copy emails" (`no-store`) |
 | GET    | `/api/admin/groups/export.csv`  | admin     | The group as a formula-safe CSV: contact and event fields plus every form answer |
+| GET    | `/api/admin/team-builder/proposals` | admin | Proposed teams from the teammates question (`?round=&statuses=accepted,pending`), flags, unmatched answers, recent runs |
+| POST   | `/api/admin/team-builder/apply` | admin     | Create proposed teams / merge into existing ones (`{ proposals: [{ memberEmails, name?, leaderEmail?, mergeIntoTeamId? }], round?, statuses?, dryRun?, allowOverLimit? }`) |
+| GET    | `/api/admin/team-builder/unteamed` | admin  | Accepted people on no team and with no invite, split by research-study answer |
+| GET    | `/api/admin/team-builder/unteamed.csv` | admin | The same as CSV (`?answer=<value>` or `__none__` for one group) |
+| GET    | `/api/admin/setup-reminders`    | admin     | Accepted people with no password or Google sign-in, and how many can be reminded now |
+| POST   | `/api/admin/setup-reminders`    | admin     | Send each a fresh setup link (`account_setup_reminder`), paced, once per 24 h, within the daily limit unless `allowOverLimit` |
 | GET    | `/api/admin/exports/applications.csv` | admin | Applications CSV, answers flattened (`?round=&status=`) |
 | GET    | `/api/admin/exports/checkins.csv` | admin   | Check-ins CSV (who, when, by whom, forced)  |
 | GET    | `/api/admin/exports/meals.csv`  | admin     | Meals CSV with served counts           |

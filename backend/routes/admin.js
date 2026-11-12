@@ -13,6 +13,8 @@ var scheduleController = require("../controllers/scheduleController");
 var brandingController = require("../controllers/brandingController");
 var statsController = require("../controllers/statsController");
 var userGroupsController = require("../controllers/userGroupsController");
+var teamBuilderController = require("../controllers/teamBuilderController");
+var setupReminderController = require("../controllers/setupReminderController");
 var systemConfigController = require("../controllers/systemConfigController");
 var exportRoutes = require("./exports");
 var isAdmin = require("../utils/isAdmin");
@@ -194,6 +196,17 @@ router.get("/groups/options", isAdmin, userGroupsController.getOptions);
 router.get("/groups/emails", isAdmin, userGroupsController.getGroupEmails);
 router.get("/groups/export.csv", isAdmin, userGroupsController.exportGroup);
 router.get("/groups", isAdmin, userGroupsController.getGroup);
+
+// Team builder: propose teams from the teammates question, create them with
+// invites, and list accepted people left on no team.
+router.get("/team-builder/proposals", isAdmin, teamBuilderController.getProposals);
+router.post("/team-builder/apply", isAdmin, teamBuilderController.applyProposals);
+router.get("/team-builder/unteamed", isAdmin, teamBuilderController.getUnteamed);
+router.get("/team-builder/unteamed.csv", isAdmin, teamBuilderController.exportUnteamed);
+
+// Remind accepted people who still have no password to set up their account.
+router.get("/setup-reminders", isAdmin, setupReminderController.getSummary);
+router.post("/setup-reminders", isAdmin, setupReminderController.sendReminders);
 
 // CSV / ZIP exports of applications, check-ins, meals and sponsor resumes.
 router.use("/exports", exportRoutes);

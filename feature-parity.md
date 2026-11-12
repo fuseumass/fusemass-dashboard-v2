@@ -123,6 +123,8 @@ Individual unit tracking and the optional reserve/request queue are deferred.
 | Printed judging forms (`paper_judging`) | ✅ printable table signs with persistent random QR tokens | B24c |
 | Judging results + CSV | ✅ weighted raw/adjusted totals, overall/category competition ranks, flags, three formula-safe CSV exports; integration verification pending | B24g |
 | **2025 judging:** two-step desk → table check-in | ✅ desk station, participant table scan, table email, admin fallback, team membership locks, audited undo/unlock and staff team management | B24c |
+| Teams from the application's teammates question | ➕ ✅ admin team builder: parses messy answers, proposes teams (graph of listed emails), creates them with invites or merges into existing teams, audited; "not on a team" pool by research-study answer with CSV | |
+| Remind accepted applicants to set up their account | ➕ ✅ User groups page, fresh link per person, paced, once per 24 h | |
 | Participant judging sheet | ✅ anonymous stable version labels, current room/table counts, separate software/hardware sections, own-team progress and polling; integration verification pending | B24c, B24g |
 | **2025 judging:** calibration rounds + judge bias | ✅ ordered calibration flow, editable projects/rubric, completion status and stored bias over completed judges; results apply stored bias (B24g) | B24d, B47 |
 | **2025 judging:** time-slotted assignments + verifier | ✅ versioned generation with verifier, explicit activation, late changes and optional timer | B24a, B24e |

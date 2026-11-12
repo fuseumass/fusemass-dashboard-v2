@@ -16,7 +16,7 @@ var RETRY_ALL_LIMIT = 500;
 // A second identical bulk send within this long is refused (a double click).
 var DUPLICATE_BATCH_MS = 2 * 60 * 1000;
 // Never bulk-send these: they need per-person values (a single-use link).
-var NOT_BULK_SENDABLE = ["judge_invite", "account_setup", "verify_email"];
+var NOT_BULK_SENDABLE = ["judge_invite", "account_setup", "account_setup_reminder", "verify_email"];
 
 /**
  * Escape a string for use inside a RegExp.
