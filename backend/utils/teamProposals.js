@@ -476,6 +476,24 @@ function buildProposals(input) {
     }
   });
 
+  /**
+   * The person a listed email stands for. People often write a teammate's
+   * other address (a Gmail instead of the school email they applied with).
+   * When that address has no application of its own and the name written
+   * next to it matches exactly one applicant, it is that applicant; otherwise
+   * two spellings of one teammate would look like a mismatched list.
+   * @param {{email: string, name: string}} item - From parseTeammates.
+   * @returns {string} Match key.
+   */
+  function resolveListed(item) {
+    var key = matchKey(item.email);
+    if ((nodes[key] && nodes[key].app) || !item.name) {
+      return key;
+    }
+    var matches = Object.keys(byName[nameKey(item.name)] || {});
+    return matches.length === 1 ? matches[0] : key;
+  }
+
   apps.forEach(function addListings(app) {
     var self = matchKey(app.email);
     var parsed = parseTeammates(app.teammates);
@@ -484,7 +502,7 @@ function buildProposals(input) {
       me.raw = parsed.raw;
     }
     parsed.emails.forEach(function eachEmail(item) {
-      var key = matchKey(item.email);
+      var key = resolveListed(item);
       if (key === self) {
         return;
       }
@@ -830,8 +848,22 @@ function analyseGroup(keys, members, byKey, ctx) {
  * @returns {string}
  */
 function conflictDetails(conflict, email) {
+  // A name written with two different addresses is shown with the address,
+  // otherwise the lists can read as identical while they differ.
+  var emailsByName = {};
+  conflict.listers.forEach(function eachLister(l) {
+    [{ name: l.name, email: l.email }].concat(l.list).forEach(function eachPerson(p) {
+      if (p.name) {
+        emailsByName[p.name] = emailsByName[p.name] || {};
+        emailsByName[p.name][p.email] = true;
+      }
+    });
+  });
   function label(p) {
-    return p.name || p.email;
+    if (!p.name) {
+      return p.email;
+    }
+    return Object.keys(emailsByName[p.name]).length > 1 ? p.name + " (" + p.email + ")" : p.name;
   }
   function join(items) {
     if (items.length < 2) {
