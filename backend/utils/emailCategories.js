@@ -71,6 +71,7 @@ var TEMPLATE_CATEGORIES = {
   workshop_changed: "event",
   workshop_cancelled: "event",
   workshop_reminder: "event",
+  workshop_announcement: "event",
   workshop_organizer_added: "event",
   judging_table_assigned: "event",
 
@@ -126,34 +127,70 @@ function isOptional(category) {
 }
 
 /**
- * A person's preferences as a plain object, one boolean per optional
- * category. Announcements are stored as `marketingEmailConsent` (opt-in, off
- * until the person says yes); the others in `emailPreferences` (on unless
- * turned off).
+ * What the person chose for announcements: true (opted in), false (opted
+ * out) or null (never chose). The explicit choice lives in
+ * `emailPreferences.announcements`. Older accounts only have
+ * `marketingEmailConsent`: true counts as opted in; false was only ever the
+ * default (nobody could tell "no" from "never asked"), so it counts as unset.
  * @param {object|null} user - User document or lean object.
+ * @returns {boolean|null}
+ */
+function announcementChoice(user) {
+  if (!user) {
+    return null;
+  }
+  var stored = user.emailPreferences && user.emailPreferences.announcements;
+  if (typeof stored === "boolean") {
+    return stored;
+  }
+  if (user.marketingEmailConsent === true) {
+    return true;
+  }
+  return null;
+}
+
+/**
+ * The announcement rule: allowed when the person opted in, or when they have
+ * an accepted application and never opted out. Everyone else needs an opt-in.
+ * @param {object|null} user - User (lean) with the preference fields.
+ * @param {boolean} accepted - Whether they have an accepted application.
+ * @returns {boolean}
+ */
+function announcementsAllowed(user, accepted) {
+  var choice = announcementChoice(user);
+  return choice === true || (choice === null && accepted === true);
+}
+
+/**
+ * A person's preferences as a plain object, one boolean per optional
+ * category. Event, decision and account email is on unless turned off.
+ * Announcements follow announcementsAllowed (pass `accepted`).
+ * @param {object|null} user - User document or lean object.
+ * @param {{accepted: (boolean|undefined)}} [opts] - Whether the user has an accepted application.
  * @returns {{decisions: boolean, account: boolean, event: boolean, announcements: boolean}}
  */
-function preferencesOf(user) {
+function preferencesOf(user, opts) {
   var stored = (user && user.emailPreferences) || {};
   return {
     decisions: stored.decisions !== false,
     account: stored.account !== false,
     event: stored.event !== false,
-    announcements: Boolean(user && user.marketingEmailConsent),
+    announcements: announcementsAllowed(user, Boolean(opts && opts.accepted)),
   };
 }
 
 /**
  * Whether a person gets email of a category.
- * @param {object|null} user - User (with emailPreferences and marketingEmailConsent).
+ * @param {object|null} user - User (with the preference fields).
  * @param {string} category - A category key.
+ * @param {{accepted: (boolean|undefined)}} [opts] - Whether the user has an accepted application.
  * @returns {boolean}
  */
-function allows(user, category) {
+function allows(user, category, opts) {
   if (!isOptional(category)) {
     return true;
   }
-  return preferencesOf(user)[category] === true;
+  return preferencesOf(user, opts)[category] === true;
 }
 
 /**
@@ -174,7 +211,9 @@ function toUpdate(input) {
     } else if (typeof input[key] !== "boolean") {
       errors.push(key + " must be true or false.");
     } else if (key === "announcements") {
+      // Explicit choice, plus the old flag for code that still reads it.
       set.marketingEmailConsent = input[key];
+      set["emailPreferences.announcements"] = input[key];
     } else {
       set["emailPreferences." + key] = input[key];
     }
@@ -223,6 +262,8 @@ module.exports = {
   forTemplate: forTemplate,
   forRow: forRow,
   isOptional: isOptional,
+  announcementChoice: announcementChoice,
+  announcementsAllowed: announcementsAllowed,
   preferencesOf: preferencesOf,
   allows: allows,
   toUpdate: toUpdate,

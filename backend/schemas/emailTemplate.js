@@ -44,12 +44,21 @@ var DEFAULT_TEMPLATES = [
       "Hi {{name}},\n\nYou're no longer signed up for {{title}} ({{when}}).\n\nThe attachment removes it from your calendar.",
   },
   {
-    // Sent to everyone signed up, a set time before the workshop starts
-    // (Communications page, workshop automations).
+    // Sent to everyone signed up, at the offsets set on the Communications
+    // page. {{headline}} and {{lead}} change for the last reminder
+    // ("Starting now" / "is starting now in <room>").
     key: "workshop_reminder",
-    subject: "Starting soon: {{title}}",
+    subject: "{{headline}}: {{title}}",
     body:
-      "Hi {{name}},\n\n{{title}} starts soon.\n\nWhen: {{when}}\nWhere: {{location}}\nHost: {{host}}\n\nSee you there. Details are on the dashboard: {{workshopUrl}}",
+      "Hi {{name}},\n\n{{title}} {{lead}}.\n\nWhen: {{when}}\nWhere: {{location}}\nHost: {{host}}\n\nSee you there. Details are on the dashboard: {{workshopUrl}}",
+  },
+  {
+    // Sent to all accepted participants shortly before workshops start (one
+    // email even when several start together). {{workshops}} lists them.
+    key: "workshop_announcement",
+    subject: "{{headline}}",
+    body:
+      "Hi {{name}},\n\n{{intro}}\n\n{{workshops}}\n\nSign up or see details on the dashboard: {{workshopsUrl}}",
   },
   {
     // The optional daily list of upcoming workshops with open spots, for
@@ -169,10 +178,14 @@ var DEFAULT_TEMPLATES = [
 // bodies independently when they still exactly match an older default.
 // Customized text is preserved, including when only the other field changes.
 var LEGACY_DEFAULT_SUBJECTS = {
+  workshop_reminder: ["Starting soon: {{title}}"],
   checked_in: ["You're checked in to {{orgName}}!"],
 };
 
 var LEGACY_DEFAULT_BODIES = {
+  workshop_reminder: [
+    "Hi {{name}},\n\n{{title}} starts soon.\n\nWhen: {{when}}\nWhere: {{location}}\nHost: {{host}}\n\nSee you there. Details are on the dashboard: {{workshopUrl}}",
+  ],
   hardware_checkout: [
     "Hi {{name}},\n\nYou checked out {{itemName}} at {{eventTime}}.\nReturn deadline: {{dueTime}}",
     "Hi {{name}},\n\nYou checked out {{itemName}} at {{eventTime}}.\n\nPlease return all hardware to the hardware desk before you leave for the day on {{returnBy}}.\n\nReturn deadline: {{dueTime}}",

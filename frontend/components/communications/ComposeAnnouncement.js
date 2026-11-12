@@ -1,7 +1,7 @@
 "use client";
 
 import { Eye, Send } from "lucide-react";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
 import AnnouncementPreview from "@/components/communications/AnnouncementPreview";
@@ -63,16 +63,13 @@ export const CHANNEL_LABELS = {
 
 const schema = z
   .object({
-    title: z
+    title: z.string().trim().max(256, "Keep the subject to 256 characters."),
+    message: z.string().trim().max(4096, "Keep the email to 4096 characters."),
+    discordTitle: z
       .string()
       .trim()
-      .min(1, "Enter a title.")
-      .max(256, "Keep the title to 256 characters (Discord's limit)."),
-    message: z
-      .string()
-      .trim()
-      .min(1, "Write the message.")
-      .max(4096, "Keep the message to 4096 characters (Discord's limit)."),
+      .max(256, "Keep the Discord title to 256 characters."),
+    discordMessage: z.string().trim().max(4096),
     url: z
       .string()
       .trim()
@@ -84,63 +81,75 @@ const schema = z
     segment: z.string(),
     workshop: z.string(),
     checkedInOnly: z.boolean(),
-    mentionEveryone: z.boolean(),
     when: z.enum(["now", "later"]),
     scheduledFor: z.string(),
   })
   .superRefine((values, ctx) => {
+    const issue = (path, message) =>
+      ctx.addIssue({ code: "custom", path: [path], message });
     if (values.channels.includes("email")) {
+      if (!values.title) issue("title", "Enter a subject.");
+      if (!values.message) issue("message", "Write the email.");
       if (!values.segment) {
-        ctx.addIssue({
-          code: "custom",
-          path: ["segment"],
-          message: "Pick who should get the email.",
-        });
+        issue("segment", "Pick who should get the email.");
       } else if (values.segment === "workshop" && !values.workshop) {
-        ctx.addIssue({
-          code: "custom",
-          path: ["workshop"],
-          message: "Pick the workshop.",
-        });
+        issue("workshop", "Pick the workshop.");
+      }
+    }
+    if (values.channels.some((c) => c !== "email")) {
+      if (!values.discordMessage) {
+        issue("discordMessage", "Write the Discord message.");
+      } else if (
+        values.discordMessage.length > (values.discordTitle ? 4096 : 2000)
+      ) {
+        issue(
+          "discordMessage",
+          values.discordTitle
+            ? "Keep the Discord message to 4096 characters."
+            : "Keep the Discord message to 2000 characters, or add a title to allow 4096.",
+        );
       }
     }
     if (values.when === "later") {
       const at = fromEventInput(values.scheduledFor);
       if (!at || at.getTime() <= Date.now()) {
-        ctx.addIssue({
-          code: "custom",
-          path: ["scheduledFor"],
-          message: "Pick a time in the future.",
-        });
+        issue("scheduledFor", "Pick a time in the future.");
       }
     }
   });
 
-const EMPTY = {
-  title: "",
-  message: "",
-  url: "",
-  channels: [],
-  segment: "",
-  workshop: "",
-  checkedInOnly: false,
-  mentionEveryone: false,
-  when: "now",
-  scheduledFor: "",
-};
+// Major announcements go to email and the announcements channel by default.
+function emptyValues(channels) {
+  return {
+    title: "",
+    message: "",
+    discordTitle: "",
+    discordMessage: "",
+    url: "",
+    channels: ["email", "discord_announcements"].filter((c) => channels[c]),
+    segment: "",
+    workshop: "",
+    checkedInOnly: false,
+    when: "now",
+    scheduledFor: "",
+  };
+}
 
 // Values -> the API body.
 function toBody(values) {
+  const email = values.channels.includes("email");
+  const discord = values.channels.some((channel) => channel !== "email");
   const body = {
-    title: values.title,
-    message: values.message,
+    title: email ? values.title : "",
+    message: email ? values.message : "",
     url: values.url,
     channels: values.channels,
-    mentionEveryone:
-      values.mentionEveryone &&
-      values.channels.some((channel) => channel !== "email"),
   };
-  if (values.channels.includes("email")) {
+  if (discord) {
+    body.discordMessage = values.discordMessage;
+    body.discordTitle = values.discordTitle;
+  }
+  if (email) {
     body.audience = {
       segment: values.segment,
       checkedInOnly: values.checkedInOnly,
@@ -171,21 +180,28 @@ function summary(values, preview) {
  * Write an announcement and send it now or later, to email and Discord.
  * @param {object} props
  * @param {object} props.channels - Which channels exist ({ email, discord_announcements, discord_workshops }).
- * @param {Array<object>} props.audiences - { key, label }.
+ * @param {Array<object>} props.audiences - { key, label, inAudience?, recipients? }.
+ * @param {Array<object>} props.tags - Saved Discord mentions { label, roleId }.
  * @param {Array<object>} props.workshops - { id, title, startsAt }.
+ * @param {object} props.webhookEnv - Env var name per Discord channel, for the "not set up" hint.
  * @param {function} props.onSent - Called with the new announcement.
  * @returns {JSX.Element}
  */
 export default function ComposeAnnouncement({
   channels,
   audiences,
+  tags,
   workshops,
+  webhookEnv,
   onSent,
 }) {
   const form = useForm({
     resolver: zodResolver(schema),
-    defaultValues: EMPTY,
+    defaultValues: emptyValues(channels),
   });
+  // The Discord text starts as a copy of the email text, until it is edited.
+  const discordEdited = useRef(false);
+  const discordBox = useRef(null);
   const [preview, setPreview] = useState(null);
   const [previewing, setPreviewing] = useState(false);
   const [confirming, setConfirming] = useState(null);
@@ -214,6 +230,23 @@ export default function ComposeAnnouncement({
     }
   }
 
+  function insertTag(label) {
+    const box = discordBox.current;
+    const current = form.getValues("discordMessage");
+    const start = box ? box.selectionStart : current.length;
+    const end = box ? box.selectionEnd : current.length;
+    const before = current.slice(0, start);
+    const lead = before && !/\s$/.test(before) ? " " : "";
+    const text = `${before}${lead}@${label} ${current.slice(end)}`;
+    const caret = before.length + lead.length + label.length + 2;
+    discordEdited.current = true;
+    form.setValue("discordMessage", text, { shouldDirty: true });
+    setTimeout(() => {
+      box?.focus();
+      box?.setSelectionRange(caret, caret);
+    }, 0);
+  }
+
   async function askToSend(vals) {
     const data = await runPreview(vals);
     if (data) setConfirming({ values: vals, preview: data });
@@ -229,7 +262,8 @@ export default function ComposeAnnouncement({
       });
       setConfirming(null);
       setPreview(null);
-      form.reset(EMPTY);
+      discordEdited.current = false;
+      form.reset(emptyValues(channels));
       notifySuccess(
         data.announcement.status === "scheduled"
           ? `Scheduled for ${formatDateTime(data.announcement.scheduledFor)}`
@@ -254,8 +288,9 @@ export default function ComposeAnnouncement({
             Compose announcement
           </CardTitle>
           <CardDescription>
-            Plain text. Links become clickable. Email goes only to people who
-            opted in to announcements.
+            Email and Discord have their own text. Accepted participants get
+            announcement emails unless they opted out; everyone else only if
+            they opted in.
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -265,49 +300,6 @@ export default function ComposeAnnouncement({
               noValidate
               className="space-y-4"
             >
-              <FormField
-                control={form.control}
-                name="title"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Title</FormLabel>
-                    <FormControl>
-                      <Input maxLength={256} {...field} />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-              <FormField
-                control={form.control}
-                name="message"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Message</FormLabel>
-                    <FormControl>
-                      <Textarea rows={6} maxLength={4096} {...field} />
-                    </FormControl>
-                    <FormDescription className="tabular-nums">
-                      {field.value.length} of 4096 characters
-                    </FormDescription>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-              <FormField
-                control={form.control}
-                name="url"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Link (optional)</FormLabel>
-                    <FormControl>
-                      <Input type="url" placeholder="https://" {...field} />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-
               <FormField
                 control={form.control}
                 name="channels"
@@ -344,7 +336,7 @@ export default function ComposeAnnouncement({
                                   : <span className="block text-xs text-muted-foreground">
                                       {key === "email"
                                         ? "Email isn't set up on the server."
-                                        : "No webhook yet. An admin adds it in Technical settings."}
+                                        : `Not set up. An admin adds ${webhookEnv?.[key] || "its webhook"} in Technical settings.`}
                                     </span>}
                               </span>
                             </Label>
@@ -352,6 +344,164 @@ export default function ComposeAnnouncement({
                         );
                       })}
                     </div>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              {wantsEmail
+                ? <fieldset className="space-y-4 rounded-md border border-border p-3">
+                    <legend className="px-1 text-sm font-medium">Email</legend>
+                    <FormField
+                      control={form.control}
+                      name="title"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Subject</FormLabel>
+                          <FormControl>
+                            <Input maxLength={256} {...field} />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                    <FormField
+                      control={form.control}
+                      name="message"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Message</FormLabel>
+                          <FormControl>
+                            <Textarea
+                              rows={6}
+                              maxLength={4096}
+                              {...field}
+                              onChange={(e) => {
+                                field.onChange(e);
+                                if (!discordEdited.current) {
+                                  form.setValue(
+                                    "discordMessage",
+                                    e.target.value,
+                                  );
+                                }
+                              }}
+                            />
+                          </FormControl>
+                          <FormDescription className="tabular-nums">
+                            Plain text, links become clickable.{" "}
+                            {field.value.length} of 4096 characters
+                          </FormDescription>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                  </fieldset>
+                : null}
+
+              {wantsDiscord
+                ? <fieldset className="space-y-4 rounded-md border border-border p-3">
+                    <legend className="px-1 text-sm font-medium">
+                      Discord
+                    </legend>
+                    <FormField
+                      control={form.control}
+                      name="discordTitle"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Embed title (optional)</FormLabel>
+                          <FormControl>
+                            <Input maxLength={256} {...field} />
+                          </FormControl>
+                          <FormDescription>
+                            With a title the text goes in a card. Without one it
+                            is a plain message.
+                          </FormDescription>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                    <FormField
+                      control={form.control}
+                      name="discordMessage"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Discord message</FormLabel>
+                          <FormControl>
+                            <Textarea
+                              rows={5}
+                              maxLength={4096}
+                              {...field}
+                              ref={(el) => {
+                                field.ref(el);
+                                discordBox.current = el;
+                              }}
+                              onChange={(e) => {
+                                discordEdited.current = true;
+                                field.onChange(e);
+                              }}
+                            />
+                          </FormControl>
+                          <div className="flex flex-wrap items-center gap-1.5">
+                            <span className="text-xs text-muted-foreground">
+                              Insert a mention:
+                            </span>
+                            {["everyone", "here", ...tags.map((t) => t.label)]
+                              .filter(
+                                (label, i, all) => all.indexOf(label) === i,
+                              )
+                              .map((label) => (
+                                <Button
+                                  key={label}
+                                  type="button"
+                                  size="xs"
+                                  variant="outline"
+                                  onClick={() => insertTag(label)}
+                                >
+                                  @{label}
+                                </Button>
+                              ))}
+                          </div>
+                          <FormDescription className="tabular-nums">
+                            Only the mentions you write ping anyone. Unknown
+                            @words stay plain text. {field.value.length} of{" "}
+                            {values.discordTitle ? 4096 : 2000} characters
+                          </FormDescription>
+                          {wantsEmail && discordEdited.current
+                            ? <Button
+                                type="button"
+                                size="xs"
+                                variant="ghost"
+                                className="self-start"
+                                onClick={() => {
+                                  discordEdited.current = false;
+                                  form.setValue(
+                                    "discordMessage",
+                                    form.getValues("message"),
+                                  );
+                                }}
+                              >
+                                Copy the email text again
+                              </Button>
+                            : null}
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                  </fieldset>
+                : null}
+
+              <FormField
+                control={form.control}
+                name="url"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Link (optional)</FormLabel>
+                    <FormControl>
+                      <Input type="url" placeholder="https://" {...field} />
+                    </FormControl>
+                    <FormDescription>
+                      Shown under the email, and added to the Discord message.
+                    </FormDescription>
                     <FormMessage />
                   </FormItem>
                 )}
@@ -378,6 +528,9 @@ export default function ComposeAnnouncement({
                               {audiences.map((a) => (
                                 <SelectItem key={a.key} value={a.key}>
                                   {a.label}
+                                  {a.inAudience !== undefined
+                                    ? ` (${a.recipients} of ${a.inAudience} will get it)`
+                                    : ""}
                                 </SelectItem>
                               ))}
                             </SelectContent>
@@ -431,30 +584,6 @@ export default function ComposeAnnouncement({
                       )}
                     />
                   </div>
-                : null}
-
-              {wantsDiscord
-                ? <FormField
-                    control={form.control}
-                    name="mentionEveryone"
-                    render={({ field }) => (
-                      <FormItem className="flex items-start justify-between gap-3">
-                        <div className="space-y-0.5">
-                          <FormLabel>Mention @everyone</FormLabel>
-                          <FormDescription>
-                            Pings everyone in the channel. Off: nobody is
-                            pinged, even if the text mentions someone.
-                          </FormDescription>
-                        </div>
-                        <FormControl>
-                          <Switch
-                            checked={field.value}
-                            onCheckedChange={field.onChange}
-                          />
-                        </FormControl>
-                      </FormItem>
-                    )}
-                  />
                 : null}
 
               <FormField
@@ -527,7 +656,7 @@ export default function ComposeAnnouncement({
         </CardContent>
       </Card>
 
-      <AnnouncementPreview preview={preview} />
+      <AnnouncementPreview preview={preview} tags={tags} />
 
       <AlertDialog
         open={Boolean(confirming)}
@@ -550,9 +679,9 @@ export default function ComposeAnnouncement({
                       : " now"
                   }.${
                     confirming.preview?.audience?.skippedOptOut
-                      ? ` ${confirming.preview.audience.skippedOptOut} in the audience turned announcements off and are skipped.`
+                      ? ` ${confirming.preview.audience.skippedOptOut} in the audience turned announcements off or never opted in, so they are skipped.`
                       : ""
-                  }${confirming.values.mentionEveryone && wantsDiscord ? " Everyone in the channel is pinged." : ""}`
+                  }${confirming.preview?.pings?.length ? ` It notifies ${confirming.preview.pings.join(", ")} in Discord.` : ""}`
                 : ""}
             </AlertDialogDescription>
           </AlertDialogHeader>

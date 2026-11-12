@@ -25,6 +25,8 @@ function serialize(doc, counts) {
     id: id,
     title: doc.title,
     message: doc.message,
+    discordMessage: doc.discordMessage || "",
+    discordTitle: doc.discordTitle || "",
     url: doc.url,
     channels: doc.channels,
     audience: doc.audience,
@@ -83,31 +85,24 @@ function isLinkOk(value) {
 
 /**
  * Validate the message part of a compose request.
+ *
+ * Email has its own subject (`title`) and body (`message`); Discord has its
+ * own text (`discordMessage`, with `@everyone`, `@here` and `@label`
+ * mentions) and an optional embed title (`discordTitle`). A request without
+ * `discordMessage` is the older shape: one title and message for both.
  * @param {object} body - Request body.
  * @param {object} channels - From communications.channelStatus().
+ * @param {Array<object>} tags - Saved Discord mention tags.
  * @returns {{error: (string|undefined), field: (string|undefined), value: object}}
  */
-function validateMessage(body, channels) {
+function validateMessage(body, channels, tags) {
   var title = typeof body.title === "string" ? body.title.trim() : "";
   var message = typeof body.message === "string" ? body.message.trim() : "";
   var url = typeof body.url === "string" ? body.url.trim() : "";
   var picked = Array.isArray(body.channels) ? body.channels : [];
+  var discordTitle = typeof body.discordTitle === "string" ? body.discordTitle.trim() : "";
+  var discordMessage = typeof body.discordMessage === "string" ? body.discordMessage.trim() : "";
 
-  if (!title) {
-    return { error: "Enter a title.", field: "title" };
-  }
-  if (title.length > discordAnnouncements.MAX_TITLE) {
-    return { error: "Keep the title to " + discordAnnouncements.MAX_TITLE + " characters (Discord's limit).", field: "title" };
-  }
-  if (!message) {
-    return { error: "Write the message.", field: "message" };
-  }
-  if (message.length > discordAnnouncements.MAX_DESCRIPTION) {
-    return { error: "Keep the message to " + discordAnnouncements.MAX_DESCRIPTION + " characters (Discord's limit).", field: "message" };
-  }
-  if (!isLinkOk(url)) {
-    return { error: "Enter a full link starting with https://, or leave it empty.", field: "url" };
-  }
   if (
     !picked.length ||
     picked.some(function unknown(channel) {
@@ -123,24 +118,74 @@ function validateMessage(body, channels) {
         error:
           unique[i] === "email"
             ? "Email isn't set up on the server, so it can't be used."
-            : "That Discord channel isn't set up yet. An admin can add its webhook in Technical settings.",
+            : "That Discord channel isn't set up yet. An admin can add " +
+              discordAnnouncements.CHANNEL_ENV[unique[i]] +
+              " in Technical settings.",
         field: "channels",
       };
     }
   }
+  var wantsEmail = unique.indexOf("email") !== -1;
+  var wantsDiscord = unique.some(function isDiscord(channel) {
+    return channel !== "email";
+  });
+  // Older requests send one title and message for both channels.
+  var separate = body.discordMessage !== undefined && wantsDiscord;
+
+  if (wantsEmail || !separate) {
+    if (!title) {
+      return { error: "Enter a subject.", field: "title" };
+    }
+    if (title.length > discordAnnouncements.MAX_TITLE) {
+      return { error: "Keep the subject to " + discordAnnouncements.MAX_TITLE + " characters.", field: "title" };
+    }
+    if (!message) {
+      return { error: "Write the email.", field: "message" };
+    }
+    if (message.length > discordAnnouncements.MAX_DESCRIPTION) {
+      return { error: "Keep the email to " + discordAnnouncements.MAX_DESCRIPTION + " characters.", field: "message" };
+    }
+  }
+  if (separate) {
+    if (!discordMessage) {
+      return { error: "Write the Discord message.", field: "discordMessage" };
+    }
+    if (discordTitle.length > discordAnnouncements.MAX_TITLE) {
+      return { error: "Keep the Discord title to " + discordAnnouncements.MAX_TITLE + " characters.", field: "discordTitle" };
+    }
+    var resolved = discordAnnouncements.resolveMentions(discordMessage, tags);
+    var limit = discordTitle ? discordAnnouncements.MAX_DESCRIPTION : discordAnnouncements.MAX_CONTENT;
+    if (resolved.text.length + (discordTitle || !url || resolved.text.indexOf(url) !== -1 ? 0 : url.length + 1) > limit) {
+      return {
+        error:
+          "Keep the Discord message to " +
+          limit +
+          " characters" +
+          (discordTitle ? "." : " (add a title to allow " + discordAnnouncements.MAX_DESCRIPTION + ")."),
+        field: "discordMessage",
+      };
+    }
+  }
+  if (!isLinkOk(url)) {
+    return { error: "Enter a full link starting with https://, or leave it empty.", field: "url" };
+  }
   if (body.mentionEveryone !== undefined && typeof body.mentionEveryone !== "boolean") {
     return { error: "mentionEveryone must be true or false.", field: "mentionEveryone" };
   }
-  var hasDiscord = unique.some(function isDiscord(channel) {
-    return channel !== "email";
-  });
+  if (!wantsEmail && separate) {
+    // Discord only: the email fields hold a copy so history has a title.
+    title = discordTitle || discordAnnouncements.clip(discordMessage.split("\n")[0], 80);
+    message = discordMessage;
+  }
   return {
     value: {
       title: title,
       message: message,
+      discordMessage: separate ? discordMessage : "",
+      discordTitle: separate ? discordTitle : "",
       url: url,
       channels: unique,
-      mentionEveryone: hasDiscord && body.mentionEveryone === true,
+      mentionEveryone: wantsDiscord && !separate && body.mentionEveryone === true,
     },
   };
 }
@@ -161,6 +206,26 @@ function overview(req, res) {
     communications.upcoming(),
     outbox.committedInLastDay(),
   ])
+    .then(function withCounts(loaded) {
+      // How many people each audience has and how many of them will get an
+      // announcement email (accepted people unless they opted out, others
+      // only if they opted in).
+      return Promise.all(
+        loaded[2].audiences.map(function count(audience) {
+          if (audience.test || audience.key === "workshop") {
+            return audience;
+          }
+          return communications
+            .countAudience({ segment: audience.key }, { adminId: req.user.id })
+            .then(function counted(found) {
+              return Object.assign({}, audience, { inAudience: found.inAudience, recipients: found.recipients.length });
+            });
+        })
+      ).then(function done(audiences) {
+        loaded[2].audiences = audiences;
+        return loaded;
+      });
+    })
     .then(function afterLoad(loaded) {
       res.status(200).json({
         channels: loaded[0],
@@ -171,6 +236,7 @@ function overview(req, res) {
         next: loaded[3],
         dailyLimit: outbox.dailyLimit(),
         committedLast24h: loaded[4],
+        webhookEnv: discordAnnouncements.CHANNEL_ENV,
       });
     })
     .catch(function onError(err) {
@@ -201,7 +267,7 @@ function listAnnouncements(req, res) {
 
 /**
  * POST /api/staff/communications/preview
- * Body: { title, message, url?, channels, audience?, mentionEveryone? }
+ * Body: { title, message, discordMessage?, discordTitle?, url?, channels, audience? }
  * The email and Discord post as they would go out, and who the email reaches.
  * Sends nothing.
  * @param {object} req - Express request.
@@ -210,10 +276,11 @@ function listAnnouncements(req, res) {
  */
 function previewAnnouncement(req, res) {
   var body = req.body || {};
-  return communications
-    .channelStatus()
-    .then(function afterChannels(channels) {
-      var checked = validateMessage(body, channels);
+  var tags = [];
+  return Promise.all([communications.channelStatus(), communications.loadTags()])
+    .then(function afterChannels(loaded) {
+      tags = loaded[1];
+      var checked = validateMessage(body, loaded[0], tags);
       if (checked.error) {
         res.status(400).json({ error: checked.error, field: checked.field });
         return undefined;
@@ -231,10 +298,11 @@ function previewAnnouncement(req, res) {
         ]).then(function render(loaded) {
           var me = loaded[0];
           var counts = loaded[1];
-          return communications.preview(checked.value, me && me.name).then(function done(rendered) {
+          return communications.preview(checked.value, me && me.name, tags).then(function done(rendered) {
             res.status(200).json({
               email: wantsEmail ? rendered.email : null,
               discord: checked.value.channels.length > (wantsEmail ? 1 : 0) ? rendered.discord : null,
+              pings: checked.value.channels.length > (wantsEmail ? 1 : 0) ? rendered.pings : [],
               audience: counts
                 ? {
                     label: audience.label,
@@ -265,10 +333,9 @@ function previewAnnouncement(req, res) {
  * @returns {Promise<void>}
  */
 function createFrom(req, res, body, resendOf) {
-  return communications
-    .channelStatus()
-    .then(function afterChannels(channels) {
-      var checked = validateMessage(body, channels);
+  return Promise.all([communications.channelStatus(), communications.loadTags()])
+    .then(function afterChannels(loaded) {
+      var checked = validateMessage(body, loaded[0], loaded[1]);
       if (checked.error) {
         res.status(400).json({ error: checked.error, field: checked.field });
         return undefined;
@@ -362,7 +429,8 @@ function createFrom(req, res, body, resendOf) {
 
 /**
  * POST /api/staff/communications/announcements
- * Body: { title, message, url?, channels, audience?, mentionEveryone?, scheduledFor?, allowOverLimit? }
+ * Body: { title, message, discordMessage?, discordTitle?, url?, channels, audience?, scheduledFor?, allowOverLimit? }
+ * `title`/`message` are the email; `discordMessage` is the Discord text with @mentions.
  * Send now (the response has the result) or schedule for later.
  * @param {object} req - Express request.
  * @param {object} res - Express response.
@@ -448,6 +516,8 @@ function sendAgain(req, res) {
         {
           title: doc.title,
           message: doc.message,
+          discordMessage: doc.discordMessage || undefined,
+          discordTitle: doc.discordTitle || undefined,
           url: doc.url,
           channels: doc.channels,
           audience: doc.audience && doc.audience.segment ? doc.audience : undefined,
@@ -467,7 +537,8 @@ function sendAgain(req, res) {
 
 /**
  * PATCH /api/staff/communications/settings (admins)
- * Body: any of { reminderEmail: { enabled, minutesBefore }, reminderDiscord: {...},
+ * Body: any of { reminderAll: { discord, email, offsets }, reminderSignedUp: { email, discord, offsets },
+ * discordTags: [{ label, roleId }], workshopMention: { enabled, tag },
  * digestDiscord: { enabled, time, windowHours }, digestEmail: { enabled }, updatesDiscord: { enabled } }.
  * @param {object} req - Express request.
  * @param {object} res - Express response.

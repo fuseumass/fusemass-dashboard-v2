@@ -216,7 +216,12 @@ function me(req, res) {
 function updateMe(req, res) {
   return User.findByIdAndUpdate(
     req.user.id,
-    { $set: { marketingEmailConsent: req.body.marketingEmailConsent === true } },
+    {
+      $set: {
+        marketingEmailConsent: req.body.marketingEmailConsent === true,
+        "emailPreferences.announcements": req.body.marketingEmailConsent === true,
+      },
+    },
     { new: true }
   )
     .then(function afterUpdate(user) {
@@ -253,7 +258,7 @@ function unsubscribe(req, res) {
     return Promise.resolve();
   }
 
-  return User.updateOne({ _id: userId }, { $set: { marketingEmailConsent: false } })
+  return User.updateOne({ _id: userId }, { $set: { marketingEmailConsent: false, "emailPreferences.announcements": false } })
     .then(function afterUpdate() {
       res.status(200).json({ ok: true });
     })

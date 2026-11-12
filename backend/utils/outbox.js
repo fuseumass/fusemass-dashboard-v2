@@ -1,6 +1,7 @@
 "use strict";
 
 var EmailLog = require("../schemas/emailLog");
+var Application = require("../schemas/application");
 var User = require("../schemas/user");
 var emailCategories = require("./emailCategories");
 
@@ -352,22 +353,32 @@ function preferencesAllow(row) {
     // Other email to an address with no account can't have been turned off.
     return Promise.resolve(
       row.category === "announcement"
-        ? { allowed: false, reason: "Not sent: the recipient hasn't opted in to announcements (or unsubscribed)." }
+        ? { allowed: false, reason: "Not sent: the recipient has unsubscribed from announcements or hasn't opted in." }
         : { allowed: true }
     );
   }
   return User.findById(row.user)
     .select("marketingEmailConsent emailPreferences")
     .lean()
-    .then(function afterFind(user) {
-      if (emailCategories.allows(user, category)) {
+    .then(function withAccepted(user) {
+      // Only announcements depend on having an accepted application.
+      if (category !== "announcements" || !user || emailCategories.announcementChoice(user) !== null) {
+        return [user, false];
+      }
+      return Application.exists({ applicant: user._id, status: "accepted" }).then(function found(hit) {
+        return [user, Boolean(hit)];
+      });
+    })
+    .then(function afterFind(loaded) {
+      var user = loaded[0];
+      if (emailCategories.allows(user, category, { accepted: loaded[1] })) {
         return { allowed: true };
       }
       return {
         allowed: false,
         reason:
           category === "announcements"
-            ? "Not sent: the recipient hasn't opted in to announcements (or unsubscribed)."
+            ? "Not sent: the recipient has unsubscribed from announcements or hasn't opted in."
             : "Not sent: the recipient turned off " + emailCategories.NOUNS[category] + ".",
       };
     });

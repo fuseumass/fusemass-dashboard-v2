@@ -130,9 +130,12 @@ hiccups. Admins see it at `/dashboard/admin/outbox` (API: `/api/admin/outbox`).
   set, `List-Unsubscribe-Post: List-Unsubscribe=One-Click`
   (`POST /api/auth/unsubscribe/one-click?token=`). Preferences are checked
   again right before each send; an opted-out email is marked cancelled with
-  the reason. Announcements are opt-in (`User.marketingEmailConsent`, off by
-  default; the application form's "Email me announcements and reminders"
-  checkbox sets it and event email); the rest are on until turned off
+  the reason. Announcements go to people who opted in, and to people with an
+  accepted application unless they opted out (`emailPreferences.announcements`
+  is true, false or unset; `marketingEmailConsent` is kept in step; see
+  `emailCategories.announcementsAllowed`). The unsubscribe link, preferences
+  page and the application form's "Email me announcements and reminders"
+  checkbox set it explicitly. The rest are on until turned off
   (`User.emailPreferences`). Bulk sends are `announcement` by default (only
   opted-in people); `category: "transactional"` sends to the whole segment
   but still respects each person's category (a custom template counts as
@@ -158,15 +161,23 @@ Optional environment variables:
 outbox, announcements category) and to two Discord channels by webhook,
 `DISCORD_ANNOUNCEMENTS_WEBHOOK_URL` and `DISCORD_WORKSHOPS_WEBHOOK_URL`
 (Technical settings, write-only). Posts are embeds within Discord's limits,
-retried after a 429, and never ping anyone unless "Mention @everyone" is on.
+retried after a 429. An announcement has separate email text and Discord text;
+in Discord the writer types `@everyone`, `@here` or `@label`, where labels are
+saved role tags (`CommunicationSettings.discordTags`, `{ label, roleId }`).
+`@label` becomes `<@&roleId>` and `allowed_mentions` lists exactly the roles
+used, so nothing else pings.
 Announcements can be scheduled; history shows counts per channel, "Send
 again" and "Cancel scheduled". Workshop automations (singleton
-`CommunicationSettings`, admins edit): reminder email to everyone signed up
-and a "starting soon" Discord post 45 minutes before (each configurable), a
+`CommunicationSettings`, admins edit): an announcement of each published
+workshop to all accepted participants (Discord workshops post plus an `event`
+email, default 2 hours before, workshops starting together combined), reminder
+emails to the people signed up (default 45 and 5 minutes before; the last says
+"starting now in <room>"; an optional Discord post at the same times), all
+offsets editable lists, an optional role mention in automated posts, a
 daily sign-up post at 09:00 event time listing the next 24 hours of workshops
 with spots, an optional daily email digest (off by default), and a post when
 a workshop is published or moves. Each automated send is claimed first with a
-unique `AutomationLog` key (workshop, start time, person), so it happens once
+unique `AutomationLog` key (workshop, start time, offset, person), so it happens once
 even with two processes or a restart, and a moved workshop gets new
 reminders.
 
