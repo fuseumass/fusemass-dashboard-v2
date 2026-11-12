@@ -5,6 +5,7 @@ var validator = require("validator");
 var mongoose = require("mongoose");
 var User = require("../schemas/user");
 var Workshop = require("../schemas/workshop");
+var Application = require("../schemas/application");
 var orgSettingsCache = require("../utils/orgSettingsCache");
 var features = require("../utils/features");
 var signToken = require("../utils/signToken");
@@ -182,12 +183,16 @@ function me(req, res) {
       if (user.role === "judge") {
         return require("../schemas/judgeProfile").findOne({ user: user._id }).lean().then(function afterProfile(profile) {
           var safeUser = user.toJSON();
+          safeUser.accepted = false;
           safeUser.organizesWorkshops = false;
           safeUser.judgeProfile = profile ? { hardware: profile.hardware, calibrationDone: profile.calibrationDone, active: profile.active } : null;
           res.status(200).json({ user: safeUser });
         });
       }
       var safeUser = user.toJSON();
+      // Participant pages (workshops, hardware, judging sheet) stay hidden
+      // until the person has an accepted application.
+      safeUser.accepted = Boolean(await Application.exists({ applicant: user._id, status: "accepted" }));
       // Shows "Organize workshops" in the nav for people assigned to one.
       var settings = await orgSettingsCache.get();
       safeUser.organizesWorkshops = features.isEnabled(settings, "workshops")

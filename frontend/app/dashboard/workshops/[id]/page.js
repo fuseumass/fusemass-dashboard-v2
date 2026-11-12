@@ -8,10 +8,11 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { useAcceptedOnly } from "@/lib/acceptedOnly";
 import { apiFetch } from "@/lib/api";
 import { formatRange } from "@/lib/datetime";
 
-export default function WorkshopDetail() {
+function WorkshopDetailView() {
   const { id } = useParams();
   const [data, setData] = useState(null);
   const [error, setError] = useState("");
@@ -140,4 +141,10 @@ export default function WorkshopDetail() {
           </>}
     </div>
   );
+}
+
+// Only accepted participants (and staff) see this page; others go home.
+export default function WorkshopDetail() {
+  const allowed = useAcceptedOnly();
+  return allowed ? <WorkshopDetailView /> : null;
 }
