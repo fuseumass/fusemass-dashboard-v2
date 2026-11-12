@@ -8,11 +8,12 @@ import EmptyState from "@/components/EmptyState";
 import PageHeader from "@/components/PageHeader";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
+import { useAcceptedOnly } from "@/lib/acceptedOnly";
 import { apiFetch } from "@/lib/api";
 import { formatRange } from "@/lib/datetime";
 import { notifySuccess } from "@/lib/notify";
 
-export default function WorkshopsPage() {
+function WorkshopsList() {
   const [items, setItems] = useState([]);
   const [mine, setMine] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -115,7 +116,10 @@ export default function WorkshopsPage() {
   ];
   return (
     <div className="space-y-6">
-      <PageHeader title="Workshops" />
+      <PageHeader
+        title="Workshops"
+        description="Sign up to save your spot. At the workshop, open it here and enter the code on screen to record your attendance and join its raffle."
+      />
       {denied
         ? <p className="text-sm text-muted-foreground">
             Workshops are available once your application is accepted.
@@ -181,4 +185,10 @@ export default function WorkshopsPage() {
           </>}
     </div>
   );
+}
+
+// Only accepted participants (and staff) see this page; others go home.
+export default function WorkshopsPage() {
+  const allowed = useAcceptedOnly();
+  return allowed ? <WorkshopsList /> : null;
 }
