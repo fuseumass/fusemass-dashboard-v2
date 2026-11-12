@@ -112,57 +112,190 @@ function usersFor(apps, extra) {
     .concat(extra || []);
 }
 
-test("buildProposals: connected components, mutual vs one-sided, missing accounts", function () {
+function build(apps, fields) {
+  return tp.buildProposals(
+    Object.assign(
+      {
+        applications: apps,
+        users: usersFor(apps),
+        teamByUser: {},
+        invitesByKey: {},
+        maxSize: 4,
+        takenNames: [],
+        nameKeyFor: keyFor,
+      },
+      fields || {}
+    )
+  );
+}
+
+function emails(proposal) {
+  return proposal.members.map(function e(m) {
+    return m.email;
+  });
+}
+
+test("buildProposals: a mutual group is consistent and named after its first lister", function () {
   var apps = [
     app("a1", "ana@umass.edu", "Ana Lee", { teammates: "Ben Ko - ben@umass.edu, Cy Dee - CY@umass.edu" }),
-    app("a2", "ben@umass.edu", "Ben Ko", { teammates: "ana@umass.edu" }),
-    app("a3", "cy@umass.edu", "Cy Dee", { teammates: "dana@gmail.com" }),
+    app("a2", "ben@umass.edu", "Ben Ko", { teammates: "ana@umass.edu, cy@umass.edu" }),
+    app("a3", "cy@umass.edu", "Cy Dee", { teammates: "ben@umass.edu, Ana Lee" }),
     app("a4", "eve@umass.edu", "Eve Park", { teammates: "forming" }),
     app("a5", "fay@umass.edu", "Fay Wu", { teammates: "Didy, Jeffrey" }),
-    app("a6", "gus@umass.edu", "Gus Hill", { teammates: "Fay Wu" }),
   ];
-  var built = tp.buildProposals({
-    applications: apps,
-    users: usersFor(apps),
-    teamByUser: {},
-    invitesByKey: {},
-    maxSize: 4,
-    takenNames: ["team ana"],
-    nameKeyFor: keyFor,
-  });
+  var built = build(apps, { takenNames: ["ana's team"] });
+  assert.equal(built.proposals.length, 1);
+  var p = built.proposals[0];
+  assert.deepEqual(emails(p), ["ana@umass.edu", "ben@umass.edu", "cy@umass.edu"]);
+  assert.equal(p.status, "ready");
+  assert.equal(p.conflict, null);
+  assert.equal(p.leaderEmail, "ana@umass.edu");
+  assert.equal(p.defaultName, "Ana Lee's team", "the first name is taken, so the last name is added");
+  assert.equal(p.links.mutual, 3);
+  assert.equal(p.links.oneSided, 0);
+  assert.deepEqual(
+    built.unmatched.map(function e(u) {
+      return u.email;
+    }).sort(),
+    ["eve@umass.edu", "fay@umass.edu"],
+    "'forming' and unresolvable names are shown raw for staff"
+  );
+});
+
+test("buildProposals: one-sided listings are consistent when the listed people are silent", function () {
+  var apps = [
+    app("a1", "bob@umass.edu", "Bob Silent", { teammates: "N/A" }),
+    app("a2", "ana@umass.edu", "ana lee", { teammates: "Ben Ko - ben@umass.edu, dana@gmail.com" }),
+    app("a3", "ben@umass.edu", "Ben Ko", { teammates: "" }),
+  ];
+  var built = build(apps, { takenNames: ["ana's team", "ana lee's team"] });
+  assert.equal(built.proposals.length, 1);
+  var p = built.proposals[0];
+  assert.equal(p.status, "ready");
+  assert.deepEqual(emails(p), ["ana@umass.edu", "ben@umass.edu", "dana@gmail.com"]);
+  assert.equal(p.leaderEmail, "ana@umass.edu", "the lister leads, not the earlier silent applicant");
+  assert.equal(p.defaultName, "Ana Lee's team 2");
+  assert.equal(p.links.oneSided, 1);
+  assert.deepEqual(p.flags.noAccount, ["dana@gmail.com"]);
+
+  var plan = tp.planApply(p, { memberEmails: emails(p), name: p.defaultName, leaderEmail: p.leaderEmail }, { maxSize: 4 });
+  assert.equal(plan.action, "create");
+  assert.equal(plan.leader.email, "ana@umass.edu");
+  assert.deepEqual(plan.add.map(function e(m) { return m.email; }), ["ben@umass.edu"]);
+  assert.deepEqual(plan.invite.map(function e(m) { return m.email; }), ["dana@gmail.com"], "no account: invited");
+  assert.equal(tp.defaultTeamName("ana lee"), "Ana's team");
+});
+
+test("buildProposals: lists that differ are a conflict and no team can be created", function () {
+  var apps = [
+    app("a1", "ana@umass.edu", "Ana Lee", { teammates: "ben@umass.edu, cy@umass.edu" }),
+    app("a2", "ben@umass.edu", "Ben Ko", { teammates: "cy@umass.edu, dan@umass.edu" }),
+    app("a3", "cy@umass.edu", "Cy Dee"),
+    app("a4", "dan@umass.edu", "Dan Ox"),
+  ];
+  var built = build(apps);
+  assert.equal(built.proposals.length, 1);
+  var p = built.proposals[0];
+  assert.equal(p.status, "conflict");
+  assert.equal(p.conflict.reason, "mismatch");
+  assert.equal(p.defaultName, "");
+  assert.deepEqual(
+    p.conflict.listers.map(function l(x) {
+      return [x.email, x.list.map(function e(y) { return y.email; })];
+    }),
+    [
+      ["ana@umass.edu", ["ben@umass.edu", "cy@umass.edu"]],
+      ["ben@umass.edu", ["cy@umass.edu", "dan@umass.edu"]],
+    ]
+  );
+  assert.equal(
+    tp.conflictDetails(p.conflict, "ana@umass.edu"),
+    "Your teammate list doesn't match Ben Ko's list.\nYou listed: Ben Ko and Cy Dee.\nBen Ko listed: Cy Dee and Dan Ox."
+  );
+  assert.match(tp.conflictDetails(p.conflict, "ben@umass.edu"), /doesn't match Ana Lee's list/);
+  var plan = tp.planApply(p, { memberEmails: emails(p) }, { maxSize: 4 });
+  assert.equal(plan.action, "skip");
+  assert.match(plan.reason, /Resolve it manually/);
+});
+
+test("buildProposals: a partial overlap chain A -> x, x -> y is a conflict", function () {
+  var apps = [
+    app("a1", "ana@umass.edu", "Ana Lee", { teammates: "ben@umass.edu" }),
+    app("a2", "ben@umass.edu", "Ben Ko", { teammates: "cy@umass.edu" }),
+    app("a3", "cy@umass.edu", "Cy Dee"),
+  ];
+  var built = build(apps);
+  assert.equal(built.proposals.length, 1);
+  assert.equal(built.proposals[0].status, "conflict");
+  assert.equal(built.proposals[0].conflict.listers.length, 2);
+});
+
+test("buildProposals: a consistent group over the size limit is a conflict", function () {
+  var apps = [
+    app("a1", "ana@umass.edu", "Ana Lee", { teammates: "b@x.edu, c@x.edu, d@x.edu" }),
+    app("a2", "b@x.edu", "Ben Ko"),
+    app("a3", "c@x.edu", "Cy Dee"),
+  ];
+  var built = build(apps, { maxSize: 3 });
+  var p = built.proposals[0];
+  assert.equal(p.status, "conflict");
+  assert.equal(p.conflict.reason, "too_many");
+  assert.equal(p.flags.overMax, true);
+  assert.equal(
+    tp.conflictDetails(p.conflict, "ana@umass.edu"),
+    "The team you listed has 4 people, but a team can have at most 3. You listed: Ben Ko, Cy Dee and d@x.edu."
+  );
+  assert.equal(build(apps, { maxSize: 4 }).proposals[0].status, "ready");
+});
+
+test("buildProposals: names without emails resolve to one applicant, the rest stay unmatched", function () {
+  var apps = [
+    app("a1", "ana@umass.edu", "Ana Lee", { teammates: "Ben Ko, Zed Quinn, Didy" }),
+    app("a2", "ben@umass.edu", "Ben Ko", { teammates: "Ana Lee" }),
+    app("a3", "cy@umass.edu", "Cy Dee", { teammates: "Didy, Jeffrey" }),
+    app("a4", "dan@umass.edu", "Dan Ox", { teammates: "cy@umass.edu" }),
+  ];
+  var built = build(apps);
   assert.equal(built.proposals.length, 2);
   var first = built.proposals[0];
-  assert.deepEqual(
-    first.members.map(function e(m) {
-      return m.email;
-    }),
-    ["ana@umass.edu", "ben@umass.edu", "cy@umass.edu", "dana@gmail.com"]
-  );
-  assert.equal(first.leaderEmail, "ana@umass.edu");
-  assert.equal(first.defaultName, "Team Ana 2", "made unique against existing names");
-  assert.equal(first.links.mutual, 1, "Ana and Ben list each other");
-  assert.equal(first.links.oneSided, 1, "Ana lists Cy, Cy doesn't list Ana");
-  assert.deepEqual(first.flags.noApplication, ["dana@gmail.com"]);
-  assert.deepEqual(first.flags.noAccount, ["dana@gmail.com"]);
-  assert.equal(first.members[3].hasAccount, false);
-  assert.equal(first.flags.overMax, false);
-
+  assert.equal(first.status, "ready", "names that match nobody don't make a conflict");
+  assert.deepEqual(emails(first), ["ana@umass.edu", "ben@umass.edu"]);
+  assert.equal(first.links.byName, 2);
+  assert.deepEqual(first.flags.unmatchedNames[0].names, ["Zed Quinn", "Didy"]);
   var second = built.proposals[1];
+  assert.equal(second.status, "ready", "Cy wrote only unresolvable names, so is silent");
+  assert.equal(second.leaderEmail, "dan@umass.edu");
   assert.deepEqual(
-    second.members.map(function e(m) {
-      return m.email;
+    built.unmatched.map(function e(u) {
+      return u.email;
     }),
-    ["fay@umass.edu", "gus@umass.edu"],
-    "a full name without an email matches the one applicant with that name"
+    [],
+    "Cy is in a group, so is not listed as unmatched"
   );
-  assert.equal(second.links.byName, 1);
-  assert.deepEqual(second.flags.unmatchedNames[0].names, ["Didy", "Jeffrey"]);
+});
 
-  var unmatchedEmails = built.unmatched.map(function e(u) {
-    return u.email;
-  });
-  assert.deepEqual(unmatchedEmails, ["eve@umass.edu"], "'forming' is shown raw for staff");
-  assert.equal(built.unmatched[0].raw, "forming");
+test("buildProposals: people already on a team are kept, merge is offered, all settled is done", function () {
+  var apps = [
+    app("a1", "ana@umass.edu", "Ana Lee", { teammates: "ben@umass.edu, cy@umass.edu" }),
+    app("a2", "ben@umass.edu", "Ben Ko"),
+    app("a3", "cy@umass.edu", "Cy Dee"),
+  ];
+  var team = { id: "t1", name: "Rockets", locked: false, size: 1, invites: 0 };
+  var p = build(apps, { teamByUser: { "u-a2": team } }).proposals[0];
+  assert.equal(p.status, "ready");
+  assert.equal(p.suggestedMergeTeamId, "t1");
+  assert.equal(p.existingTeams[0].name, "Rockets");
+  var plan = tp.planApply(p, { memberEmails: emails(p), mergeIntoTeamId: "t1" }, { maxSize: 4, mergeTeam: team });
+  assert.equal(plan.action, "merge");
+  assert.deepEqual(plan.invite.map(function e(m) { return m.email; }), ["ana@umass.edu", "cy@umass.edu"]);
+
+  var locked = build(apps, { teamByUser: { "u-a2": Object.assign({}, team, { locked: true }) } }).proposals[0];
+  assert.equal(locked.suggestedMergeTeamId, null, "a locked team can't be merged into");
+  assert.equal(locked.flags.lockedTeam, true);
+
+  var t2 = { id: "t2", name: "Comets", locked: false, size: 2, invites: 0 };
+  var settled = build(apps, { teamByUser: { "u-a1": t2, "u-a2": team, "u-a3": team } }).proposals[0];
+  assert.equal(settled.status, "done");
 });
 
 test("buildProposals: Gmail alias reaches the account, out-of-scope listings don't link", function () {
@@ -211,6 +344,7 @@ test("buildProposals: existing teams, merge suggestion, over max size, done", fu
   });
   var p = built.proposals[0];
   assert.equal(p.flags.overMax, true);
+  assert.equal(p.status, "conflict");
   assert.equal(p.suggestedMergeTeamId, "t1");
   assert.equal(p.done, false);
 
@@ -338,5 +472,9 @@ test("uniqueTeamName appends numbers until free", function () {
   var taken = { "team ana": true, "team ana 2": true };
   assert.equal(tp.uniqueTeamName("Team Ana", taken, keyFor), "Team Ana 3");
   assert.equal(tp.uniqueTeamName("Team Ana", taken, keyFor), "Team Ana 4");
-  assert.equal(tp.defaultTeamName("ana lee"), "Team Ana");
+  assert.equal(tp.defaultTeamName("ana lee"), "Ana's team");
+  var names = { "ana's team": true };
+  assert.equal(tp.proposalTeamName("ana lee", names, keyFor), "Ana Lee's team");
+  assert.equal(tp.proposalTeamName("Ana Lee", names, keyFor), "Ana Lee's team 2");
+  assert.equal(tp.proposalTeamName("Ana", names, keyFor), "Ana's team 2");
 });

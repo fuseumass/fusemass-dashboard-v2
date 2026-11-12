@@ -45,10 +45,12 @@ import { notifyError, notifySuccess } from "@/lib/notify";
 import { useUser } from "@/lib/userContext";
 import { cn } from "@/lib/utils";
 
-// Admin team builder: proposes teams from what applicants wrote in the
-// "list your teammates" question, creates them (people with accounts are
-// added, the rest get the usual team invite), and lists the accepted people
-// left on no team, split by their research-study answer.
+// Admin team builder: reads what applicants wrote in the "list your
+// teammates" question. Groups whose lists agree are "ready": the team is
+// created (people with accounts are added, the rest get the usual team
+// invite). Groups whose lists disagree are "conflicts": no team is created and
+// the listers can be emailed to sort it out themselves. Also lists the
+// accepted people left on no team, split by their research-study answer.
 
 const SCOPE = [
   ["accepted", "Accepted"],
@@ -56,12 +58,10 @@ const SCOPE = [
   ["waitlisted", "Waitlisted"],
 ];
 
-const SHOW = [
-  ["todo", "Not done yet"],
-  ["flagged", "Needs a look"],
-  ["clean", "No flags"],
-  ["done", "Done"],
-  ["all", "All"],
+const VIEWS = [
+  ["ready", "Ready to create"],
+  ["conflict", "Conflicts"],
+  ["done", "Already on a team"],
 ];
 
 const NEW_TEAM = "new";
@@ -69,19 +69,6 @@ const NO_ANSWER = "__none__";
 
 function plural(count, one, many) {
   return `${number(count)} ${count === 1 ? one : many || `${one}s`}`;
-}
-
-function flagCount(p) {
-  const f = p.flags;
-  return (
-    (f.overMax ? 1 : 0) +
-    (f.differentTeams ? 1 : 0) +
-    (f.lockedTeam ? 1 : 0) +
-    (f.noApplication.length ? 1 : 0) +
-    (f.notInScope.length ? 1 : 0) +
-    (f.unmatchedNames.length ? 1 : 0) +
-    (p.links.oneSided ? 1 : 0)
-  );
 }
 
 // The default choices for a proposal: everyone in, the suggested leader,
@@ -119,10 +106,10 @@ export default function TeamBuilderPage() {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [edits, setEdits] = useState({});
-  const [selected, setSelected] = useState([]);
   const [query, setQuery] = useState("");
-  const [show, setShow] = useState("todo");
+  const [view, setView] = useState("ready");
   const [confirm, setConfirm] = useState(null);
+  const [emailConfirm, setEmailConfirm] = useState(null);
   const [running, setRunning] = useState(false);
   const [result, setResult] = useState(null);
   const [tab, setTab] = useState("proposals");
@@ -147,7 +134,6 @@ export default function TeamBuilderPage() {
       );
       setData(next);
       setEdits({});
-      setSelected([]);
     } catch (err) {
       setError(err.message);
     } finally {
@@ -172,35 +158,15 @@ export default function TeamBuilderPage() {
   const visible = useMemo(() => {
     const q = query.trim().toLowerCase();
     return proposals.filter((p) => {
-      if (show === "todo" && p.done) return false;
-      if (show === "done" && !p.done) return false;
-      if (show === "flagged" && (p.done || flagCount(p) === 0)) return false;
-      if (show === "clean" && (p.done || flagCount(p) > 0)) return false;
+      if (view !== "all" && p.status !== view) return false;
       if (!q) return true;
       return p.members.some((m) =>
         `${m.name} ${m.email} ${m.listedAs}`.toLowerCase().includes(q),
       );
     });
-  }, [proposals, query, show]);
+  }, [proposals, query, view]);
 
-  const selectable = visible.filter((p) => !p.done);
-  const allSelected =
-    selectable.length > 0 && selectable.every((p) => selected.includes(p.id));
-
-  function toggleAll(checked) {
-    const ids = selectable.map((p) => p.id);
-    setSelected((current) =>
-      checked
-        ? Array.from(new Set([...current, ...ids]))
-        : current.filter((id) => !ids.includes(id)),
-    );
-  }
-
-  function toggleOne(id, checked) {
-    setSelected((current) =>
-      checked ? [...current, id] : current.filter((x) => x !== id),
-    );
-  }
+  const ready = proposals.filter((p) => p.status === "ready");
 
   // Ask the server what a run would do (exact counts), then confirm.
   async function prepare(ids) {
@@ -220,6 +186,45 @@ export default function TeamBuilderPage() {
       setConfirm({ body, preview, allowOverLimit: false });
     } catch (err) {
       notifyError(err, { title: "Couldn't check these teams" });
+    } finally {
+      setRunning(false);
+    }
+  }
+
+  // Ask the server how many conflict emails would go out, then confirm.
+  async function prepareEmails() {
+    const body = { round: data?.round?._id, statuses };
+    setRunning(true);
+    try {
+      const preview = await apiFetch(
+        "/api/admin/team-builder/notify-conflicts",
+        { method: "POST", body: JSON.stringify({ ...body, dryRun: true }) },
+      );
+      setEmailConfirm({ body, preview, allowOverLimit: false });
+    } catch (err) {
+      notifyError(err, { title: "Couldn't check the conflicts" });
+    } finally {
+      setRunning(false);
+    }
+  }
+
+  async function sendEmails() {
+    if (!emailConfirm) return;
+    setRunning(true);
+    try {
+      const done = await apiFetch("/api/admin/team-builder/notify-conflicts", {
+        method: "POST",
+        body: JSON.stringify({
+          ...emailConfirm.body,
+          allowOverLimit: emailConfirm.allowOverLimit || undefined,
+        }),
+      });
+      setEmailConfirm(null);
+      notifySuccess(
+        `${plural(done.emailed, "person", "people")} emailed about a conflict`,
+      );
+    } catch (err) {
+      notifyError(err, { title: "Couldn't send the emails" });
     } finally {
       setRunning(false);
     }
@@ -258,7 +263,7 @@ export default function TeamBuilderPage() {
         counts.saidHasTeam !== null
           ? `${number(counts.saidHasTeam)} of ${number(counts.inScope)} said they have a team, ${number(counts.listedSomeone)} listed an email.`
           : `${number(counts.listedSomeone)} of ${number(counts.inScope)} listed a teammate's email.`,
-        `${plural(counts.proposals, "proposed team")}, ${number(counts.done)} done.`,
+        `${number(counts.ready)} ready to create, ${plural(counts.conflicts, "conflict")}, ${number(counts.done)} already on a team.`,
       ]
         .filter(Boolean)
         .join(" ")
@@ -324,8 +329,8 @@ export default function TeamBuilderPage() {
       <Tabs value={tab} onValueChange={setTab} className="gap-4">
         <TabsList className="max-w-full overflow-x-auto">
           <TabsTrigger value="proposals">
-            Proposed teams
-            {data ? <Count value={visibleTodo(proposals)} /> : null}
+            Groups
+            {data ? <Count value={proposals.length} /> : null}
           </TabsTrigger>
           <TabsTrigger value="unmatched">
             Couldn&apos;t match
@@ -334,14 +339,16 @@ export default function TeamBuilderPage() {
           <TabsTrigger value="unteamed">Not on a team</TabsTrigger>
         </TabsList>
 
-        <TabsContent value="proposals">
+        <TabsContent value="proposals" className="space-y-4">
+          <ViewTiles
+            counts={counts}
+            view={view}
+            onView={setView}
+            onUnmatched={() => setTab("unmatched")}
+            loading={!data}
+          />
           <DataTable
             columns={proposalColumns({
-              selected,
-              toggleOne,
-              allSelected,
-              toggleAll,
-              anySelectable: selectable.length > 0,
               editOf,
               updateEdit,
               maxSize: data?.maxSize,
@@ -355,56 +362,45 @@ export default function TeamBuilderPage() {
             toolbar={
               <div className="flex flex-wrap items-center gap-2">
                 <SearchInput
-                  label="Search proposed teams"
+                  label="Search groups"
                   placeholder="Search name or email"
                   value={query}
                   onChange={(e) => setQuery(e.target.value)}
                   className="sm:w-64"
                 />
-                <Select value={show} onValueChange={setShow}>
-                  <SelectTrigger
-                    size="sm"
-                    className="w-40"
-                    aria-label="Show proposals"
-                  >
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {SHOW.map(([value, label]) => (
-                      <SelectItem key={value} value={value}>
-                        {label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
                 <div className="flex w-full items-center gap-2 sm:ml-auto sm:w-auto">
-                  <span className="text-xs text-muted-foreground tabular-nums">
-                    {number(selected.length)} selected
-                  </span>
-                  <Button
-                    type="button"
-                    size="sm"
-                    disabled={!selected.length || running}
-                    loading={running && !confirm}
-                    onClick={() => prepare(selected)}
-                  >
-                    Create teams and send invites
-                  </Button>
+                  {view === "done"
+                    ? null
+                    : view === "conflict"
+                      ? <Button
+                          type="button"
+                          size="sm"
+                          disabled={!counts?.conflicts || running}
+                          loading={running && !emailConfirm}
+                          onClick={prepareEmails}
+                        >
+                          Email everyone in a conflict
+                        </Button>
+                      : <Button
+                          type="button"
+                          size="sm"
+                          disabled={!ready.length || running}
+                          loading={running && !confirm}
+                          onClick={() => prepare(ready.map((p) => p.id))}
+                        >
+                          Create all ready teams and send invites
+                        </Button>}
                 </div>
               </div>
             }
             emptyState={
               <EmptyState
                 icon={Network}
-                title={
-                  proposals.length
-                    ? "No proposed teams match."
-                    : "No proposed teams."
-                }
+                title={emptyTitle(view, proposals.length)}
                 description={
                   proposals.length
-                    ? "Change the search or what is shown."
-                    : "Teams are proposed when applicants list a teammate's email. Widen the statuses to include more applicants."
+                    ? "Pick another group above or change the search."
+                    : "Groups appear when applicants list a teammate's email. Widen the statuses to include more applicants."
                 }
               />
             }
@@ -427,13 +423,61 @@ export default function TeamBuilderPage() {
         setConfirm={setConfirm}
         running={running}
         onRun={run}
+        conflicts={counts?.conflicts || 0}
+      />
+      <ConfirmEmails
+        confirm={emailConfirm}
+        setConfirm={setEmailConfirm}
+        running={running}
+        onRun={sendEmails}
       />
     </div>
   );
 }
 
-function visibleTodo(proposals) {
-  return proposals.filter((p) => !p.done).length;
+function emptyTitle(view, total) {
+  if (!total) return "No groups.";
+  if (view === "ready") return "No groups are ready to create.";
+  if (view === "conflict") return "No conflicts.";
+  return "Nobody has been placed on a team yet.";
+}
+
+// Counts by status; pressing one filters the table. "Unmatched names" opens
+// its own tab.
+function ViewTiles({ counts, view, onView, onUnmatched, loading }) {
+  const tiles = [
+    ...VIEWS.map(([value, label]) => ({
+      value,
+      label,
+      count: counts?.[value === "conflict" ? "conflicts" : value],
+    })),
+    { value: "unmatched", label: "Unmatched names", count: counts?.unmatched },
+  ];
+  return (
+    <fieldset className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+      <legend className="sr-only">Groups by status</legend>
+      {tiles.map((t) => (
+        <button
+          key={t.value}
+          type="button"
+          aria-pressed={t.value === view}
+          disabled={loading}
+          onClick={() =>
+            t.value === "unmatched" ? onUnmatched() : onView(t.value)
+          }
+          className={cn(
+            "rounded-lg px-3 py-2 text-left ring-1 ring-foreground/10 transition-colors hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none",
+            t.value === view ? "bg-brand/12 ring-ring" : "bg-card",
+          )}
+        >
+          <div className="text-2xl font-semibold tracking-tight tabular-nums">
+            {loading ? "-" : number(t.count || 0)}
+          </div>
+          <div className="text-xs text-muted-foreground">{t.label}</div>
+        </button>
+      ))}
+    </fieldset>
+  );
 }
 
 function Count({ value }) {
@@ -500,33 +544,6 @@ function ScopeBar({ data, round, onRound, statuses, onStatuses }) {
 function proposalColumns(ctx) {
   return [
     {
-      id: "select",
-      enableSorting: false,
-      meta: { className: "w-8 [&:is(td)]:align-top" },
-      header: () => (
-        <Checkbox
-          aria-label="Select every proposed team shown"
-          checked={ctx.allSelected}
-          disabled={!ctx.anySelectable}
-          onCheckedChange={(v) => ctx.toggleAll(Boolean(v))}
-        />
-      ),
-      cell: ({ row }) => {
-        const p = row.original;
-        return p.done
-          ? <CircleCheck
-              className="mt-1 size-4 text-success"
-              aria-label="Done"
-            />
-          : <Checkbox
-              className="mt-1"
-              aria-label={`Select the team with ${p.members[0]?.name || p.members[0]?.email}`}
-              checked={ctx.selected.includes(p.id)}
-              onCheckedChange={(v) => ctx.toggleOne(p.id, Boolean(v))}
-            />;
-      },
-    },
-    {
       id: "team",
       header: "Team",
       enableSorting: false,
@@ -560,6 +577,37 @@ function proposalColumns(ctx) {
 }
 
 function TeamCell({ p, edit, update, onCreate, running, maxSize }) {
+  if (p.status === "conflict") {
+    return (
+      <div className="space-y-2 whitespace-normal">
+        <Flags p={p} />
+        <ConflictLists conflict={p.conflict} />
+        <p className="text-xs text-muted-foreground">
+          Resolve manually: no team is created for these people. Email the
+          listers, or leave them for team formation.
+        </p>
+        <div className="md:hidden">
+          <Members p={p} edit={edit} update={update} maxSize={maxSize} />
+        </div>
+      </div>
+    );
+  }
+  if (p.status === "done") {
+    return (
+      <div className="space-y-2 whitespace-normal">
+        <Flags p={p} />
+        <p className="text-xs text-muted-foreground">
+          {p.existingTeams.length
+            ? `On ${p.existingTeams.map((t) => t.name).join(", ")}. `
+            : ""}
+          Everyone who can join is on a team or has an invite.
+        </p>
+        <div className="md:hidden">
+          <Members p={p} edit={edit} update={update} maxSize={maxSize} />
+        </div>
+      </div>
+    );
+  }
   const merging = edit.target !== NEW_TEAM;
   const leaders = p.members.filter(
     (m) =>
@@ -660,17 +708,52 @@ function TeamCell({ p, edit, update, onCreate, running, maxSize }) {
   );
 }
 
+// Each lister's own list, side by side, so staff see where they differ.
+function ConflictLists({ conflict }) {
+  return (
+    <div className="space-y-2">
+      <p className="text-sm text-foreground">
+        {conflict.reason === "too_many"
+          ? `${conflict.size} people listed, the limit is ${conflict.maxSize}.`
+          : "These people listed different teammates."}
+      </p>
+      <div className="grid gap-2 sm:grid-cols-2">
+        {conflict.listers.map((l) => (
+          <div key={l.email} className="rounded-md bg-muted px-3 py-2 text-xs">
+            <div className="font-medium text-foreground">
+              {l.name || l.email} listed
+            </div>
+            <ul className="mt-1 space-y-0.5 text-muted-foreground">
+              {l.list.map((x) => (
+                <li key={x.email} className="break-all">
+                  {x.name || x.email}
+                </li>
+              ))}
+            </ul>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function Flags({ p }) {
   const f = p.flags;
   const items = [];
-  if (p.done) items.push(["success", "Done"]);
-  if (p.links.mutual && !p.links.oneSided) items.push(["success", "Mutual"]);
-  if (p.links.oneSided)
+  if (p.status === "done") items.push(["success", "On a team"]);
+  if (p.status === "conflict")
     items.push([
       "warning",
-      `One-sided: ${p.links.oneSided} of ${p.links.oneSided + p.links.mutual}`,
+      p.conflict.reason === "too_many"
+        ? "Too many people"
+        : "Lists don't match",
     ]);
-  if (f.overMax) items.push(["warning", "Over the size limit"]);
+  const silent = p.members.filter(
+    (m) => m.status && m.listedBy.length && !m.lists.length,
+  ).length;
+  if (p.status === "ready" && !silent) items.push(["success", "Lists match"]);
+  if (p.status === "ready" && silent)
+    items.push(["info", `${silent} listed no one`]);
   if (f.differentTeams) items.push(["warning", "On different teams"]);
   if (f.lockedTeam) items.push(["warning", "Locked team"]);
   if (f.noApplication.length)
@@ -691,6 +774,7 @@ function Flags({ p }) {
 }
 
 function Members({ p, edit, update, maxSize }) {
+  const locked = p.done || p.status === "conflict";
   const included = p.members.filter((m) => !edit.excluded.includes(m.email));
   return (
     <div className="space-y-2 whitespace-normal">
@@ -699,19 +783,21 @@ function Members({ p, edit, update, maxSize }) {
           const out = edit.excluded.includes(m.email);
           return (
             <li key={m.email} className="flex items-start gap-2">
-              <Checkbox
-                className="mt-0.5"
-                checked={!out}
-                disabled={p.done}
-                aria-label={`Include ${m.name || m.email}`}
-                onCheckedChange={(v) =>
-                  update({
-                    excluded: v
-                      ? edit.excluded.filter((e) => e !== m.email)
-                      : [...edit.excluded, m.email],
-                  })
-                }
-              />
+              {p.status === "conflict"
+                ? null
+                : <Checkbox
+                    className="mt-0.5"
+                    checked={!out}
+                    disabled={locked}
+                    aria-label={`Include ${m.name || m.email}`}
+                    onCheckedChange={(v) =>
+                      update({
+                        excluded: v
+                          ? edit.excluded.filter((e) => e !== m.email)
+                          : [...edit.excluded, m.email],
+                      })
+                    }
+                  />}
               <div className={cn("min-w-0", out && "opacity-50")}>
                 <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
                   <span className="font-medium text-foreground">
@@ -738,7 +824,7 @@ function Members({ p, edit, update, maxSize }) {
                       </Badge>
                     : null}
                   {m.listedBy.length && !m.lists.length && m.status
-                    ? <span>Didn&apos;t list anyone back</span>
+                    ? <span>Listed no one</span>
                     : null}
                 </div>
               </div>
@@ -746,7 +832,7 @@ function Members({ p, edit, update, maxSize }) {
           );
         })}
       </ul>
-      {maxSize && included.length > maxSize
+      {maxSize && p.status !== "conflict" && included.length > maxSize
         ? <p className="text-xs text-warning">
             {included.length} people, the limit is {maxSize}. The ones after the
             first {maxSize} are skipped.
@@ -765,7 +851,7 @@ function Members({ p, edit, update, maxSize }) {
   );
 }
 
-function ConfirmRun({ confirm, setConfirm, running, onRun }) {
+function ConfirmRun({ confirm, setConfirm, running, onRun, conflicts }) {
   const t = confirm?.preview?.totals;
   return (
     <AlertDialog
@@ -806,6 +892,12 @@ function ConfirmRun({ confirm, setConfirm, running, onRun }) {
                   </ul>
                 : null}
               <p>Nobody is moved off a team they are already on.</p>
+              {conflicts
+                ? <p>
+                    {plural(conflicts, "group")} with conflicting lists{" "}
+                    {conflicts === 1 ? "is" : "are"} left alone.
+                  </p>
+                : null}
               {confirm?.preview?.emailConfigured === false
                 ? <p className="text-warning">
                     Email isn&apos;t set up, so the invites are recorded but not
@@ -846,6 +938,85 @@ function ConfirmRun({ confirm, setConfirm, running, onRun }) {
             onClick={onRun}
           >
             Create teams and send invites
+          </Button>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
+  );
+}
+
+function ConfirmEmails({ confirm, setConfirm, running, onRun }) {
+  const p = confirm?.preview;
+  return (
+    <AlertDialog
+      open={Boolean(confirm)}
+      onOpenChange={(open) => (open ? null : setConfirm(null))}
+    >
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle>
+            {p
+              ? `Email ${plural(p.toEmail, "person", "people")} about a conflict?`
+              : "Email everyone in a conflict?"}
+          </AlertDialogTitle>
+          <AlertDialogDescription asChild>
+            <div className="space-y-2">
+              {p
+                ? <ul className="list-disc space-y-1 pl-5">
+                    <li>
+                      {plural(p.conflicts, "group")} with lists that don&apos;t
+                      match, {plural(p.people, "person", "people")} who wrote
+                      them and have no team.
+                    </li>
+                    <li>
+                      {plural(p.toEmail, "email")} will be sent.
+                      {p.alreadyEmailed
+                        ? ` ${plural(p.alreadyEmailed, "person", "people")} already got one for these lists and are skipped.`
+                        : ""}
+                    </li>
+                  </ul>
+                : null}
+              <p>
+                Each email shows both lists and asks them to create their team
+                on the dashboard and invite their teammates there. No team is
+                created.
+              </p>
+              {p?.emailConfigured === false
+                ? <p className="text-warning">
+                    Email isn&apos;t set up, so these are recorded but not sent.
+                  </p>
+                : null}
+            </div>
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        {p?.overLimit
+          ? <div className="flex items-start gap-2 rounded-md bg-warning/10 p-3 text-sm text-warning">
+              <Checkbox
+                id="over-limit-conflicts"
+                className="mt-0.5"
+                checked={confirm.allowOverLimit}
+                onCheckedChange={(v) =>
+                  setConfirm({ ...confirm, allowOverLimit: Boolean(v) })
+                }
+              />
+              <Label htmlFor="over-limit-conflicts" className="font-normal">
+                This goes over the daily sending limit (
+                {number(p.committedLast24h)} of {number(p.dailyLimit)} used).
+                Send anyway; the extra emails are retried later.
+              </Label>
+            </div>
+          : null}
+        <AlertDialogFooter>
+          <AlertDialogCancel disabled={running}>Cancel</AlertDialogCancel>
+          <Button
+            type="button"
+            loading={running}
+            disabled={
+              !p || p.toEmail === 0 || (p.overLimit && !confirm.allowOverLimit)
+            }
+            onClick={onRun}
+          >
+            Email everyone in a conflict
           </Button>
         </AlertDialogFooter>
       </AlertDialogContent>
@@ -1055,7 +1226,14 @@ function Unteamed({ round }) {
       header: "Name",
       cell: ({ row }) => (
         <div className="whitespace-normal">
-          <div className="font-medium text-foreground">{row.original.name}</div>
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="font-medium text-foreground">
+              {row.original.name}
+            </span>
+            {row.original.conflict
+              ? <Badge variant="warning">Conflict</Badge>
+              : null}
+          </div>
           <div className="text-xs break-all text-muted-foreground">
             {row.original.email}
           </div>
