@@ -36,6 +36,13 @@ function pickLatest(applications) {
       best = application;
       return;
     }
+    // A removed application (status "removed") only shows when nothing else does.
+    if ((application.status === "removed") !== (best.status === "removed")) {
+      if (best.status === "removed") {
+        best = application;
+      }
+      return;
+    }
     var accepted = application.status === "accepted";
     var bestAccepted = best.status === "accepted";
     if (accepted !== bestAccepted) {

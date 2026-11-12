@@ -3,6 +3,7 @@
 var validator = require("validator");
 
 var Application = require("../schemas/application");
+var activeApplications = require("../utils/activeApplications");
 var ApplicationRound = require("../schemas/applicationRound");
 var OrgSettings = require("../schemas/orgSettings");
 var User = require("../schemas/user");
@@ -74,7 +75,7 @@ function submissionStatus(round) {
   if (!waitlist.hasLimit(round.waitlistAfterAccepted)) {
     return Promise.resolve("pending");
   }
-  return Application.countDocuments({ round: round._id, status: "accepted" }).then(function afterCount(accepted) {
+  return Application.countDocuments(activeApplications.active({ round: round._id, status: "accepted" })).then(function afterCount(accepted) {
     return waitlist.shouldWaitlist(round.waitlistAfterAccepted, accepted) ? "waitlisted" : "pending";
   });
 }
@@ -232,8 +233,14 @@ function apply(req, res) {
       }
       // A required resume question is satisfied by a resume uploaded earlier.
       return Application.findOne({ applicant: claims.id, round: openRound._id })
-        .select("resumeBlobName resumeHash status")
+        .select("resumeBlobName resumeHash status removedAt")
         .then(function afterExisting(existing) {
+          if (existing && existing.removedAt) {
+            res.status(403).json({
+              error: "The organizers withdrew your application, so it can't be changed. Contact them if this is a mistake.",
+            });
+            return null;
+          }
           return {
             round: openRound,
             hadResume: Boolean(existing && existing.resumeBlobName),
@@ -410,8 +417,19 @@ function getMine(req, res) {
   return Promise.all([
     findOpenRound(),
     Application.find({ applicant: claims.id, status: { $ne: "draft" } })
-      .select("status name round createdAt updatedAt")
-      .populate("round", "name"),
+      .select("status name round createdAt updatedAt removedAt")
+      .populate("round", "name")
+      .then(function markRemoved(applications) {
+        // A removed application reads as "removed" (withdrawn by the
+        // organizers), and never outranks one that still counts.
+        return applications.map(function toSummary(application) {
+          var plain = application.toObject();
+          if (plain.removedAt) {
+            plain.status = "removed";
+          }
+          return plain;
+        });
+      }),
     User.findById(claims.id).select("checkedIn checkedInAt").lean(),
   ])
     .then(function afterLoad(loaded) {
@@ -455,7 +473,7 @@ function getMyQr(req, res) {
     return Promise.resolve();
   }
 
-  return Application.exists({ applicant: claims.id, status: "accepted" })
+  return Application.exists(activeApplications.active({ applicant: claims.id, status: "accepted" }))
     .then(function afterLookup(accepted) {
       if (!accepted) {
         res.status(404).json({ error: "Your check-in QR code is available once your application is accepted." });
@@ -490,7 +508,7 @@ function announceApplication(application, round, withoutAccount) {
   if (!process.env.DISCORD_APPLICATIONS_WEBHOOK_URL) {
     return;
   }
-  Application.countDocuments({ round: round._id, status: { $ne: "draft" } })
+  Application.countDocuments(activeApplications.active({ round: round._id, status: { $ne: "draft" } }))
     .then(function afterCount(total) {
       return discord.notifyApplication(application, {
         roundName: round.name,

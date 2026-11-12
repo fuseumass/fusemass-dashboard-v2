@@ -28,6 +28,7 @@ const STATUS_LABELS = {
   accepted: "Accepted",
   rejected: "Not accepted",
   waitlisted: "Waitlisted",
+  removed: "Withdrawn",
 };
 
 export default function DashboardHome() {
@@ -81,11 +82,13 @@ export default function DashboardHome() {
   // (an attendee shouldn't be told to apply again).
   const latestAccepted =
     state.latest?.application?.status === "accepted" ? state.latest : null;
-  const standing = !state.round
-    ? state.latest || { none: true }
-    : !state.application
-      ? latestAccepted
-      : null;
+  const standing = state.application?.removedAt
+    ? { application: { status: "removed" }, round: state.round }
+    : !state.round
+      ? state.latest || { none: true }
+      : !state.application
+        ? latestAccepted
+        : null;
 
   const shownApplication = standing?.application || state.application;
   const shownRound = standing?.round || state.round;

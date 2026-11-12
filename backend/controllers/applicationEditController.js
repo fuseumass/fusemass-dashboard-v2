@@ -21,6 +21,8 @@ function loadForReview(id) {
     .populate("applicant", "name email role")
     .populate("round", "name formConfig profileFields")
     .populate("flaggedBy", "name email")
+    .populate("removedBy", "name email")
+    .populate("duplicateOf", "name")
     .populate("edits.by", "name email");
 }
 

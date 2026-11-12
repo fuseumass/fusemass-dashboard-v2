@@ -4,6 +4,7 @@ const mongoose = require("mongoose");
 
 const User = require("../schemas/user");
 const Application = require("../schemas/application");
+const activeApplications = require("../utils/activeApplications");
 const CheckIn = require("../schemas/checkin");
 const MealService = require("../schemas/mealService");
 const MealCheckIn = require("../schemas/mealCheckin");
@@ -105,13 +106,16 @@ async function resolveAttendee(body, options) {
   }
   const user = found.user;
 
-  const accepted = await Application.findOne({ applicant: user._id, status: "accepted" });
+  const accepted = await Application.findOne(activeApplications.active({ applicant: user._id, status: "accepted" }));
   if (accepted) {
     return { user: user, application: accepted, applicationStatus: "accepted" };
   }
 
-  const latest = await Application.findOne({ applicant: user._id }).sort({ updatedAt: -1 });
-  const applicationStatus = latest ? latest.status : "none";
+  // A removed application (duplicate, test entry) never counts, even if it
+  // was accepted: say so rather than "hasn't applied".
+  const latest = await Application.findOne(activeApplications.active({ applicant: user._id })).sort({ updatedAt: -1 });
+  const removed = latest ? null : await Application.exists({ applicant: user._id, removedAt: { $ne: null } });
+  const applicationStatus = latest ? latest.status : removed ? "removed" : "none";
 
   if (opts.allowNotAccepted || (opts.allowCheckedIn && user.checkedIn)) {
     return { user: user, application: latest, applicationStatus: applicationStatus };
@@ -122,7 +126,9 @@ async function resolveAttendee(body, options) {
     code: "not_accepted",
     error: latest
       ? user.name + "'s application is " + applicationStatus + ", not accepted."
-      : user.name + " hasn't applied.",
+      : removed
+        ? user.name + "'s application was removed by the organizers."
+        : user.name + " hasn't applied.",
     attendee: Object.assign(attendeeSummary(user, latest), { applicationStatus: applicationStatus }),
   };
 }
@@ -216,7 +222,7 @@ async function syncCheckedInFlag(user, record) {
  */
 async function checkInStats(_req, res) {
   try {
-    const accepted = await Application.distinct("applicant", { status: "accepted" });
+    const accepted = await Application.distinct("applicant", activeApplications.active({ status: "accepted" }));
     const checkedIn = await User.countDocuments({ _id: { $in: accepted }, checkedIn: true });
     const forced = await CheckIn.countDocuments({ forced: true });
     return res.json({ accepted: accepted.length, checkedIn: checkedIn, forced: forced });
@@ -241,7 +247,7 @@ async function searchAttendees(req, res) {
     const q = req.query && req.query.q ? String(req.query.q).trim() : "";
     const all = req.query && (req.query.all === "1" || req.query.all === "true");
 
-    const applications = await Application.find(all ? {} : { status: "accepted" })
+    const applications = await Application.find(activeApplications.active(all ? {} : { status: "accepted" }))
       .select("applicant name status updatedAt")
       .sort({ updatedAt: 1 })
       .lean();
@@ -539,8 +545,9 @@ async function findByEmail(rawEmail) {
   if (!email) return null;
   const user = await User.findOne({ email: email });
   if (!user) return null;
-  const accepted = await Application.findOne({ applicant: user._id, status: "accepted" });
-  const application = accepted || (await Application.findOne({ applicant: user._id }).sort({ updatedAt: -1 }));
+  const accepted = await Application.findOne(activeApplications.active({ applicant: user._id, status: "accepted" }));
+  const application =
+    accepted || (await Application.findOne(activeApplications.active({ applicant: user._id })).sort({ updatedAt: -1 }));
   return { user: user, application: application };
 }
 

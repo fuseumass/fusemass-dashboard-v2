@@ -10,6 +10,7 @@ var User = require("../schemas/user");
 var Workshop = require("../schemas/workshop");
 var Signup = require("../schemas/workshopSignup");
 var Application = require("../schemas/application");
+var activeApplications = require("./activeApplications");
 var branding = require("./branding");
 var calendar = require("./calendar");
 var discordAnnouncements = require("./discordAnnouncements");
@@ -940,7 +941,7 @@ function runDigest(settings, now) {
  * @returns {Promise<number>} Emails queued.
  */
 function sendDigestEmails(workshops, due) {
-  return Application.distinct("applicant", { status: "accepted" })
+  return Application.distinct("applicant", activeApplications.active({ status: "accepted" }))
     .then(function afterAccepted(ids) {
       return User.find({ _id: { $in: ids }, marketingEmailConsent: true }).select("name email").lean();
     })

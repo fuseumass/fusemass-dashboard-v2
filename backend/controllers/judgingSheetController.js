@@ -2,6 +2,7 @@
 var Team = require("../schemas/team");
 var User = require("../schemas/user");
 var Application = require("../schemas/application");
+var activeApplications = require("../utils/activeApplications");
 var Project = require("../schemas/project");
 var Room = require("../schemas/judgingRoom");
 var Assignment = require("../schemas/judgingAssignment");
@@ -12,7 +13,7 @@ async function sheet(req, res) {
   res.set("Cache-Control", "no-store");
   try {
     var user = await User.findById(req.user.id).select("role").lean();
-    if (!user || user.role === "judge" || (user.role !== "admin" && user.role !== "moderator" && !await Application.exists({ applicant: req.user.id, status: "accepted" }))) return res.status(403).json({ error: "Accepted participants and staff only." });
+    if (!user || user.role === "judge" || (user.role !== "admin" && user.role !== "moderator" && !await Application.exists(activeApplications.active({ applicant: req.user.id, status: "accepted" })))) return res.status(403).json({ error: "Accepted participants and staff only." });
     var state = await control.getState();
     if (!state.judgingOpen) return res.json({ open: false });
     // Read-only: participants poll this, so it must never take the judging

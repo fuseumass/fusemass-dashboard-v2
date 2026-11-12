@@ -7,6 +7,7 @@ var validator = require("validator");
 var Team = require("../schemas/team");
 var User = require("../schemas/user");
 var Application = require("../schemas/application");
+var activeApplications = require("../utils/activeApplications");
 var OrgSettings = require("../schemas/orgSettings");
 var mailer = require("../utils/mailer");
 var primaryClientOrigin = require("../utils/clientOrigin").primaryClientOrigin;
@@ -497,7 +498,7 @@ function listAllTeams(_req, res) {
           ids.push(m._id);
         });
       });
-      return Application.find({ applicant: { $in: ids } })
+      return Application.find(activeApplications.active({ applicant: { $in: ids } }))
         .select("applicant status")
         .lean()
         .then(function afterApps(apps) {

@@ -8,6 +8,7 @@ var Draw = require("../schemas/raffleDraw");
 var Signup = require("../schemas/workshopSignup");
 var User = require("../schemas/user");
 var Application = require("../schemas/application");
+var activeApplications = require("../utils/activeApplications");
 var Settings = require("../schemas/orgSettings");
 var currentRole = require("../utils/currentRole").currentRole;
 var resolveAttendee = require("./staffController").resolveAttendee;
@@ -382,10 +383,12 @@ async function pick(workshop, drawnBy, count, prize, redrawOf) {
     var attendees = await Attendance.find({ workshop: workshop._id }).distinct(
       "user",
     );
-    var accepted = await Application.find({
-      applicant: { $in: attendees },
-      status: "accepted",
-    }).distinct("applicant");
+    var accepted = await Application.find(
+      activeApplications.active({
+        applicant: { $in: attendees },
+        status: "accepted",
+      }),
+    ).distinct("applicant");
     var pool = await User.find({
       _id: { $in: accepted, $nin: excluded },
       checkedIn: true,

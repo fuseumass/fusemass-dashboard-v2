@@ -3,6 +3,7 @@
 var mongoose = require("mongoose");
 
 var Application = require("../schemas/application");
+var activeApplications = require("../utils/activeApplications");
 var ApplicationRound = require("../schemas/applicationRound");
 var OrgSettings = require("../schemas/orgSettings");
 var Team = require("../schemas/team");
@@ -123,7 +124,7 @@ async function loadContext(round, statuses) {
   var questions = teamProposals.teamQuestions(round.formConfig);
   var settings = await OrgSettings.getSingleton();
   var maxSize = settings.teamMaxSize || 4;
-  var docs = await Application.find({ round: round._id, status: { $ne: "draft" } })
+  var docs = await Application.find(activeApplications.active({ round: round._id, status: { $ne: "draft" } }))
     .select("applicant name status createdAt answers university major")
     .populate("applicant", "name email role")
     .lean();
@@ -785,7 +786,7 @@ async function applyProposals(req, res) {
  */
 async function loadUnteamed(round) {
   var questions = teamProposals.teamQuestions(round.formConfig);
-  var docs = await Application.find({ round: round._id, status: "accepted" })
+  var docs = await Application.find(activeApplications.active({ round: round._id, status: "accepted" }))
     .select("applicant name status createdAt answers university major")
     .populate("applicant", "name email role")
     .sort({ createdAt: 1 })

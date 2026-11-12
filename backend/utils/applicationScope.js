@@ -3,6 +3,7 @@
 var mongoose = require("mongoose");
 
 var applicationStatus = require("./applicationStatus");
+var activeApplications = require("./activeApplications");
 
 /**
  * Work out which applications an admin statistic or export covers, from the
@@ -25,7 +26,7 @@ function parseScope(query) {
     return { error: "status must be one of: " + applicationStatus.APPLICATION_STATUSES.join(", ") + "." };
   }
 
-  var match = { status: status || { $ne: "draft" } };
+  var match = activeApplications.active({ status: status || { $ne: "draft" } });
   if (round) {
     match.round = new mongoose.Types.ObjectId(round);
   }

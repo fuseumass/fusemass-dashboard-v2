@@ -57,6 +57,7 @@ were presumably tracked in spreadsheets, so B33–B37 are a new design.
 | Accepted status still visible after applications close | ✅ `latest` on `GET /api/applications/me`, shown on the home page | B27, F22 |
 | Application search | 🟡 status/round filters only | F14 |
 | Staff edit a submitted application (typos, wrong email) | ✅ edit mode on Review: every profile field, custom answers (form rules, consent boxes not re-ticked), account name and email (409 on duplicates, old links cancelled), audit trail, resend acceptance after an email fix | — |
+| Remove duplicate applications and merge two into one | ✅ soft delete with a reason (restore, audit trail, excluded from stats, exports, lists, auto-accept, check-in, workshops, hardware, team builder), merge with per-field choices, "possible duplicates" view (phone, name, Gmail alias, dismiss) | — |
 | Resume auto-check + flag suspicious applications, flag/unflag | 🟡 flag/unflag, list filter + count, optional auto-checks (short resume, name missing, duplicate phone/resume). Resume text is read for Word files and plain-text PDFs only; other PDFs skip the text rules | B42 |
 | Admin statistics (counts by school, gender, status, …) | 🟡 built; workshop attendance + hardware out wait on B21/B22 | B43, F26 |
 | CSV export of applications | ✅ admin only, answers flattened, formula-safe | B29 |

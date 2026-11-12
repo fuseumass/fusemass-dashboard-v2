@@ -1,6 +1,7 @@
 "use strict";
 
 var Application = require("../schemas/application");
+var activeApplications = require("../utils/activeApplications");
 var ApplicationRound = require("../schemas/applicationRound");
 var User = require("../schemas/user");
 var applicationStatus = require("../utils/applicationStatus");
@@ -147,7 +148,7 @@ function questionChoices(round, questions) {
   var keys = questions.map(function toKey(question) {
     return question.key;
   });
-  var match = { round: round._id, status: { $ne: "draft" } };
+  var match = activeApplications.active({ round: round._id, status: { $ne: "draft" } });
   return Promise.all([
     Application.aggregate([
       { $match: match },
@@ -249,7 +250,7 @@ function getOptions(req, res) {
       var questions = userGroups.filterableQuestions(round.formConfig);
       var everyone = userGroups.buildPipeline(round, noFilters(), User.collection.name);
       return Promise.all([
-        Application.aggregate([{ $match: { round: round._id } }, { $group: { _id: "$status", count: { $sum: 1 } } }]),
+        Application.aggregate([{ $match: activeApplications.active({ round: round._id }) }, { $group: { _id: "$status", count: { $sum: 1 } } }]),
         Application.aggregate(
           everyone.concat([
             { $group: { _id: "$_domain", count: { $sum: 1 } } },

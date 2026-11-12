@@ -6,6 +6,7 @@ var Attendance = require("../schemas/workshopAttendance");
 var Draw = require("../schemas/raffleDraw");
 var Settings = require("../schemas/orgSettings");
 var Application = require("../schemas/application");
+var activeApplications = require("../utils/activeApplications");
 var User = require("../schemas/user");
 var csv = require("../utils/csv");
 var calendar = require("../utils/calendar");
@@ -17,10 +18,12 @@ var primaryClientOrigin = require("../utils/clientOrigin").primaryClientOrigin;
 async function accepted(req, res, next) {
   try {
     if (
-      !(await Application.exists({
-        applicant: req.user.id,
-        status: "accepted",
-      }))
+      !(await Application.exists(
+        activeApplications.active({
+          applicant: req.user.id,
+          status: "accepted",
+        })
+      ))
     ) {
       res
         .status(403)
