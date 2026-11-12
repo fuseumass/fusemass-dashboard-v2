@@ -22,7 +22,9 @@ var STATUSES = ["scheduled", "sending", "sent", "failed", "cancelled"];
  *
  * @typedef {object} Announcement
  * @property {string} title - Email subject and Discord embed title (256 chars max).
- * @property {string} message - Plain text with links.
+ * @property {string} message - Email body: plain text with links.
+ * @property {string} discordMessage - Discord text, with `@everyone`, `@here` and `@label` mentions (empty: older posts reuse `message`).
+ * @property {string} discordTitle - Optional embed title for the Discord post.
  * @property {string} url - Optional link shown under the message.
  * @property {Array<string>} channels - Any of CHANNELS.
  * @property {object} audience - Email audience: `{ segment, workshop, checkedInOnly }`.
@@ -43,6 +45,8 @@ var announcementSchema = new Schema(
   {
     title: { type: String, required: true, trim: true, maxlength: 256 },
     message: { type: String, required: true, maxlength: 4096 },
+    discordMessage: { type: String, default: "", maxlength: 4096 },
+    discordTitle: { type: String, default: "", maxlength: 256 },
     url: { type: String, default: "" },
     channels: [{ type: String, enum: CHANNELS }],
     audience: {

@@ -15,7 +15,8 @@ var Schema = mongoose.Schema;
  *
  * @typedef {object} AutomationLog
  * @property {string} key - Unique claim key, e.g. "workshop_reminder_email:<workshop>:<startsAt>:<user>".
- * @property {string} kind - workshop_reminder_email | workshop_reminder_discord |
+ * @property {string} kind - workshop_all_discord | workshop_all_email | workshop_signed_email |
+ *   workshop_signed_discord |
  *   workshop_digest_discord | workshop_digest_email | workshop_update_discord.
  * @property {ObjectId} [workshop] - The workshop it was about.
  * @property {ObjectId} [user] - The recipient, for emails.

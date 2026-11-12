@@ -525,7 +525,9 @@ function attendeeDetails(user, application) {
     // False for people who applied without an account and haven't set a password.
     accountReady: !passwordToken.needsPasswordSetup(user),
     // Read-only, so staff can tell why an email didn't arrive.
-    emailPreferences: require("../utils/emailCategories").preferencesOf(user),
+    emailPreferences: require("../utils/emailCategories").preferencesOf(user, {
+      accepted: Boolean(application && application.status === "accepted"),
+    }),
   });
 }
 

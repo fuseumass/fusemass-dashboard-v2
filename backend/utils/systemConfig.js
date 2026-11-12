@@ -373,7 +373,7 @@ var REGISTRY = [
     secret: true,
     type: "url",
   }),
-  def("DISCORD_WORKSHOPS_WEBHOOK_URL", "Workshops webhook", "Discord", "A Discord webhook for the workshops channel: starting-soon posts, the daily sign-up list and workshop updates.", {
+  def("DISCORD_WORKSHOPS_WEBHOOK_URL", "Workshops webhook", "Discord", "A Discord webhook for the workshops channel: workshop announcements and reminders, the daily sign-up list, workshop updates and custom posts.", {
     validate: url(true),
     secret: true,
     type: "url",

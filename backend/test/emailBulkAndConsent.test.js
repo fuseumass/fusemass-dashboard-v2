@@ -150,7 +150,12 @@ test("B26: bulk email segments and marketing consent", async function bulkAndCon
     var admin = await fixtures.createUser({ role: "admin" });
     var round = await ApplicationRound.create({ name: "R1", isOpen: true });
     var yes = await fixtures.createUser({ email: "yes@example.com", name: "Yes", marketingEmailConsent: true });
-    var no = await fixtures.createUser({ email: "no@example.com", name: "No", marketingEmailConsent: false });
+    var no = await fixtures.createUser({
+      email: "no@example.com",
+      name: "No",
+      marketingEmailConsent: false,
+      emailPreferences: { announcements: false },
+    });
     var pending = await fixtures.createUser({ email: "pending@example.com", marketingEmailConsent: true });
     await apply(yes, round, "accepted");
     await apply(no, round, "accepted");

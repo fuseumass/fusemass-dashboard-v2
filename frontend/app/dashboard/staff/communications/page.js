@@ -1,12 +1,14 @@
 "use client";
 
 import { CalendarClock } from "lucide-react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 import AnnouncementHistory from "@/components/communications/AnnouncementHistory";
 import ComposeAnnouncement, {
   CHANNEL_LABELS,
 } from "@/components/communications/ComposeAnnouncement";
+import DiscordMentions from "@/components/communications/DiscordMentions";
 import WorkshopAutomations from "@/components/communications/WorkshopAutomations";
 import EmptyState from "@/components/EmptyState";
 import PageHeader from "@/components/PageHeader";
@@ -104,6 +106,8 @@ export default function CommunicationsPage() {
           </Alert>
         : null}
 
+      {data ? <SetupNotice data={data} /> : null}
+
       {!data
         ? error
           ? null
@@ -129,14 +133,31 @@ export default function CommunicationsPage() {
                 </TabsList>
               </div>
               <TabsContent value="compose" className="mt-4">
-                <ComposeAnnouncement
-                  channels={channels}
-                  audiences={data.audiences}
-                  workshops={data.workshops}
-                  onSent={() => {
-                    load();
-                  }}
-                />
+                <div className="space-y-4">
+                  <ComposeAnnouncement
+                    channels={channels}
+                    audiences={data.audiences}
+                    tags={data.settings.discordTags}
+                    workshops={data.workshops}
+                    webhookEnv={data.webhookEnv}
+                    onSent={() => {
+                      load();
+                    }}
+                  />
+                  <div className="max-w-3xl">
+                    <DiscordMentions
+                      tags={data.settings.discordTags}
+                      canEdit={data.canEditSettings}
+                      onSaved={(res) =>
+                        setData((d) => ({
+                          ...d,
+                          settings: res.settings,
+                          next: res.next,
+                        }))
+                      }
+                    />
+                  </div>
+                </div>
               </TabsContent>
               <TabsContent value="history" className="mt-4">
                 <AnnouncementHistory announcements={history} onChanged={load} />
@@ -182,9 +203,9 @@ function NextUp({ items, workshopsOn }) {
               }
             />
           : <ul className="divide-y divide-border">
-              {items.slice(0, 6).map((item) => (
+              {items.slice(0, 8).map((item) => (
                 <li
-                  key={`${item.kind}-${item.id || item.workshop || ""}-${item.label}-${item.at}`}
+                  key={`${item.kind}-${item.scope || ""}-${item.offset || ""}-${item.id || item.workshop || ""}-${item.label}-${item.at}`}
                   className="grid gap-0.5 py-2 text-sm first:pt-0 last:pb-0 sm:flex sm:items-baseline sm:gap-3"
                 >
                   <span className="shrink-0 whitespace-nowrap text-muted-foreground tabular-nums sm:w-36">
@@ -209,5 +230,47 @@ function NextUp({ items, workshopsOn }) {
             </ul>}
       </CardContent>
     </Card>
+  );
+}
+
+// Which Discord channels have no webhook yet, and exactly how to add one.
+function SetupNotice({ data }) {
+  const missing = Object.keys(data.webhookEnv || {}).filter(
+    (key) => !data.channels[key],
+  );
+  if (!missing.length) return null;
+  const isAdmin = data.canEditSettings;
+  return (
+    <Alert>
+      <AlertDescription className="space-y-1">
+        {missing.map((key) => (
+          <p key={key}>
+            {CHANNEL_LABELS[key]} isn't set up.{" "}
+            {isAdmin
+              ? <>
+                  Add the webhook URL as{" "}
+                  <code className="rounded bg-muted px-1 py-0.5 text-xs">
+                    {data.webhookEnv[key]}
+                  </code>{" "}
+                  in{" "}
+                  <Link
+                    href="/dashboard/admin/system"
+                    className="text-link underline underline-offset-2"
+                  >
+                    Technical settings
+                  </Link>
+                  .
+                </>
+              : <>
+                  An admin needs to add{" "}
+                  <code className="rounded bg-muted px-1 py-0.5 text-xs">
+                    {data.webhookEnv[key]}
+                  </code>{" "}
+                  in Technical settings.
+                </>}
+          </p>
+        ))}
+      </AlertDescription>
+    </Alert>
   );
 }

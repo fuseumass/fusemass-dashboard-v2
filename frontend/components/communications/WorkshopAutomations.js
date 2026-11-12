@@ -1,5 +1,6 @@
 "use client";
 
+import { Plus, X } from "lucide-react";
 import { useEffect, useState } from "react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
@@ -13,6 +14,13 @@ import {
 } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { apiFetch } from "@/lib/api";
 import { getEventTimeZone } from "@/lib/datetime";
@@ -21,10 +29,14 @@ import { notifySuccess } from "@/lib/notify";
 // Copy the server's settings into editable strings.
 function toDraft(s) {
   return {
-    reminderEmailOn: s.reminderEmail.enabled,
-    reminderEmailMin: String(s.reminderEmail.minutesBefore),
-    reminderDiscordOn: s.reminderDiscord.enabled,
-    reminderDiscordMin: String(s.reminderDiscord.minutesBefore),
+    allDiscord: s.reminderAll.discord,
+    allEmail: s.reminderAll.email,
+    allOffsets: s.reminderAll.offsets,
+    signedEmail: s.reminderSignedUp.email,
+    signedDiscord: s.reminderSignedUp.discord,
+    signedOffsets: s.reminderSignedUp.offsets,
+    mentionOn: s.workshopMention.enabled,
+    mentionTag: s.workshopMention.tag,
     digestDiscordOn: s.digestDiscord.enabled,
     digestTime: s.digestDiscord.time,
     digestHours: String(s.digestDiscord.windowHours),
@@ -36,6 +48,15 @@ function toDraft(s) {
 function whole(value, min, max) {
   const n = Number(value);
   return Number.isInteger(n) && n >= min && n <= max ? n : null;
+}
+
+// "2 hours", "45 minutes".
+function lead(minutes) {
+  if (minutes >= 60 && minutes % 60 === 0) {
+    const h = minutes / 60;
+    return `${h} ${h === 1 ? "hour" : "hours"}`;
+  }
+  return `${minutes} ${minutes === 1 ? "minute" : "minutes"}`;
 }
 
 /**
@@ -71,11 +92,7 @@ export default function WorkshopAutomations({
     e.preventDefault();
     setError("");
     const next = {};
-    const emailMin = whole(draft.reminderEmailMin, 5, 1440);
-    const discordMin = whole(draft.reminderDiscordMin, 5, 1440);
     const hours = whole(draft.digestHours, 1, 72);
-    if (emailMin === null) next.reminderEmailMin = "Use 5 to 1440 minutes.";
-    if (discordMin === null) next.reminderDiscordMin = "Use 5 to 1440 minutes.";
     if (hours === null) next.digestHours = "Use 1 to 72 hours.";
     if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(draft.digestTime)) {
       next.digestTime = "Pick a time.";
@@ -87,13 +104,19 @@ export default function WorkshopAutomations({
       const data = await apiFetch("/api/staff/communications/settings", {
         method: "PATCH",
         body: JSON.stringify({
-          reminderEmail: {
-            enabled: draft.reminderEmailOn,
-            minutesBefore: emailMin,
+          reminderAll: {
+            discord: draft.allDiscord,
+            email: draft.allEmail,
+            offsets: draft.allOffsets,
           },
-          reminderDiscord: {
-            enabled: draft.reminderDiscordOn,
-            minutesBefore: discordMin,
+          reminderSignedUp: {
+            email: draft.signedEmail,
+            discord: draft.signedDiscord,
+            offsets: draft.signedOffsets,
+          },
+          workshopMention: {
+            enabled: draft.mentionOn,
+            tag: draft.mentionTag,
           },
           digestDiscord: {
             enabled: draft.digestDiscordOn,
@@ -132,45 +155,108 @@ export default function WorkshopAutomations({
           <CardDescription>
             {channels.workshops
               ? canEdit
-                ? "Run every minute. Each reminder goes out once per person."
+                ? "Checked every minute. Each send happens once per person and workshop, and again if the workshop moves."
                 : "Only admins can change these."
               : "The workshops module is off, so none of these run."}
           </CardDescription>
         </CardHeader>
         <CardContent className="divide-y divide-border">
           <Row
-            id="auto-reminder-email"
-            title="Reminder email to everyone signed up"
-            hint={noEmail || "Time, room, host and a link to the workshop."}
-            on={draft.reminderEmailOn}
-            onToggle={(v) => set("reminderEmailOn", v)}
+            id="auto-all-discord"
+            title="Announce each workshop in Discord workshops"
+            hint={
+              noDiscord ||
+              "Title, time, room, host, spots left and a sign-up link. Workshops that start together share one post."
+            }
+            on={draft.allDiscord}
+            onToggle={(v) => set("allDiscord", v)}
             disabled={disabled}
-          >
-            <NumberField
-              id="auto-reminder-email-min"
-              label="Minutes before start"
-              value={draft.reminderEmailMin}
-              error={errors.reminderEmailMin}
-              onChange={(v) => set("reminderEmailMin", v)}
-              disabled={disabled}
-            />
-          </Row>
+          />
           <Row
-            id="auto-reminder-discord"
-            title="Starting soon post in Discord workshops"
-            hint={noDiscord || "Title, time, room, host and spots left."}
-            on={draft.reminderDiscordOn}
-            onToggle={(v) => set("reminderDiscordOn", v)}
+            id="auto-all-email"
+            title="Email each workshop to all accepted participants"
+            hint={
+              noEmail ||
+              "One email per person, even when several workshops start together. People who turned off event emails are skipped."
+            }
+            on={draft.allEmail}
+            onToggle={(v) => set("allEmail", v)}
             disabled={disabled}
-          >
-            <NumberField
-              id="auto-reminder-discord-min"
-              label="Minutes before start"
-              value={draft.reminderDiscordMin}
-              error={errors.reminderDiscordMin}
-              onChange={(v) => set("reminderDiscordMin", v)}
+          />
+          <div className="space-y-2 py-3">
+            <p className="text-sm font-medium">
+              Announce this long before a workshop starts
+            </p>
+            <Offsets
+              id="auto-all-offsets"
+              offsets={draft.allOffsets}
+              onChange={(v) => set("allOffsets", v)}
               disabled={disabled}
             />
+          </div>
+          <Row
+            id="auto-signed-email"
+            title="Remind the people signed up by email"
+            hint={
+              noEmail ||
+              "The last reminder, 5 minutes before or less, says the workshop is starting now in its room."
+            }
+            on={draft.signedEmail}
+            onToggle={(v) => set("signedEmail", v)}
+            disabled={disabled}
+          />
+          <Row
+            id="auto-signed-discord"
+            title="Also post these reminders in Discord workshops"
+            hint={noDiscord || "Off by default. Posts at the same times."}
+            on={draft.signedDiscord}
+            onToggle={(v) => set("signedDiscord", v)}
+            disabled={disabled}
+          />
+          <div className="space-y-2 py-3">
+            <p className="text-sm font-medium">
+              Remind people signed up this long before
+            </p>
+            <Offsets
+              id="auto-signed-offsets"
+              offsets={draft.signedOffsets}
+              onChange={(v) => set("signedOffsets", v)}
+              disabled={disabled}
+            />
+          </div>
+          <Row
+            id="auto-mention"
+            title="Mention a Discord role in automated workshop posts"
+            hint="Announcements, reminders, the daily list and new or moved workshops. Off by default."
+            on={draft.mentionOn}
+            onToggle={(v) => set("mentionOn", v)}
+            disabled={disabled}
+          >
+            <div className="space-y-1">
+              <Label htmlFor="auto-mention-tag" className="text-xs">
+                Mention
+              </Label>
+              <Select
+                value={draft.mentionTag}
+                onValueChange={(v) => set("mentionTag", v)}
+                disabled={disabled}
+              >
+                <SelectTrigger id="auto-mention-tag" className="w-56">
+                  <SelectValue placeholder="Pick a role" />
+                </SelectTrigger>
+                <SelectContent>
+                  {[
+                    "everyone",
+                    "here",
+                    ...settings.discordTags.map((t) => t.label),
+                  ].map((label) => (
+                    <SelectItem key={label} value={label}>
+                      @{label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
           </Row>
           <Row
             id="auto-digest-discord"
@@ -218,7 +304,7 @@ export default function WorkshopAutomations({
             title="Daily sign-up email"
             hint={
               noEmail ||
-              "The same list, to accepted participants who opted in to announcements. At most once a day."
+              "The same list, to accepted participants who haven't opted out of announcements. At most once a day."
             }
             on={draft.digestEmailOn}
             onToggle={(v) => set("digestEmailOn", v)}
@@ -295,6 +381,77 @@ function NumberField({ id, label, value, error, onChange, disabled }) {
         onChange={(e) => onChange(e.target.value)}
       />
       {error ? <p className="text-xs text-destructive">{error}</p> : null}
+    </div>
+  );
+}
+
+// An editable list of "minutes before start" values.
+function Offsets({ id, offsets, onChange, disabled }) {
+  const [text, setText] = useState("");
+  const [problem, setProblem] = useState("");
+
+  function add() {
+    const n = whole(text, 1, 2880);
+    if (n === null) {
+      setProblem("Use a whole number of minutes from 1 to 2880.");
+    } else if (offsets.includes(n)) {
+      setProblem("That time is already in the list.");
+    } else if (offsets.length >= 6) {
+      setProblem("Use at most 6 times.");
+    } else {
+      onChange([...offsets, n].sort((a, b) => b - a));
+      setText("");
+      setProblem("");
+    }
+  }
+
+  return (
+    <div className="space-y-2">
+      <ul className="flex flex-wrap gap-1.5" aria-label="Times before start">
+        {offsets.length === 0
+          ? <li className="text-sm text-muted-foreground">
+              None. Nothing is sent.
+            </li>
+          : offsets.map((minutes) => (
+              <li
+                key={minutes}
+                className="inline-flex items-center gap-1 rounded-md border border-border bg-muted px-2 py-1 text-sm tabular-nums"
+              >
+                {lead(minutes)}
+                <button
+                  type="button"
+                  className="rounded-sm text-muted-foreground hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring/50 disabled:pointer-events-none disabled:opacity-50"
+                  aria-label={`Remove ${lead(minutes)}`}
+                  disabled={disabled}
+                  onClick={() => onChange(offsets.filter((m) => m !== minutes))}
+                >
+                  <X className="size-3.5" aria-hidden="true" />
+                </button>
+              </li>
+            ))}
+      </ul>
+      <div className="flex flex-wrap items-end gap-2">
+        <NumberField
+          id={`${id}-add`}
+          label="Add minutes before start"
+          value={text}
+          error={problem}
+          onChange={(v) => {
+            setText(v);
+            setProblem("");
+          }}
+          disabled={disabled}
+        />
+        <Button
+          type="button"
+          variant="outline"
+          disabled={disabled}
+          onClick={add}
+        >
+          <Plus aria-hidden="true" />
+          Add
+        </Button>
+      </div>
     </div>
   );
 }

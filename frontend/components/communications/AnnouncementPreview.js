@@ -1,7 +1,8 @@
 "use client";
 
-import { Eye } from "lucide-react";
+import { Eye, TriangleAlert } from "lucide-react";
 import EmptyState from "@/components/EmptyState";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 import {
   Card,
   CardContent,
@@ -14,19 +15,27 @@ import {
  * The email and the Discord post exactly as the server will send them.
  * @param {object} props
  * @param {object|null} props.preview - From POST /api/staff/communications/preview.
+ * @param {Array<object>} props.tags - Saved Discord mentions, to show role names.
  * @returns {JSX.Element}
  */
-export default function AnnouncementPreview({ preview }) {
+export default function AnnouncementPreview({ preview, tags = [] }) {
   const embed = preview?.discord?.embeds?.[0];
+  const discord = preview?.discord;
+  // Role mentions as the writer typed them: "<@&123>" -> "@participants".
+  const named = (text) =>
+    String(text || "").replace(/<@&(\d+)>/g, (match, id) => {
+      const tag = tags.find((t) => t.roleId === id);
+      return tag ? `@${tag.label}` : match;
+    });
   return (
     <Card>
       <CardHeader>
         <CardTitle className="text-base font-semibold">Preview</CardTitle>
         <CardDescription>
           {preview?.audience
-            ? `${preview.audience.label}: ${preview.audience.recipients} will get the email${
+            ? `${preview.audience.label}: ${preview.audience.recipients} of ${preview.audience.inAudience} will get the email${
                 preview.audience.skippedOptOut
-                  ? `, ${preview.audience.skippedOptOut} turned announcements off`
+                  ? `, ${preview.audience.skippedOptOut} turned announcements off or never opted in`
                   : ""
               }.`
             : "Rendered by the server, as it will go out."}
@@ -57,33 +66,40 @@ export default function AnnouncementPreview({ preview }) {
               />
             </section>
           : null}
-        {embed
+        {discord
           ? <section aria-label="Discord preview" className="space-y-2">
               <p className="text-xs font-medium text-muted-foreground">
                 Discord
               </p>
               <div className="rounded-md bg-muted p-3">
-                {preview.discord.content
-                  ? <p className="mb-2 text-sm font-medium text-info">
-                      {preview.discord.content}
+                {discord.content
+                  ? <p className="mb-2 text-sm whitespace-pre-wrap wrap-anywhere text-foreground">
+                      {named(discord.content)}
                     </p>
                   : null}
-                <div className="rounded-sm border-l-4 border-brand bg-card p-3">
-                  <p className="text-sm font-semibold wrap-anywhere">
-                    {embed.url
-                      ? <span className="text-link">{embed.title}</span>
-                      : embed.title}
-                  </p>
-                  <p className="mt-1 text-sm whitespace-pre-wrap wrap-anywhere text-foreground">
-                    {embed.description}
-                  </p>
-                </div>
-                <p className="mt-2 text-xs text-muted-foreground">
-                  {preview.discord.allowed_mentions.parse.length
-                    ? "Pings @everyone."
-                    : "Nobody is pinged."}
-                </p>
+                {embed
+                  ? <div className="rounded-sm border-l-4 border-brand bg-card p-3">
+                      <p className="text-sm font-semibold wrap-anywhere">
+                        {embed.url
+                          ? <span className="text-link">{embed.title}</span>
+                          : embed.title}
+                      </p>
+                      <p className="mt-1 text-sm whitespace-pre-wrap wrap-anywhere text-foreground">
+                        {named(embed.description)}
+                      </p>
+                    </div>
+                  : null}
               </div>
+              {preview.pings?.length
+                ? <Alert>
+                    <TriangleAlert aria-hidden="true" />
+                    <AlertDescription>
+                      This notifies {preview.pings.join(", ")}.
+                    </AlertDescription>
+                  </Alert>
+                : <p className="text-xs text-muted-foreground">
+                    Nobody is pinged.
+                  </p>}
             </section>
           : null}
       </CardContent>

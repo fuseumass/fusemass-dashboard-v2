@@ -12,8 +12,12 @@ var Schema = mongoose.Schema;
  *
  * @typedef {object} CommunicationSettings
  * @property {string} key - Always "default".
- * @property {object} reminderEmail - `{ enabled, minutesBefore }`: email everyone signed up.
- * @property {object} reminderDiscord - `{ enabled, minutesBefore }`: post "starting soon" to the workshops channel.
+ * @property {object} reminderAll - `{ discord, email, offsets }`: announce each published workshop to all accepted
+ *   participants (Discord workshops channel and email) this many minutes before it starts. Default [120].
+ * @property {object} reminderSignedUp - `{ email, discord, offsets }`: remind the people signed up this many minutes
+ *   before. Default [45, 5], email only.
+ * @property {Array<object>} discordTags - Saved role mentions `{ label, roleId }` writers can use as `@label`.
+ * @property {object} workshopMention - `{ enabled, tag }`: ping a tag (a saved label, "everyone" or "here") in automated workshop posts.
  * @property {object} digestDiscord - `{ enabled, time, windowHours }`: daily post of upcoming workshops with spots.
  * @property {object} digestEmail - `{ enabled }`: the same list emailed to accepted participants who opted in (same time, at most daily).
  * @property {object} updatesDiscord - `{ enabled }`: post when a workshop is published or changes time or room.
@@ -22,13 +26,23 @@ var Schema = mongoose.Schema;
 var communicationSettingsSchema = new Schema(
   {
     key: { type: String, default: "default", unique: true, enum: ["default"] },
-    reminderEmail: {
-      enabled: { type: Boolean, default: true },
-      minutesBefore: { type: Number, default: 45, min: 5, max: 1440 },
+    reminderAll: {
+      discord: { type: Boolean, default: true },
+      email: { type: Boolean, default: true },
+      offsets: { type: [Number], default: [120] },
     },
-    reminderDiscord: {
-      enabled: { type: Boolean, default: true },
-      minutesBefore: { type: Number, default: 45, min: 5, max: 1440 },
+    reminderSignedUp: {
+      email: { type: Boolean, default: true },
+      discord: { type: Boolean, default: false },
+      offsets: { type: [Number], default: [45, 5] },
+    },
+    discordTags: {
+      type: [{ _id: false, label: { type: String, required: true }, roleId: { type: String, required: true } }],
+      default: [],
+    },
+    workshopMention: {
+      enabled: { type: Boolean, default: false },
+      tag: { type: String, default: "" },
     },
     digestDiscord: {
       enabled: { type: Boolean, default: true },
