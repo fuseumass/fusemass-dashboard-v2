@@ -15,9 +15,16 @@
 //      other applicants whose full name they wrote without an email, when that
 //      name matches exactly one applicant). People are compared by a match key
 //      that folds Gmail aliases (dots, +tags, googlemail.com).
-//   3. Connected components of that graph are the proposed teams. Listed
+//   3. Connected components of that graph are candidate groups. Listed
 //      emails with no account or application are members too: they get an
 //      invite and can accept it after signing up.
+//   4. A group is only "ready" when everyone who wrote a list agrees on it.
+//      Each lister A claims the team T(A): A plus everyone A listed. People
+//      who listed nobody are silent and agree by default. If every lister has
+//      the same T the group is consistent (a team can be created); if two
+//      listers differ, or the group is bigger than the team limit, it is a
+//      conflict and no team is created: the listers are told to sort it out
+//      on the dashboard (see conflictDetails).
 
 var validator = require("validator");
 
@@ -327,7 +334,7 @@ function answerText(answers, question) {
 }
 
 /**
- * "Team <first name>", made unique against names already taken (by nameKey),
+ * A team name made unique against names already taken (by nameKey),
  * with " 2", " 3", ... appended as needed. Adds the result to `taken`.
  * @param {string} base - The wanted name.
  * @param {object} taken - nameKey -> true; updated.
@@ -348,14 +355,53 @@ function uniqueTeamName(base, taken, keyFor) {
 }
 
 /**
- * The default name for a team led by someone.
- * @param {string} fullName - Leader's name.
+ * Upper-case the first letter of each word, leaving the rest as written.
+ * @param {string} text - A name.
  * @returns {string}
  */
-function defaultTeamName(fullName) {
-  var first = String(fullName || "").trim().split(/\s+/)[0] || "";
-  first = first.charAt(0).toUpperCase() + first.slice(1);
-  return first ? "Team " + first : "Team";
+function capitalizeWords(text) {
+  return String(text || "")
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean)
+    .map(function cap(word) {
+      return word.charAt(0).toUpperCase() + word.slice(1);
+    })
+    .join(" ");
+}
+
+/**
+ * The default name for a team led by someone: "<First name>'s team".
+ * @param {string} fullName - Leader's name.
+ * @param {boolean} [withLastName] - Use the whole name ("Ana Lee's team").
+ * @returns {string}
+ */
+function defaultTeamName(fullName, withLastName) {
+  var words = capitalizeWords(fullName).split(" ").filter(Boolean);
+  var who = withLastName ? words.join(" ") : words[0] || "";
+  return who ? who + "'s team" : "Team";
+}
+
+/**
+ * A free default name for a team: "Ana's team", else "Ana Lee's team", else
+ * a number is added. Adds the result to `taken`.
+ * @param {string} fullName - Leader's name.
+ * @param {object} taken - nameKey -> true; updated.
+ * @param {function} keyFor - Team.nameKeyFor.
+ * @returns {string}
+ */
+function proposalTeamName(fullName, taken, keyFor) {
+  var short = defaultTeamName(fullName);
+  if (!taken[keyFor(short)]) {
+    taken[keyFor(short)] = true;
+    return short;
+  }
+  var long = defaultTeamName(fullName, true);
+  if (long !== short && !taken[keyFor(long)]) {
+    taken[keyFor(long)] = true;
+    return long;
+  }
+  return uniqueTeamName(long, taken, keyFor);
 }
 
 /**
@@ -504,7 +550,7 @@ function buildProposals(input) {
     return a.order - b.order;
   });
   proposals.forEach(function nameIt(proposal) {
-    proposal.defaultName = uniqueTeamName(defaultTeamName(proposal.leaderName), taken, keyFor);
+    proposal.defaultName = proposal.status === "conflict" ? "" : proposalTeamName(proposal.leaderName, taken, keyFor);
     delete proposal.order;
     delete proposal.leaderName;
   });
@@ -619,6 +665,7 @@ function describeComponent(keys, ctx) {
     return a.email < b.email ? -1 : 1;
   });
 
+  var group = analyseGroup(keys, members, byKey, ctx);
   var leader = pickLeader(members, null);
   var teams = {};
   members.forEach(function collect(m) {
@@ -638,6 +685,7 @@ function describeComponent(keys, ctx) {
     return m.team || m.invitedTo.length;
   });
 
+  var isDone = eligible.length > 0 && settled.length === eligible.length;
   var unmatchedNames = members
     .filter(function hasNames(m) {
       return m.unmatchedNames.length;
@@ -690,9 +738,132 @@ function describeComponent(keys, ctx) {
         }),
       unmatchedNames: unmatchedNames,
     },
-    done: eligible.length > 0 && settled.length === eligible.length,
+    done: isDone,
+    status: isDone ? "done" : group.conflict ? "conflict" : "ready",
+    conflict: group.conflict,
     order: leader && leader.appliedAt ? new Date(leader.appliedAt).getTime() : Number.MAX_SAFE_INTEGER,
   };
+}
+
+/**
+ * Whether a group's listers agree. Each lister claims T = themselves plus
+ * everyone they listed (by match key). People who listed nobody, rejected
+ * applicants, and listed people with no application are silent and agree by
+ * default. Marks each member's `isLister`.
+ *
+ * @param {Array<string>} keys - Match keys in the group.
+ * @param {Array<object>} members - The group's members (sorted, with `key`).
+ * @param {object} byKey - key -> member.
+ * @param {object} ctx - Indexes built by buildProposals.
+ * @returns {{conflict: (object|null)}} `conflict`: { reason: "mismatch" |
+ *   "too_many", size, maxSize, signature, listers: [{ email, name, userId,
+ *   inScope, status, role, team, setKey, list: [{ email, name }] }] }.
+ */
+function analyseGroup(keys, members, byKey, ctx) {
+  function person(key) {
+    var n = ctx.nodes[key];
+    var user = ctx.usersByKey[key];
+    var app = n.app;
+    return {
+      email: user ? normalizeEmail(user.email) : app ? normalizeEmail(app.email) : n.literal,
+      name: (app && app.name) || (user && user.name) || n.listedAs || "",
+    };
+  }
+
+  var listers = [];
+  members.forEach(function find(m) {
+    var n = ctx.nodes[m.key];
+    var listed = Object.keys(ctx.listings[m.key] || {}).filter(function other(k) {
+      return k !== m.key;
+    });
+    if (!n.app || n.app.status === "rejected" || !listed.length) {
+      return;
+    }
+    m.isLister = true;
+    listers.push({
+      email: m.email,
+      name: m.name,
+      userId: m.userId,
+      inScope: m.inScope,
+      status: m.status,
+      role: m.role,
+      team: m.team,
+      setKey: [m.key].concat(listed).sort().join(" "),
+      list: listed.map(person),
+    });
+  });
+  members.forEach(function mark(m) {
+    m.isLister = Boolean(m.isLister);
+  });
+
+  var distinct = {};
+  listers.forEach(function add(l) {
+    distinct[l.setKey] = true;
+  });
+  var differs = Object.keys(distinct).length > 1;
+  var tooMany = !differs && listers.length > 0 && members.length > ctx.maxSize;
+  if (!differs && !tooMany) {
+    return { conflict: null };
+  }
+  return {
+    conflict: {
+      reason: differs ? "mismatch" : "too_many",
+      size: members.length,
+      maxSize: ctx.maxSize,
+      signature: shortHash(
+        listers
+          .map(function sig(l) {
+            return l.setKey;
+          })
+          .sort()
+          .join("|")
+      ),
+      listers: listers,
+    },
+  };
+}
+
+/**
+ * The plain-text explanation emailed to one lister in a conflict.
+ * @param {object} conflict - proposal.conflict.
+ * @param {string} email - The recipient lister's email.
+ * @returns {string}
+ */
+function conflictDetails(conflict, email) {
+  function label(p) {
+    return p.name || p.email;
+  }
+  function join(items) {
+    if (items.length < 2) {
+      return items.join("");
+    }
+    return items.slice(0, -1).join(", ") + " and " + items[items.length - 1];
+  }
+  var me = conflict.listers.filter(function same(l) {
+    return l.email === email;
+  })[0];
+  if (!me) {
+    return "";
+  }
+  if (conflict.reason === "too_many") {
+    return (
+      "The team you listed has " + conflict.size + " people, but a team can have at most " + conflict.maxSize +
+      ". You listed: " + join(me.list.map(label)) + "."
+    );
+  }
+  var others = conflict.listers.filter(function differ(l) {
+    return l.setKey !== me.setKey;
+  });
+  var lines = [
+    "Your teammate list doesn't match " + join(others.map(function who(l) {
+      return label(l) + "'s";
+    })).replace(/'s and /g, " and ") + " list.",
+    "You listed: " + join(me.list.map(label)) + ".",
+  ];
+  others.forEach(function theirs(l) {
+    lines.push(label(l) + " listed: " + join(l.list.map(label)) + ".");
+  });
+  return lines.join("\n");
 }
 
 /**
@@ -735,6 +906,9 @@ function pickLeader(members, wanted) {
     return asked;
   }
   return (
+    members.filter(function lister(m) {
+      return m.inScope && m.isLister && canLead(m);
+    })[0] ||
     members.filter(function inScope(m) {
       return m.inScope && canLead(m);
     })[0] ||
@@ -782,6 +956,10 @@ function planApply(proposal, request, ctx) {
     return wanted[matchKey(m.email)] || wanted[matchKey(m.listedEmail || "")];
   });
   var plan = { action: "skip", add: [], invite: [], skipped: [] };
+  if (proposal.status === "conflict") {
+    plan.reason = "The lists don't match, so no team is created. Resolve it manually.";
+    return plan;
+  }
   if (members.length < 2) {
     plan.reason = "Pick at least two people for a team.";
     return plan;
@@ -886,6 +1064,8 @@ module.exports = {
   answerText: answerText,
   uniqueTeamName: uniqueTeamName,
   defaultTeamName: defaultTeamName,
+  proposalTeamName: proposalTeamName,
+  conflictDetails: conflictDetails,
   buildProposals: buildProposals,
   pickLeader: pickLeader,
   planApply: planApply,
