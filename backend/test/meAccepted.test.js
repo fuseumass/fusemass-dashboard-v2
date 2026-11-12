@@ -39,4 +39,8 @@ test("/api/auth/me says whether the person is accepted", async function (t) {
   assert.equal((await me(rejected)).accepted, false);
   assert.equal((await me(none)).accepted, false);
   assert.equal((await me(judge)).accepted, false);
+
+  // A removed (duplicate) application doesn't count as accepted.
+  await Application.updateOne({ applicant: accepted.user._id }, { $set: { removedAt: new Date(), removedReason: "Duplicate" } });
+  assert.equal((await me(accepted)).accepted, false);
 });
