@@ -732,6 +732,29 @@ test("communications: announcements, Discord and workshop automations", async fu
     assert.deepEqual(discord.posts[0].body.allowed_mentions, { parse: [], roles: ["98765432109876543"] });
   });
 
+  await t.test("a workshop reminder queued during a big blast jumps ahead of it", async function (t2) {
+    await reset();
+    var mail = flaky.mockFlakyTransport(t2);
+    var blast = [];
+    for (var i = 0; i < 12; i++) {
+      var person = await fixtures.createUser({ email: "blast" + i + "@example.com", marketingEmailConsent: true });
+      blast.push({ to: person.user.email, user: person.user._id, templateKey: "announcement", category: "announcement", values: { title: "T", message: "M", name: "x" } });
+    }
+    var signedUp = await fixtures.createUser({ email: "reminder@example.com" });
+    await outbox.enqueueMany(blast, { batchId: "blast" });
+    await outbox.enqueueMany(
+      [{ to: signedUp.user.email, user: signedUp.user._id, templateKey: "workshop_reminder", values: { name: "R", title: "W", when: "now", location: "Room 1" } }],
+      { batchId: "reminder" }
+    );
+    assert.equal((await EmailLog.findOne({ to: "reminder@example.com" })).priority, 10);
+    assert.equal((await EmailLog.findOne({ to: "blast0@example.com" })).priority, 0);
+    await settle();
+    var order = mail.calls.map(function (m) { return m.to; });
+    assert.equal(order.length, 13);
+    // At most one small batch of the blast can already be in flight.
+    assert.ok(order.indexOf("reminder@example.com") <= 5, "reminder sent at position " + order.indexOf("reminder@example.com"));
+  });
+
   await t.test("automations stay off without the workshops module or a channel", async function (t2) {
     await reset();
     flaky.mockFlakyTransport(t2);

@@ -642,8 +642,10 @@ function drainLoop(force) {
       return Promise.resolve(attempted);
     }
     return EmailLog.find({ status: "queued", nextAttemptAt: { $lte: new Date() }, lockedUntil: null })
-      .sort({ nextAttemptAt: 1 })
-      .limit(25)
+      // Highest priority first, then oldest. Small batches, so a reminder
+      // queued during a big blast waits a few seconds, not the whole blast.
+      .sort({ priority: -1, nextAttemptAt: 1 })
+      .limit(5)
       .select("_id")
       .lean()
       .then(function afterFind(rows) {
@@ -742,6 +744,8 @@ function enqueueMany(entries, meta) {
     doc.attempts = 0;
     doc.maxAttempts = DEFAULT_MAX_ATTEMPTS;
     doc.nextAttemptAt = now;
+    doc.priority =
+      typeof entry.priority === "number" ? entry.priority : emailCategories.queuePriority(entry.templateKey);
     return doc;
   });
   if (!docs.length) {

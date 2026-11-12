@@ -95,6 +95,31 @@ function forTemplate(key) {
   return DEFAULT_CATEGORY;
 }
 
+// Queue priority for bulk-queued email (utils/outbox drains highest first).
+// Big blasts go to everyone at once and take a while at about one email a
+// second, so time-critical reminders must not wait behind them.
+var PRIORITY = { high: 10, normal: 5, low: 0 };
+var LOW_PRIORITY_KEYS = { workshop_announcement: true, workshop_digest: true, announcement: true };
+var HIGH_PRIORITY_KEYS = { workshop_reminder: true };
+
+/**
+ * Where a queued email goes in line: workshop reminders first, then other
+ * account and event email, then announcement-style blasts.
+ *
+ * @param {string} key - Template key.
+ * @returns {number} Higher sends first.
+ */
+function queuePriority(key) {
+  if (HIGH_PRIORITY_KEYS[key]) {
+    return PRIORITY.high;
+  }
+  if (LOW_PRIORITY_KEYS[key]) {
+    return PRIORITY.low;
+  }
+  var category = forTemplate(key);
+  return category === "announcements" ? PRIORITY.low : PRIORITY.normal;
+}
+
 /**
  * The category an outbox row is sent under. An explicit `preferenceCategory`
  * on the row wins; a bulk "announcement" is an announcement whatever the
@@ -261,6 +286,8 @@ module.exports = {
   TEMPLATE_CATEGORIES: TEMPLATE_CATEGORIES,
   forTemplate: forTemplate,
   forRow: forRow,
+  queuePriority: queuePriority,
+  PRIORITY: PRIORITY,
   isOptional: isOptional,
   announcementChoice: announcementChoice,
   announcementsAllowed: announcementsAllowed,
