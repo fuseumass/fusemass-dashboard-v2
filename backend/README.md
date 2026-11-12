@@ -243,8 +243,18 @@ work too.
   Full names without an email are matched when exactly one applicant in the
   round has that name; other names ("Didy, Jeffrey") are shown raw.
 - **Grouping:** in-scope applicants (default: accepted) are joined to what
-  they listed; connected components are the proposals. Listed people with no
-  account or application are members too and get an invite.
+  they listed; connected components are candidate groups. Listed people with
+  no account or application are members too and get an invite.
+- **Consistency:** each lister A claims `T(A)`: A plus everyone A listed. A
+  member who listed nobody (blank, "N/A", or only names that match no one) is
+  silent and agrees by default. If every lister in the group has the same `T`
+  the group is `ready`: one team is created, named "<first name>'s team"
+  after the earliest lister (who leads; the last name or a number is added
+  when the name is taken), and one-sided listings are simply invited. If two
+  listers differ (A lists x, y and x lists y, z; or A lists x and x lists y),
+  or the group is larger than `teamMaxSize`, it is a `conflict` and the apply
+  endpoint refuses to create or merge anything for it. Proposal `status` is
+  `ready`, `conflict` or `done` (everyone is on a team or invited).
 - **Applying:** the server rebuilds the proposals and only acts on people in
   one of them. A new team's leader is the earliest applicant who can lead;
   members with an account on no team are added, everyone else is sent the
@@ -254,6 +264,12 @@ work too.
   team or invited. Each proposal is applied under the team lock
   (`utils/judging/state`). Runs are kept in `teambuilderruns`, and each team
   logs `builder_add` / `builder_invite` in `staffChanges`.
+- **Conflict emails:** `POST /api/admin/team-builder/notify-conflicts` sends
+  the built-in `team_conflict` email to each in-scope lister in a conflict who
+  is on no team ("Your teammate list doesn't match ...", with both lists and a
+  link to `/dashboard/team`). A `teamconflictnotices` row (user, round, hash
+  of the lists) makes it once per person: a re-run skips them until the lists
+  change. `dryRun` only counts.
 
 Account setup reminders (`utils/setupReminders.js`) issue each accepted
 person who still can't sign in a fresh 7-day link and send it with the
@@ -427,6 +443,7 @@ emailed on acceptance (or via "Forgot password").
 | GET    | `/api/admin/groups/emails`      | admin     | The group's emails, for "Copy emails" (`no-store`) |
 | GET    | `/api/admin/groups/export.csv`  | admin     | The group as a formula-safe CSV: contact and event fields plus every form answer |
 | GET    | `/api/admin/team-builder/proposals` | admin | Proposed teams from the teammates question (`?round=&statuses=accepted,pending`), flags, unmatched answers, recent runs |
+| POST   | `/api/admin/team-builder/notify-conflicts` | admin | Email every lister in a conflicting group once (`{ round?, statuses?, dryRun?, allowOverLimit? }`) |
 | POST   | `/api/admin/team-builder/apply` | admin     | Create proposed teams / merge into existing ones (`{ proposals: [{ memberEmails, name?, leaderEmail?, mergeIntoTeamId? }], round?, statuses?, dryRun?, allowOverLimit? }`) |
 | GET    | `/api/admin/team-builder/unteamed` | admin  | Accepted people on no team and with no invite, split by research-study answer |
 | GET    | `/api/admin/team-builder/unteamed.csv` | admin | The same as CSV (`?answer=<value>` or `__none__` for one group) |

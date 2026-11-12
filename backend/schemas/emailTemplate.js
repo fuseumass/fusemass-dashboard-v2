@@ -165,6 +165,15 @@ var DEFAULT_TEMPLATES = [
       "Hi,\n\n{{inviterName}} invited you to join their team \"{{teamName}}\" for {{orgName}}.\n\nLog in to the dashboard to accept or decline: {{teamsUrl}}\n\nIf you applied without an account and haven't set a password yet, use \"Forgot password\" on the login page with this email address.",
   },
   {
+    // Sent from the admin team builder to each applicant whose teammate list
+    // disagrees with another applicant's. {{conflictDetails}} says who listed
+    // whom; no team was created for them.
+    key: "team_conflict",
+    subject: "Your teammate list doesn't match",
+    body:
+      "Hi {{name}},\n\n{{conflictDetails}}\n\nBecause of this we haven't created a team for you yet. Please create your team on the dashboard and invite your teammates there: {{teamsUrl}}",
+  },
+  {
     // Sent when staff check an attendee in on arrival. The run of show is
     // also attached as a calendar invite.
     key: "checked_in",

@@ -7,6 +7,7 @@ var ApplicationRound = require("../schemas/applicationRound");
 var OrgSettings = require("../schemas/orgSettings");
 var Team = require("../schemas/team");
 var TeamBuilderRun = require("../schemas/teamBuilderRun");
+var TeamConflictNotice = require("../schemas/teamConflictNotice");
 var User = require("../schemas/user");
 var csv = require("../utils/csv");
 var hardwareTeamChange = require("../utils/hardwareTeamChange");
@@ -270,6 +271,17 @@ function roundList(rounds) {
 }
 
 /**
+ * @param {Array<object>} proposals - Built proposals.
+ * @param {string} status - "ready" | "conflict" | "done".
+ * @returns {number}
+ */
+function countStatus(proposals, status) {
+  return proposals.filter(function has(p) {
+    return p.status === status;
+  }).length;
+}
+
+/**
  * GET /api/admin/team-builder/proposals?round=&statuses=accepted,pending
  * Proposed teams from the round's teammates answers, with flags, plus the
  * applicants who wrote something that matched no one, and recent runs.
@@ -328,9 +340,10 @@ async function getProposals(req, res) {
         saidHasTeam: saidTeam,
         listedSomeone: listedSomeone,
         proposals: built.proposals.length,
-        done: built.proposals.filter(function isDone(p) {
-          return p.done;
-        }).length,
+        ready: countStatus(built.proposals, "ready"),
+        conflicts: countStatus(built.proposals, "conflict"),
+        done: countStatus(built.proposals, "done"),
+        unmatched: built.unmatched.length,
       },
       proposals: built.proposals,
       unmatched: built.unmatched,
@@ -475,14 +488,27 @@ async function refresh(proposal, mergeId) {
  * @returns {Promise<string>}
  */
 async function freeName(wanted, leader, taken) {
-  var base = wanted || teamProposals.defaultTeamName(leader.name);
   for (var attempt = 0; attempt < 50; attempt++) {
-    var name = teamProposals.uniqueTeamName(base, taken, Team.nameKeyFor);
+    var name = chooseName(wanted, leader.name, taken);
     if (!(await Team.exists({ nameKey: Team.nameKeyFor(name) }))) {
       return name;
     }
   }
-  throw control.problem(409, "Couldn't find a free team name for " + base + ".");
+  throw control.problem(409, "Couldn't find a free team name for " + (wanted || leader.name) + ".");
+}
+
+/**
+ * The wanted team name made unique, or the default ("<First name>'s team",
+ * then with the last name, then numbered) when none was asked for.
+ * @param {string} wanted - Requested name, may be "".
+ * @param {string} leaderName - The leader's name.
+ * @param {object} taken - nameKey -> true; updated.
+ * @returns {string}
+ */
+function chooseName(wanted, leaderName, taken) {
+  return wanted
+    ? teamProposals.uniqueTeamName(wanted, taken, Team.nameKeyFor)
+    : teamProposals.proposalTeamName(leaderName, taken, Team.nameKeyFor);
 }
 
 /**
@@ -681,7 +707,7 @@ async function applyProposals(req, res) {
         mergeTeam: request.mergeIntoTeamId ? ctx.teams.byId[request.mergeIntoTeamId] || null : null,
       });
       if (p.action === "create") {
-        p.name = teamProposals.uniqueTeamName(p.name || teamProposals.defaultTeamName(p.leader.name), dryTaken, Team.nameKeyFor);
+        p.name = chooseName(p.name, p.leader.name, dryTaken);
       }
       return resultRow(request, proposal, p, null);
     });
@@ -778,6 +804,177 @@ async function applyProposals(req, res) {
 }
 
 /**
+ * The people a conflict email goes to, with the text for each: listers in a
+ * conflicting group who are in scope, can still join a team and are on none.
+ * @param {Array<object>} proposals - Built proposals.
+ * @returns {Array<object>} [{ userId, email, name, signature, details }]
+ */
+function conflictRecipients(proposals) {
+  var out = [];
+  var seen = {};
+  proposals.forEach(function eachProposal(p) {
+    if (p.status !== "conflict") {
+      return;
+    }
+    p.conflict.listers.forEach(function eachLister(l) {
+      if (!l.inScope || !l.userId || l.status === "rejected" || l.role === "judge" || l.team || seen[l.userId]) {
+        return;
+      }
+      seen[l.userId] = true;
+      out.push({
+        userId: l.userId,
+        email: l.email,
+        name: l.name,
+        signature: p.conflict.signature,
+        details: teamProposals.conflictDetails(p.conflict, l.email),
+      });
+    });
+  });
+  return out;
+}
+
+/**
+ * Split recipients into those still to be emailed and those already told
+ * about these exact lists.
+ * @param {Array<object>} recipients - From conflictRecipients.
+ * @param {object} round - The round.
+ * @returns {Promise<{fresh: Array<object>, already: Array<object>}>}
+ */
+async function splitByNotice(recipients, round) {
+  var notices = await TeamConflictNotice.find({
+    round: round._id,
+    user: { $in: recipients.map(function id(r) { return r.userId; }) },
+  })
+    .select("user signature")
+    .lean();
+  var told = {};
+  notices.forEach(function mark(n) {
+    told[String(n.user)] = n.signature;
+  });
+  var fresh = [];
+  var already = [];
+  recipients.forEach(function sort(r) {
+    (told[r.userId] === r.signature ? already : fresh).push(r);
+  });
+  return { fresh: fresh, already: already };
+}
+
+/**
+ * POST /api/admin/team-builder/notify-conflicts
+ * Body: { round?, statuses?, dryRun?, allowOverLimit? }
+ *
+ * Email every lister in a conflicting group (their list doesn't match
+ * another's, or the group is too big) the `team_conflict` message. Each
+ * person is told once per set of lists: a re-run skips them until the lists
+ * change. With `dryRun` it only counts.
+ * @param {object} req - Express request.
+ * @param {object} res - Express response.
+ * @returns {Promise<void>}
+ */
+async function notifyConflicts(req, res) {
+  try {
+    var body = req.body || {};
+    var unknown = Object.keys(body).filter(function isUnknown(key) {
+      return ["round", "statuses", "dryRun", "allowOverLimit"].indexOf(key) === -1;
+    });
+    if (unknown.length) {
+      res.status(400).json({ error: "Unknown field: " + unknown.join(", ") + "." });
+      return;
+    }
+    var scope = await readScope(res, body.round, body.statuses);
+    if (!scope) {
+      return;
+    }
+    if (!scope.round) {
+      res.status(400).json({ error: "There is no application round to build teams from." });
+      return;
+    }
+    var ctx = await loadContext(scope.round, scope.statuses);
+    var built = teamProposals.buildProposals(ctx.input);
+    var recipients = conflictRecipients(built.proposals);
+    var split = await splitByNotice(recipients, scope.round);
+    var limit = outbox.dailyLimit();
+    var committed = await outbox.committedInLastDay();
+    var overLimit = limit > 0 && committed + split.fresh.length > limit;
+    var quota = { dailyLimit: limit, committedLast24h: committed, overLimit: overLimit, emailConfigured: mailer.isMailConfigured() };
+    var counts = {
+      conflicts: countStatus(built.proposals, "conflict"),
+      people: recipients.length,
+      toEmail: split.fresh.length,
+      alreadyEmailed: split.already.length,
+    };
+    if (body.dryRun === true) {
+      res.status(200).json(Object.assign({ dryRun: true, emailed: 0 }, counts, quota));
+      return;
+    }
+    if (overLimit && body.allowOverLimit !== true) {
+      res.status(409).json(
+        Object.assign(
+          {
+            error:
+              "These emails would put you over the sending limit (" + limit + " per 24 hours): " + committed +
+              " already sent or waiting plus " + split.fresh.length + " new. Wait, or send anyway; the ones over the limit will fail and be retried later.",
+            code: "OVER_DAILY_LIMIT",
+          },
+          quota
+        )
+      );
+      return;
+    }
+    var emailed = 0;
+    for (var i = 0; i < split.fresh.length; i++) {
+      var r = split.fresh[i];
+      try {
+        // Claims the person first; a concurrent run for the same lists finds
+        // the notice and loses (duplicate key), so nobody is told twice.
+        await TeamConflictNotice.updateOne(
+          { user: r.userId, round: scope.round._id, signature: { $ne: r.signature } },
+          { $set: { signature: r.signature, email: r.email, sentAt: new Date() } },
+          { upsert: true }
+        );
+      } catch (err) {
+        if (err && err.code === DUPLICATE_KEY) {
+          continue;
+        }
+        throw err;
+      }
+      emailed += 1;
+      mailer
+        .sendTemplateEmail(
+          r.email,
+          "team_conflict",
+          { name: r.name, conflictDetails: r.details, teamsUrl: primaryClientOrigin() + "/dashboard/team" },
+          { userId: r.userId, requestedBy: req.user.id }
+        )
+        .catch(function onMailError(err) {
+          console.error("Team builder conflict email failed:", err);
+        });
+    }
+    res.status(200).json(Object.assign({ dryRun: false, emailed: emailed }, counts, { toEmail: emailed, alreadyEmailed: counts.alreadyEmailed + (split.fresh.length - emailed) }, quota));
+  } catch (err) {
+    fail(res, "notifyConflicts (team builder)", err);
+  }
+}
+
+/**
+ * Everyone in a conflicting group of accepted applicants, by match key.
+ * @param {object} round - The round.
+ * @returns {Promise<object>} matchKey -> true.
+ */
+async function conflictEmails(round) {
+  var ctx = await loadContext(round, ["accepted"]);
+  var marked = {};
+  teamProposals.buildProposals(ctx.input).proposals.forEach(function each(p) {
+    if (p.status === "conflict") {
+      p.members.forEach(function mark(m) {
+        marked[teamProposals.matchKey(m.email)] = true;
+      });
+    }
+  });
+  return marked;
+}
+
+/**
  * Accepted applicants of the round on no team and with no pending invite,
  * with their research-study, pairing and team-formation answers.
  * @param {object} round - The round.
@@ -791,6 +988,7 @@ async function loadUnteamed(round) {
     .sort({ createdAt: 1 })
     .lean();
   var teams = indexTeams(await Team.find({}).select("name nameKey leader members invites lockedAt").lean());
+  var inConflict = await conflictEmails(round);
   var people = docs
     .filter(function free(doc) {
       if (!doc.applicant || !doc.applicant.email || doc.applicant.role === "judge") {
@@ -810,6 +1008,7 @@ async function loadUnteamed(round) {
         formationEvent: teamProposals.answerText(doc.answers, questions.formationEvent),
         hasTeam: teamProposals.answerText(doc.answers, questions.hasTeam),
         teammates: teamProposals.answerText(doc.answers, questions.teammates),
+        conflict: Boolean(inConflict[teamProposals.matchKey(doc.applicant.email)]),
       };
     });
   return { questions: questions, people: people };
@@ -967,6 +1166,7 @@ async function exportUnteamed(req, res) {
 module.exports = {
   getProposals: getProposals,
   applyProposals: applyProposals,
+  notifyConflicts: notifyConflicts,
   getUnteamed: getUnteamed,
   exportUnteamed: exportUnteamed,
   readStatuses: readStatuses,
