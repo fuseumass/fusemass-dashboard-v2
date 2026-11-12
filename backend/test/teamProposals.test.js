@@ -478,3 +478,52 @@ test("uniqueTeamName appends numbers until free", function () {
   assert.equal(tp.proposalTeamName("Ana Lee", names, keyFor), "Ana Lee's team 2");
   assert.equal(tp.proposalTeamName("Ana", names, keyFor), "Ana's team 2");
 });
+
+test("buildProposals: a teammate listed under another address of theirs is still the same person", function () {
+  var apps = [
+    app("a1", "mayank@umass.edu", "Mayank Polepalli", {
+      teammates: "Pankaj Magadum - pankaj.magadum@gmail.com, Hrishi Muniraju - hrishi@umass.edu",
+    }),
+    app("a2", "hrishi@umass.edu", "Hrishi Muniraju", {
+      teammates: "Mayank Polepalli - mayank@umass.edu, Pankaj Magadum - pmagadum@umass.edu",
+    }),
+    app("a3", "pmagadum@umass.edu", "Pankaj Magadum"),
+  ];
+  var built = build(apps);
+  assert.equal(built.proposals.length, 1);
+  var p = built.proposals[0];
+  assert.equal(p.status, "ready");
+  assert.deepEqual(emails(p).sort(), ["hrishi@umass.edu", "mayank@umass.edu", "pmagadum@umass.edu"]);
+});
+
+test("buildProposals: another address is not merged when its name matches nobody or several applicants", function () {
+  var apps = [
+    app("a1", "ana@umass.edu", "Ana Lee", { teammates: "Ben Ko - ben.ko@gmail.com" }),
+    app("a2", "ben@umass.edu", "Ben Ko", { teammates: "ana@umass.edu" }),
+    app("a3", "ben2@umass.edu", "Ben Ko"),
+  ];
+  var p = build(apps).proposals;
+  assert.ok(
+    p.some(function hasGmail(x) {
+      return emails(x).indexOf("ben.ko@gmail.com") !== -1;
+    }),
+    "two applicants named Ben Ko: the Gmail stays its own person"
+  );
+});
+
+test("conflictDetails: shows the address when one name is listed with two addresses", function () {
+  var apps = [
+    app("a1", "ana@umass.edu", "Ana Lee", { teammates: "Ben Ko - ben.ko@gmail.com, Cy Dee - cy@umass.edu" }),
+    app("a2", "cy@umass.edu", "Cy Dee", { teammates: "Ana Lee - ana@umass.edu, Ben Ko - ben@umass.edu" }),
+    app("a3", "ben@umass.edu", "Ben Ko"),
+    app("a4", "ben2@umass.edu", "Ben Ko"),
+  ];
+  var p = build(apps).proposals.filter(function c(x) {
+    return x.status === "conflict";
+  })[0];
+  assert.equal(
+    tp.conflictDetails(p.conflict, "ana@umass.edu"),
+    "Your teammate list doesn't match Cy Dee's list.\nYou listed: Ben Ko (ben.ko@gmail.com) and Cy Dee.\n" +
+      "Cy Dee listed: Ana Lee and Ben Ko (ben@umass.edu)."
+  );
+});
