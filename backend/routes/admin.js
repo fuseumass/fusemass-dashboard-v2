@@ -222,6 +222,7 @@ router.get("/groups", isAdmin, userGroupsController.getGroup);
 // invites, and list accepted people left on no team.
 router.get("/team-builder/proposals", isAdmin, teamBuilderController.getProposals);
 router.post("/team-builder/apply", isAdmin, teamBuilderController.applyProposals);
+router.post("/team-builder/notify-conflicts", isAdmin, teamBuilderController.notifyConflicts);
 router.get("/team-builder/unteamed", isAdmin, teamBuilderController.getUnteamed);
 router.get("/team-builder/unteamed.csv", isAdmin, teamBuilderController.exportUnteamed);
 

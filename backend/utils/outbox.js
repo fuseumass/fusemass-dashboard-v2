@@ -1,6 +1,8 @@
 "use strict";
 
 var EmailLog = require("../schemas/emailLog");
+var Application = require("../schemas/application");
+var activeApplications = require("./activeApplications");
 var User = require("../schemas/user");
 var emailCategories = require("./emailCategories");
 
@@ -352,22 +354,32 @@ function preferencesAllow(row) {
     // Other email to an address with no account can't have been turned off.
     return Promise.resolve(
       row.category === "announcement"
-        ? { allowed: false, reason: "Not sent: the recipient hasn't opted in to announcements (or unsubscribed)." }
+        ? { allowed: false, reason: "Not sent: the recipient has unsubscribed from announcements or hasn't opted in." }
         : { allowed: true }
     );
   }
   return User.findById(row.user)
     .select("marketingEmailConsent emailPreferences")
     .lean()
-    .then(function afterFind(user) {
-      if (emailCategories.allows(user, category)) {
+    .then(function withAccepted(user) {
+      // Only announcements depend on having an accepted application.
+      if (category !== "announcements" || !user || emailCategories.announcementChoice(user) !== null) {
+        return [user, false];
+      }
+      return Application.exists(activeApplications.active({ applicant: user._id, status: "accepted" })).then(function found(hit) {
+        return [user, Boolean(hit)];
+      });
+    })
+    .then(function afterFind(loaded) {
+      var user = loaded[0];
+      if (emailCategories.allows(user, category, { accepted: loaded[1] })) {
         return { allowed: true };
       }
       return {
         allowed: false,
         reason:
           category === "announcements"
-            ? "Not sent: the recipient hasn't opted in to announcements (or unsubscribed)."
+            ? "Not sent: the recipient has unsubscribed from announcements or hasn't opted in."
             : "Not sent: the recipient turned off " + emailCategories.NOUNS[category] + ".",
       };
     });
@@ -631,8 +643,10 @@ function drainLoop(force) {
       return Promise.resolve(attempted);
     }
     return EmailLog.find({ status: "queued", nextAttemptAt: { $lte: new Date() }, lockedUntil: null })
-      .sort({ nextAttemptAt: 1 })
-      .limit(25)
+      // Highest priority first, then oldest. Small batches, so a reminder
+      // queued during a big blast waits a few seconds, not the whole blast.
+      .sort({ priority: -1, nextAttemptAt: 1 })
+      .limit(5)
       .select("_id")
       .lean()
       .then(function afterFind(rows) {
@@ -731,6 +745,8 @@ function enqueueMany(entries, meta) {
     doc.attempts = 0;
     doc.maxAttempts = DEFAULT_MAX_ATTEMPTS;
     doc.nextAttemptAt = now;
+    doc.priority =
+      typeof entry.priority === "number" ? entry.priority : emailCategories.queuePriority(entry.templateKey);
     return doc;
   });
   if (!docs.length) {

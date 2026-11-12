@@ -118,13 +118,18 @@ var userSchema = new Schema(
     },
     // Which optional emails the person wants (see utils/emailCategories).
     // On unless turned off, from the dashboard or an email's unsubscribe
-    // link. Announcements are `marketingEmailConsent` above, which stays the
-    // one place that opt-in lives. Security email (password and sign-in
+    // link. Announcements are `announcements` below (with
+    // `marketingEmailConsent` kept in step for older code). Security email (password and sign-in
     // links) can't be turned off.
     emailPreferences: {
       decisions: { type: Boolean, default: true },
       account: { type: Boolean, default: true },
       event: { type: Boolean, default: true },
+      // true: opted in, false: opted out, unset: never chose. Unset means
+      // accepted participants get announcements and everyone else doesn't
+      // (see utils/emailCategories.announcementsAllowed). Kept in step with
+      // `marketingEmailConsent`.
+      announcements: { type: Boolean },
     },
     // When the person last chose their preferences (null: never), so a form
     // can tell "never asked" from "said no".

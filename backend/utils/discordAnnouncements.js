@@ -5,10 +5,11 @@
  *   DISCORD_ANNOUNCEMENTS_WEBHOOK_URL  general announcements
  *   DISCORD_WORKSHOPS_WEBHOOK_URL      workshop reminders and sign-up posts
  *
- * Each post is one embed (title, description, optional link, the brand
- * colour). Nobody is pinged unless the post asks for @everyone explicitly:
- * `allowed_mentions` is always sent, so a name typed as "@everyone" or a role
- * mention in a workshop title stays plain text. A 429 is retried after
+ * A post is an embed (title, description, optional link, the brand colour),
+ * plain text (`content`), or both. Nobody is pinged unless the post asks:
+ * `allowed_mentions` is always sent and lists exactly the roles (and
+ * @everyone / @here) the writer used, so a user or role mention that merely
+ * appears in a workshop title stays plain text. A 429 is retried after
  * Discord's `retry_after`. Webhook URLs are secrets; they are never logged or
  * returned by the API.
  */
@@ -21,6 +22,9 @@ var CHANNEL_ENV = {
 // Discord's limits for an embed.
 var MAX_TITLE = 256;
 var MAX_DESCRIPTION = 4096;
+var MAX_CONTENT = 2000;
+var SNOWFLAKE = /^\d{17,20}$/;
+var BUILT_IN_MENTIONS = ["everyone", "here"];
 var MAX_ATTEMPTS = 3;
 var MAX_RETRY_WAIT_MS = 30 * 1000;
 var POST_TIMEOUT_MS = 10 * 1000;
@@ -76,16 +80,95 @@ function cleanUrl(value) {
 }
 
 /**
+ * Replace `@everyone`, `@here` and `@<label>` in a message. A label that is a
+ * saved tag becomes `<@&roleId>`; any other `@word` stays plain text.
+ * @param {string} text - What the writer typed.
+ * @param {Array<{label: string, roleId: string}>} tags - Saved Discord mention tags.
+ * @returns {{text: string, roleIds: Array<string>, everyone: boolean, here: boolean, labels: Array<string>}}
+ *   `labels` are the mentions that will ping, as typed ("@participants"), in order.
+ */
+function resolveMentions(text, tags) {
+  var byLabel = {};
+  (tags || []).forEach(function each(tag) {
+    if (tag && SNOWFLAKE.test(String(tag.roleId))) {
+      byLabel[String(tag.label).toLowerCase()] = String(tag.roleId);
+    }
+  });
+  var out = { text: "", roleIds: [], everyone: false, here: false, labels: [] };
+  out.text = String(text || "").replace(/(^|[^A-Za-z0-9_@])@([A-Za-z0-9]+(?:-[A-Za-z0-9]+)*)/g, function swap(match, before, word) {
+    var key = word.toLowerCase();
+    var label = "@" + key;
+    var replacement = null;
+    if (key === "everyone" || key === "here") {
+      out[key] = true;
+      replacement = label;
+    } else if (Object.prototype.hasOwnProperty.call(byLabel, key)) {
+      var id = byLabel[key];
+      if (out.roleIds.indexOf(id) === -1) {
+        out.roleIds.push(id);
+      }
+      replacement = "<@&" + id + ">";
+    }
+    if (replacement === null) {
+      return match;
+    }
+    if (out.labels.indexOf(label) === -1) {
+      out.labels.push(label);
+    }
+    return before + replacement;
+  });
+  return out;
+}
+
+/**
+ * @param {*} value - Candidate tag label.
+ * @returns {boolean} Lowercase letters, numbers and dashes, 1 to 32 characters, not a built-in.
+ */
+function isValidLabel(value) {
+  return (
+    typeof value === "string" &&
+    /^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(value) &&
+    value.length <= 32 &&
+    BUILT_IN_MENTIONS.indexOf(value) === -1
+  );
+}
+
+/**
+ * @param {*} value - Candidate role id.
+ * @returns {boolean} A Discord snowflake (17 to 20 digits).
+ */
+function isValidRoleId(value) {
+  return typeof value === "string" && SNOWFLAKE.test(value);
+}
+
+/**
  * Build the webhook body for one post.
  * @param {object} post
  * @param {string} post.title - Embed title (cut to 256).
  * @param {string} post.description - Embed text (cut to 4096).
  * @param {string} [post.url] - Makes the title a link.
  * @param {string} [post.color] - #RRGGBB.
- * @param {boolean} [post.mentionEveryone] - Ping @everyone.
+ * @param {boolean} [post.mentionEveryone] - Ping @everyone (older posts without `mentions`).
+ * @param {string} [post.content] - Message text above the embed (the only thing that pings).
+ * @param {object} [post.mentions] - `{ roleIds, everyone, here }` that may ping.
  * @returns {object} JSON body for the webhook.
  */
 function buildPayload(post) {
+  var mentions = post.mentions || {};
+  var roleIds = (mentions.roleIds || []).filter(isValidRoleId);
+  var everyone = post.mentionEveryone === true || mentions.everyone === true || mentions.here === true;
+  var allowed = { parse: everyone ? ["everyone"] : [] };
+  if (roleIds.length) {
+    allowed.roles = roleIds.slice(0, 100);
+  }
+  var content = post.content !== undefined ? clip(post.content, MAX_CONTENT) : "";
+  if (!post.title && !post.description) {
+    var plain = { allowed_mentions: allowed };
+    if (content) {
+      plain.content = content;
+    }
+    return plain;
+  }
   var embed = {
     title: clip(post.title, MAX_TITLE),
     description: clip(post.description, MAX_DESCRIPTION),
@@ -98,11 +181,10 @@ function buildPayload(post) {
   if (color !== undefined) {
     embed.color = color;
   }
-  var body = {
-    embeds: [embed],
-    allowed_mentions: { parse: post.mentionEveryone === true ? ["everyone"] : [] },
-  };
-  if (post.mentionEveryone === true) {
+  var body = { embeds: [embed], allowed_mentions: allowed };
+  if (content) {
+    body.content = content;
+  } else if (post.mentionEveryone === true) {
     body.content = "@everyone";
   }
   return body;
@@ -201,6 +283,11 @@ module.exports = {
   CHANNEL_ENV: CHANNEL_ENV,
   MAX_TITLE: MAX_TITLE,
   MAX_DESCRIPTION: MAX_DESCRIPTION,
+  MAX_CONTENT: MAX_CONTENT,
+  BUILT_IN_MENTIONS: BUILT_IN_MENTIONS,
+  resolveMentions: resolveMentions,
+  isValidLabel: isValidLabel,
+  isValidRoleId: isValidRoleId,
   isConfigured: isConfigured,
   buildPayload: buildPayload,
   send: send,

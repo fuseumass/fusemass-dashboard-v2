@@ -197,7 +197,14 @@ function saveEmailOptIn(userId, optIn) {
   }
   return User.updateOne(
     { _id: userId },
-    { $set: { marketingEmailConsent: optIn, "emailPreferences.event": optIn, emailPreferencesUpdatedAt: new Date() } }
+    {
+      $set: {
+        marketingEmailConsent: optIn,
+        "emailPreferences.announcements": optIn,
+        "emailPreferences.event": optIn,
+        emailPreferencesUpdatedAt: new Date(),
+      },
+    }
   ).then(
     function done() {
       return undefined;
@@ -637,7 +644,7 @@ function applyPublic(req, res) {
               role: "applicant",
               emailVerified: false,
               marketingEmailConsent: wantsAnnouncements,
-              emailPreferences: { event: optIn !== false },
+              emailPreferences: optIn === null ? { event: true } : { event: optIn, announcements: optIn },
               emailPreferencesUpdatedAt: optIn === null ? null : new Date(),
             });
 

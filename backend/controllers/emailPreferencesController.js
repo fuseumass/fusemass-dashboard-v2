@@ -1,6 +1,8 @@
 "use strict";
 
 var mongoose = require("mongoose");
+var Application = require("../schemas/application");
+var activeApplications = require("../utils/activeApplications");
 var User = require("../schemas/user");
 var emailCategories = require("../utils/emailCategories");
 var unsubscribe = require("../utils/unsubscribe");
@@ -10,12 +12,27 @@ var unsubscribe = require("../utils/unsubscribe");
  * @param {object} user - User document or lean object.
  * @returns {{preferences: object, categories: Array<object>}}
  */
-function describe(user) {
+function describe(user, accepted) {
   return {
-    preferences: emailCategories.preferencesOf(user),
+    preferences: emailCategories.preferencesOf(user, { accepted: accepted }),
     updatedAt: user.emailPreferencesUpdatedAt || null,
     categories: emailCategories.list(),
   };
+}
+
+/**
+ * describe() for a user, looking up whether they have an accepted
+ * application (it decides announcements for people who never chose).
+ * @param {object} user - Lean user.
+ * @returns {Promise<object>}
+ */
+function describeFor(user) {
+  if (emailCategories.announcementChoice(user) !== null) {
+    return Promise.resolve(describe(user, false));
+  }
+  return Application.exists(activeApplications.active({ applicant: user._id, status: "accepted" })).then(function found(hit) {
+    return describe(user, Boolean(hit));
+  });
 }
 
 /**
@@ -45,7 +62,7 @@ function applyChange(userId, input) {
     return Promise.resolve({ errors: update.errors, user: null });
   }
   return User.findByIdAndUpdate(userId, { $set: update.set }, { new: true })
-    .select("email marketingEmailConsent emailPreferences emailPreferencesUpdatedAt")
+    .select("_id email marketingEmailConsent emailPreferences emailPreferencesUpdatedAt")
     .lean()
     .then(function afterUpdate(user) {
       return { user: user };
@@ -77,14 +94,16 @@ function tokenFrom(req, res) {
  */
 function getMine(req, res) {
   return User.findById(req.user.id)
-    .select("marketingEmailConsent emailPreferences emailPreferencesUpdatedAt")
+    .select("_id marketingEmailConsent emailPreferences emailPreferencesUpdatedAt")
     .lean()
     .then(function afterFind(user) {
       if (!user) {
         res.status(404).json({ error: "User not found." });
         return;
       }
-      res.status(200).json(describe(user));
+      return describeFor(user).then(function send(body) {
+        res.status(200).json(body);
+      });
     })
     .catch(function onError(err) {
       console.error("getMine email preferences failed:", err);
@@ -110,7 +129,9 @@ function updateMine(req, res) {
         res.status(404).json({ error: "User not found." });
         return;
       }
-      res.status(200).json(describe(result.user));
+      return describeFor(result.user).then(function send(body) {
+        res.status(200).json(body);
+      });
     })
     .catch(function onError(err) {
       console.error("updateMine email preferences failed:", err);
@@ -133,14 +154,16 @@ function lookupByToken(req, res) {
     return Promise.resolve();
   }
   return User.findById(data.userId)
-    .select("email marketingEmailConsent emailPreferences emailPreferencesUpdatedAt")
+    .select("_id email marketingEmailConsent emailPreferences emailPreferencesUpdatedAt")
     .lean()
     .then(function afterFind(user) {
       if (!user) {
         res.status(404).json({ error: "There's no account for this link any more." });
         return;
       }
-      res.status(200).json(Object.assign({ category: data.category, email: maskEmail(user.email) }, describe(user)));
+      return describeFor(user).then(function send(body) {
+        res.status(200).json(Object.assign({ category: data.category, email: maskEmail(user.email) }, body));
+      });
     })
     .catch(function onError(err) {
       console.error("lookupByToken failed:", err);
@@ -171,9 +194,9 @@ function updateByToken(req, res) {
         res.status(404).json({ error: "There's no account for this link any more." });
         return;
       }
-      res.status(200).json(
-        Object.assign({ category: data.category, email: maskEmail(result.user.email) }, describe(result.user))
-      );
+      return describeFor(result.user).then(function send(body) {
+        res.status(200).json(Object.assign({ category: data.category, email: maskEmail(result.user.email) }, body));
+      });
     })
     .catch(function onError(err) {
       console.error("updateByToken failed:", err);

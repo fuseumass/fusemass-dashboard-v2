@@ -14,6 +14,7 @@ var activeApplications = require("./activeApplications");
 var branding = require("./branding");
 var calendar = require("./calendar");
 var discordAnnouncements = require("./discordAnnouncements");
+var emailCategories = require("./emailCategories");
 var emailSegments = require("./emailSegments");
 var features = require("./features");
 var mailer = require("./mailer");
@@ -198,12 +199,77 @@ function settle(key, fields) {
 // ---- Settings ---------------------------------------------------------------
 
 var SETTING_RULES = {
-  reminderEmail: { enabled: "boolean", minutesBefore: [5, 1440] },
-  reminderDiscord: { enabled: "boolean", minutesBefore: [5, 1440] },
+  reminderAll: { discord: "boolean", email: "boolean", offsets: "offsets" },
+  reminderSignedUp: { email: "boolean", discord: "boolean", offsets: "offsets" },
   digestDiscord: { enabled: "boolean", time: "time", windowHours: [1, 72] },
   digestEmail: { enabled: "boolean" },
   updatesDiscord: { enabled: "boolean" },
+  workshopMention: { enabled: "boolean", tag: "mentionTag" },
 };
+var MAX_OFFSET_MINUTES = 2880;
+var MAX_OFFSETS = 6;
+var MAX_TAGS = 25;
+
+/**
+ * Check a list of "minutes before start" values.
+ * @param {*} value - Candidate list.
+ * @returns {{error: (string|undefined), offsets: Array<number>}} Whole minutes, largest first.
+ */
+function checkOffsets(value) {
+  var bad = "Use up to " + MAX_OFFSETS + " different whole numbers of minutes, from 1 to " + MAX_OFFSET_MINUTES + ".";
+  if (!Array.isArray(value) || value.length > MAX_OFFSETS) {
+    return { error: bad, offsets: [] };
+  }
+  var seen = {};
+  for (var i = 0; i < value.length; i += 1) {
+    var n = value[i];
+    if (!Number.isInteger(n) || n < 1 || n > MAX_OFFSET_MINUTES || seen[n]) {
+      return { error: bad, offsets: [] };
+    }
+    seen[n] = true;
+  }
+  return {
+    offsets: value.slice().sort(function desc(x, y) {
+      return y - x;
+    }),
+  };
+}
+
+/**
+ * Check the saved Discord mention tags.
+ * @param {*} value - Candidate list of `{ label, roleId }`.
+ * @returns {{error: (string|undefined), tags: Array<object>}}
+ */
+function checkTags(value) {
+  if (!Array.isArray(value) || value.length > MAX_TAGS) {
+    return { error: "Save at most " + MAX_TAGS + " Discord mentions.", tags: [] };
+  }
+  var seen = {};
+  var tags = [];
+  for (var i = 0; i < value.length; i += 1) {
+    var tag = value[i] || {};
+    var label = typeof tag.label === "string" ? tag.label.trim().replace(/^@/, "").toLowerCase() : "";
+    var roleId = typeof tag.roleId === "string" ? tag.roleId.trim() : "";
+    if (!discordAnnouncements.isValidLabel(label)) {
+      return {
+        error:
+          "Use lowercase letters, numbers and dashes for a mention name (\"" +
+          label +
+          "\" isn't valid; everyone and here are built in).",
+        tags: [],
+      };
+    }
+    if (seen[label]) {
+      return { error: "Each mention name can be used once (\"" + label + "\" is repeated).", tags: [] };
+    }
+    if (!discordAnnouncements.isValidRoleId(roleId)) {
+      return { error: "The role ID for \"" + label + "\" must be 17 to 20 digits.", tags: [] };
+    }
+    seen[label] = true;
+    tags.push({ label: label, roleId: roleId });
+  }
+  return { tags: tags };
+}
 
 /**
  * Validate a settings PATCH (partial: only what is present changes).
@@ -217,8 +283,17 @@ function validateSettings(input) {
     return { errors: ["Send the settings as an object."], set: set };
   }
   Object.keys(input).forEach(function eachGroup(group) {
-    var rules = SETTING_RULES[group];
     var value = input[group];
+    if (group === "discordTags") {
+      var tags = checkTags(value);
+      if (tags.error) {
+        errors.push(tags.error);
+      } else {
+        set.discordTags = tags.tags;
+      }
+      return;
+    }
+    var rules = SETTING_RULES[group];
     if (!rules) {
       errors.push("Unknown setting \"" + group + "\".");
       return;
@@ -238,6 +313,20 @@ function validateSettings(input) {
           errors.push(path + " must be true or false.");
         } else {
           set[path] = v;
+        }
+      } else if (rule === "offsets") {
+        var offsets = checkOffsets(v);
+        if (offsets.error) {
+          errors.push(offsets.error);
+        } else {
+          set[path] = offsets.offsets;
+        }
+      } else if (rule === "mentionTag") {
+        var label = typeof v === "string" ? v.trim().replace(/^@/, "").toLowerCase() : null;
+        if (label === null || (label !== "" && label !== "everyone" && label !== "here" && !discordAnnouncements.isValidLabel(label))) {
+          errors.push("Pick one of the saved Discord mentions, or leave it empty.");
+        } else {
+          set[path] = label;
         }
       } else if (rule === "time") {
         if (typeof v !== "string" || !/^([01]\d|2[0-3]):[0-5]\d$/.test(v)) {
@@ -265,13 +354,45 @@ function validateSettings(input) {
 function serializeSettings(settings) {
   var s = settings.toObject ? settings.toObject() : settings;
   return {
-    reminderEmail: s.reminderEmail,
-    reminderDiscord: s.reminderDiscord,
+    reminderAll: s.reminderAll,
+    reminderSignedUp: s.reminderSignedUp,
+    discordTags: (s.discordTags || []).map(function pick(tag) {
+      return { label: tag.label, roleId: tag.roleId };
+    }),
+    workshopMention: s.workshopMention,
     digestDiscord: s.digestDiscord,
     digestEmail: s.digestEmail,
     updatesDiscord: s.updatesDiscord,
     updatedAt: s.updatedAt,
   };
+}
+
+/**
+ * The saved Discord mention tags.
+ * @returns {Promise<Array<{label: string, roleId: string}>>}
+ */
+function loadTags() {
+  return CommunicationSettings.getSingleton().then(function pick(settings) {
+    return settings.discordTags || [];
+  });
+}
+
+/**
+ * How automated workshop posts ping, per the settings: the message text and
+ * the mentions allowed. Empty when the option is off or the tag is gone.
+ * @param {object} settings - CommunicationSettings.
+ * @returns {{content: (string|undefined), mentions: (object|undefined)}}
+ */
+function automatedMention(settings) {
+  var mention = settings.workshopMention || {};
+  if (!mention.enabled || !mention.tag) {
+    return {};
+  }
+  var resolved = discordAnnouncements.resolveMentions("@" + mention.tag, settings.discordTags);
+  if (!resolved.labels.length) {
+    return {};
+  }
+  return { content: resolved.text, mentions: resolved };
 }
 
 /**
@@ -376,18 +497,11 @@ function workshopRecipients(workshopId) {
     .distinct("user")
     .then(function afterSignups(userIds) {
       return User.find({ _id: { $in: userIds } })
-        .select("name email marketingEmailConsent emailPreferences checkedIn")
+        .select(emailSegments.USER_FIELDS + " checkedIn")
         .lean();
     })
     .then(function toRecipients(users) {
-      return users.map(function each(user) {
-        return {
-          userId: user._id,
-          email: String(user.email || "").toLowerCase(),
-          name: user.name || "",
-          consent: Boolean(user.marketingEmailConsent),
-        };
-      });
+      return emailSegments.applyAcceptedDefault(emailSegments.toRecipients(users));
     });
 }
 
@@ -445,26 +559,79 @@ function emailValues(announcement, name) {
 }
 
 /**
- * Render the email and the Discord embed exactly as they will go out.
- * @param {object} announcement - `{ title, message, url, mentionEveryone }`.
- * @param {string} [name] - Name to greet in the email preview.
- * @returns {Promise<{email: object, discord: object}>}
+ * The Discord post for an announcement. Newer announcements have their own
+ * Discord text (with @mentions); older ones reuse the email text in an embed.
+ * @param {object} announcement - `{ title, message, discordMessage, discordTitle, url, mentionEveryone }`.
+ * @param {Array<object>} tags - Saved Discord mention tags.
+ * @param {string} color - Embed colour, #RRGGBB.
+ * @returns {{post: object, resolved: (object|null)}} `post` for buildPayload/send; `resolved` from resolveMentions.
  */
-function preview(announcement, name) {
+function discordPostFor(announcement, tags, color) {
+  if (!announcement.discordMessage) {
+    return {
+      resolved: null,
+      post: {
+        title: announcement.title,
+        description: announcement.message,
+        url: announcement.url,
+        color: color,
+        mentionEveryone: announcement.mentionEveryone,
+      },
+    };
+  }
+  var resolved = discordAnnouncements.resolveMentions(announcement.discordMessage, tags);
+  var link = announcement.url || "";
+  if (!announcement.discordTitle) {
+    var text = resolved.text;
+    if (link && text.indexOf(link) === -1) {
+      text += "\n" + link;
+    }
+    return { resolved: resolved, post: { content: text, mentions: resolved } };
+  }
+  // Pings only work in the message text, not inside an embed, so the
+  // mentions that were written go above it.
+  var tokens = [];
+  if (resolved.everyone) {
+    tokens.push("@everyone");
+  }
+  if (resolved.here) {
+    tokens.push("@here");
+  }
+  resolved.roleIds.forEach(function each(id) {
+    tokens.push("<@&" + id + ">");
+  });
+  return {
+    resolved: resolved,
+    post: {
+      title: announcement.discordTitle,
+      description: resolved.text,
+      url: link,
+      color: color,
+      content: tokens.join(" "),
+      mentions: resolved,
+    },
+  };
+}
+
+/**
+ * Render the email and the Discord post exactly as they will go out.
+ * @param {object} announcement - `{ title, message, discordMessage, discordTitle, url, mentionEveryone }`.
+ * @param {string} [name] - Name to greet in the email preview.
+ * @param {Array<object>} [tags] - Saved Discord mention tags.
+ * @returns {Promise<{email: object, discord: object, pings: Array<string>}>} `pings`: who the Discord post will notify.
+ */
+function preview(announcement, name, tags) {
   return Promise.all([EmailTemplate.findOne({ key: "announcement" }).lean(), brandColor()]).then(function afterLoad(
     loaded
   ) {
     var template = loaded[0] || { subject: "{{title}}", body: "Hi {{name}},\n\n{{message}}\n\n{{link}}" };
     return mailer.renderEmail(template, emailValues(announcement, name)).then(function afterRender(rendered) {
+      var built = discordPostFor(announcement, tags || [], loaded[1]);
+      var pings = built.resolved ? built.resolved.labels : announcement.mentionEveryone ? ["@everyone"] : [];
       return {
         email: { subject: rendered.subject, text: rendered.text, html: rendered.html },
-        discord: discordAnnouncements.buildPayload({
-          title: announcement.title,
-          description: announcement.message,
-          url: announcement.url,
-          color: loaded[1],
-          mentionEveryone: announcement.mentionEveryone,
-        }),
+        discord: discordAnnouncements.buildPayload(built.post),
+        pings: pings,
       };
     });
   });
@@ -534,17 +701,15 @@ function dispatch(announcement) {
       var discordChannels = channels.filter(function isDiscord(channel) {
         return channel !== "email";
       });
-      return brandColor().then(function afterColor(color) {
+      if (!discordChannels.length) {
+        return undefined;
+      }
+      return Promise.all([brandColor(), loadTags()]).then(function afterColor(loaded) {
+        var built = discordPostFor(announcement, loaded[1], loaded[0]);
         return discordChannels.reduce(function chain(previous, channel) {
           return previous.then(function post() {
             return discordAnnouncements
-              .send(channel, {
-                title: announcement.title,
-                description: announcement.message,
-                url: announcement.url,
-                color: color,
-                mentionEveryone: announcement.mentionEveryone,
-              })
+              .send(channel, built.post)
               .then(function record(outcome) {
                 result.discord.push(Object.assign({ channel: channel }, outcome));
               });
@@ -660,13 +825,62 @@ function emailStatusCounts(announcements) {
 // ---- Workshop automations ---------------------------------------------------
 
 /**
- * Template values for one workshop email.
+ * "45 minutes", "1 hour", "2 hours".
+ * @param {number} minutes - A length of time.
+ * @returns {string}
+ */
+function formatLead(minutes) {
+  if (minutes >= 60 && minutes % 60 === 0) {
+    var hours = minutes / 60;
+    return hours + (hours === 1 ? " hour" : " hours");
+  }
+  return minutes + (minutes === 1 ? " minute" : " minutes");
+}
+
+// A reminder this close to the start says "starting now".
+var STARTING_NOW_MINUTES = 5;
+
+/**
+ * "Spots left" wording for a workshop.
+ * @param {object} workshop - Workshop document.
+ * @returns {string} "" when there is no limit.
+ */
+function spotsText(workshop) {
+  var left = spotsLeft(workshop);
+  if (left === null) {
+    return "";
+  }
+  return left === 0 ? "It's full." : left + (left === 1 ? " spot left." : " spots left.");
+}
+
+/**
+ * The details of one workshop, as lines of text.
+ * @param {object} workshop - Workshop document.
+ * @returns {string} Title, time, room, host, spots and the sign-up link.
+ */
+function workshopBlock(workshop) {
+  return [
+    workshop.title,
+    "When: " + calendar.formatTimeRange(workshop.startsAt, workshop.endsAt),
+    workshop.location ? "Where: " + workshop.location : "",
+    workshop.host ? "Host: " + workshop.host : "",
+    spotsText(workshop),
+    "Sign up: " + workshopUrl(workshop._id),
+  ]
+    .filter(Boolean)
+    .join("\n");
+}
+
+/**
+ * Template values for the reminder to people signed up.
  * @param {object} workshop - Workshop document.
  * @param {string} name - Recipient's name.
+ * @param {number} offset - Minutes before start this reminder is for.
+ * @param {Date} now - The current time.
  * @returns {object}
  */
-function reminderValues(workshop, name) {
-  return {
+function reminderValues(workshop, name, offset, now) {
+  var base = {
     name: name || "there",
     title: workshop.title,
     when: calendar.formatTimeRange(workshop.startsAt, workshop.endsAt),
@@ -674,27 +888,17 @@ function reminderValues(workshop, name) {
     host: workshop.host || "The organizers",
     workshopUrl: workshopUrl(workshop._id),
   };
-}
-
-/**
- * The "starting soon" line for Discord.
- * @param {object} workshop - Workshop document.
- * @returns {string}
- */
-function startingSoonText(workshop) {
-  var text = "Starting soon: " + workshop.title + " at " + formatClock(workshop.startsAt);
-  if (workshop.location) {
-    text += " in " + workshop.location;
+  if (offset <= STARTING_NOW_MINUTES) {
+    base.headline = "Starting now";
+    base.lead = "is starting now" + (workshop.location ? " in " + workshop.location : "");
+    return base;
   }
-  if (workshop.host) {
-    text += ", hosted by " + workshop.host;
-  }
-  text += ".";
-  var left = spotsLeft(workshop);
-  if (left !== null) {
-    text += " " + (left === 0 ? "It's full." : left + (left === 1 ? " spot left." : " spots left."));
-  }
-  return text + " Sign up on the dashboard: " + workshopUrl(workshop._id);
+  // A reminder that goes out late says how long is really left.
+  var left = Math.ceil((new Date(workshop.startsAt).getTime() - now.getTime()) / MINUTE_MS);
+  var minutes = offset - left > 3 ? Math.max(1, left) : offset;
+  base.headline = "Starting in " + formatLead(minutes);
+  base.lead = "starts in " + formatLead(minutes);
+  return base;
 }
 
 /**
@@ -710,125 +914,397 @@ function workshopsStarting(from, to) {
 }
 
 /**
- * @param {object} workshop - Workshop document.
- * @param {string} [userId] - Recipient, for email keys.
+ * The claim key. It contains the start time (a moved workshop gets new ones)
+ * and the offset (each reminder time is its own send).
  * @param {string} kind - Automation kind.
- * @returns {string} The claim key (contains the start time, so a moved workshop gets new ones).
+ * @param {object} workshop - Workshop document.
+ * @param {number} offset - Minutes before start.
+ * @param {string} [userId] - Recipient, for email keys.
+ * @returns {string}
  */
-function reminderKey(kind, workshop, userId) {
-  return kind + ":" + String(workshop._id) + ":" + new Date(workshop.startsAt).toISOString() + (userId ? ":" + userId : "");
+function reminderKey(kind, workshop, offset, userId) {
+  return (
+    kind + ":" + String(workshop._id) + ":" + new Date(workshop.startsAt).toISOString() + ":" + offset + (userId ? ":" + userId : "")
+  );
 }
 
 /**
- * Email everyone signed up for workshops starting within the reminder window
- * who hasn't had this reminder yet (late sign-ups included).
+ * Which offset a workshop is at: the smallest one already reached, so a
+ * workshop published 30 minutes ahead gets the 45 minute reminder, not also
+ * the 5 minute one at once. Null when none has been reached yet.
+ * @param {object} workshop - Workshop document.
+ * @param {Array<number>} offsets - Minutes before start.
+ * @param {Date} now - The current time.
+ * @returns {number|null}
+ */
+function dueOffset(workshop, offsets, now) {
+  var start = new Date(workshop.startsAt).getTime();
+  var best = null;
+  (offsets || []).forEach(function each(offset) {
+    if (start - offset * MINUTE_MS <= now.getTime() && (best === null || offset < best)) {
+      best = offset;
+    }
+  });
+  return best;
+}
+
+/**
+ * Workshops that are due, grouped by start time and offset (workshops that
+ * start together are announced together).
+ * @param {Array<object>} workshops - Published workshops starting soon.
+ * @param {Array<number>} offsets - Minutes before start.
+ * @param {Date} now - The current time.
+ * @returns {Array<{offset: number, startsAt: Date, workshops: Array<object>}>}
+ */
+function dueGroups(workshops, offsets, now) {
+  var groups = {};
+  var order = [];
+  workshops.forEach(function each(workshop) {
+    var offset = dueOffset(workshop, offsets, now);
+    if (offset === null) {
+      return;
+    }
+    var key = new Date(workshop.startsAt).toISOString() + "|" + offset;
+    if (!groups[key]) {
+      groups[key] = { offset: offset, startsAt: workshop.startsAt, workshops: [] };
+      order.push(key);
+    }
+    groups[key].workshops.push(workshop);
+  });
+  return order.map(function pick(key) {
+    return groups[key];
+  });
+}
+
+/**
+ * The longest lead among a list of offsets.
+ * @param {Array<number>} offsets - Minutes.
+ * @returns {number}
+ */
+function maxOffset(offsets) {
+  return (offsets || []).reduce(function max(a, b) {
+    return Math.max(a, b);
+  }, 0);
+}
+
+/**
+ * Claim each workshop in a group for a Discord post, then post those that
+ * were won as one message.
+ * @param {string} kind - workshop_all_discord | workshop_signed_discord.
+ * @param {object} group - From dueGroups.
+ * @param {string} scope - "all" or "signed".
+ * @param {object} settings - CommunicationSettings.
+ * @param {string} color - Embed colour.
+ * @returns {Promise<number>} Posts made (0 or 1).
+ */
+function postGroup(kind, group, scope, settings, color) {
+  var won = [];
+  return group.workshops
+    .reduce(function chain(previous, workshop) {
+      return previous.then(function tryClaim() {
+        var key = reminderKey(kind, workshop, group.offset);
+        return claim({ key: key, kind: kind, workshop: workshop._id, scheduledFor: new Date(new Date(workshop.startsAt).getTime() - group.offset * MINUTE_MS) }).then(
+          function afterClaim(ok) {
+            if (ok) {
+              won.push({ workshop: workshop, key: key });
+            }
+          }
+        );
+      });
+    }, Promise.resolve())
+    .then(function post() {
+      if (!won.length) {
+        return 0;
+      }
+      var list = won.map(function pick(item) {
+        return item.workshop;
+      });
+      var clock = formatClock(group.startsAt);
+      var startingNow = group.offset <= STARTING_NOW_MINUTES;
+      var prefix = startingNow ? "Starting now" : scope === "all" ? "Coming up" : "Starting in " + formatLead(group.offset);
+      var title =
+        list.length === 1
+          ? prefix + ": " + list[0].title
+          : startingNow
+            ? "Workshops starting now"
+            : "Workshops starting at " + clock;
+      var description =
+        list
+          .map(workshopBlock)
+          .join("\n\n") + (list.length > 1 ? "\n\nAll workshops: " + workshopsUrl() : "");
+      var mention = automatedMention(settings);
+      return discordAnnouncements
+        .send(
+          "discord_workshops",
+          Object.assign(
+            { title: title, description: description, url: list.length === 1 ? workshopUrl(list[0]._id) : workshopsUrl(), color: color },
+            mention
+          )
+        )
+        .then(function record(outcome) {
+          return Promise.all(
+            won.map(function each(item) {
+              return settle(item.key, { status: outcome.status, error: outcome.error, messageId: outcome.messageId });
+            })
+          ).then(function done() {
+            return outcome.status === "sent" ? 1 : 0;
+          });
+        });
+    });
+}
+
+/**
+ * Claim a workshop's email for each recipient who hasn't had it yet.
+ * @param {string} kind - Automation kind.
+ * @param {object} workshop - Workshop document.
+ * @param {number} offset - Minutes before start.
+ * @param {Array<object>} recipients - `{ userId, ... }`.
+ * @returns {Promise<Array<object>>} The recipients this call won (claimed).
+ */
+function claimRecipients(kind, workshop, offset, recipients) {
+  var prefix = reminderKey(kind, workshop, offset) + ":";
+  var scheduledFor = new Date(new Date(workshop.startsAt).getTime() - offset * MINUTE_MS);
+  return AutomationLog.find({ workshop: workshop._id, kind: kind })
+    .select("key")
+    .lean()
+    .then(function afterLogs(logs) {
+      var done = {};
+      logs.forEach(function mark(log) {
+        done[log.key] = true;
+      });
+      var won = [];
+      return recipients
+        .filter(function pending(r) {
+          return !done[prefix + String(r.userId)];
+        })
+        .reduce(function claimOne(previous, r) {
+          return previous.then(function tryClaim() {
+            return claim({ key: prefix + String(r.userId), kind: kind, workshop: workshop._id, user: r.userId, scheduledFor: scheduledFor }).then(
+              function afterClaim(ok) {
+                if (ok) {
+                  won.push(r);
+                }
+              }
+            );
+          });
+        }, Promise.resolve())
+        .then(function done2() {
+          return won;
+        });
+    });
+}
+
+/**
+ * Mark claimed emails as handed to the outbox.
+ * @param {string} kind - Automation kind.
+ * @param {object} workshop - Workshop document.
+ * @param {number} offset - Minutes before start.
+ * @param {Array<object>} recipients - Who was queued.
+ * @returns {Promise<void>}
+ */
+function markQueued(kind, workshop, offset, recipients) {
+  if (!recipients.length) {
+    return Promise.resolve();
+  }
+  return AutomationLog.updateMany(
+    {
+      key: {
+        $in: recipients.map(function pick(r) {
+          return reminderKey(kind, workshop, offset, String(r.userId));
+        }),
+      },
+    },
+    { $set: { status: "sent" } }
+  ).then(function done() {
+    return undefined;
+  });
+}
+
+/**
+ * Accepted participants who haven't turned off event email.
+ * @returns {Promise<Array<object>>} `{ userId, email, name }`.
+ */
+function acceptedRecipients() {
+  return Application.distinct("applicant", activeApplications.active({ status: "accepted" }))
+    .then(function afterAccepted(ids) {
+      return User.find({ _id: { $in: ids }, "emailPreferences.event": { $ne: false } })
+        .select("name email")
+        .lean();
+    })
+    .then(function toList(users) {
+      return users
+        .filter(function hasEmail(user) {
+          return Boolean(user.email);
+        })
+        .map(function pick(user) {
+          return { userId: user._id, email: String(user.email).toLowerCase(), name: user.name || "" };
+        });
+    });
+}
+
+/**
+ * Announce workshops to every accepted participant, a set time before they
+ * start: one Discord post and one email per person, however many workshops
+ * start together.
  * @param {object} settings - CommunicationSettings.
  * @param {Date} now - The current time.
  * @returns {Promise<number>} Emails queued.
  */
-function runReminderEmails(settings, now) {
-  if (!settings.reminderEmail.enabled || !mailer.isMailConfigured()) {
+function runAllReminders(settings, now) {
+  var config = settings.reminderAll;
+  var discordOn = config.discord && discordAnnouncements.isConfigured("discord_workshops");
+  var emailOn = config.email && mailer.isMailConfigured();
+  if ((!discordOn && !emailOn) || !config.offsets.length) {
     return Promise.resolve(0);
   }
-  var windowEnd = new Date(now.getTime() + settings.reminderEmail.minutesBefore * MINUTE_MS);
   var queued = 0;
-  return workshopsStarting(now, windowEnd).then(function eachWorkshop(workshops) {
-    return workshops.reduce(function chain(previous, workshop) {
-      return previous.then(function remind() {
-        return workshopRecipients(workshop._id).then(function claimEach(recipients) {
-          var mine = [];
-          return recipients
-            .reduce(function claimOne(p, r) {
-              return p.then(function tryClaim() {
-                var key = reminderKey("workshop_reminder_email", workshop, String(r.userId));
-                return claim({
-                  key: key,
-                  kind: "workshop_reminder_email",
-                  workshop: workshop._id,
-                  user: r.userId,
-                  scheduledFor: new Date(new Date(workshop.startsAt).getTime() - settings.reminderEmail.minutesBefore * MINUTE_MS),
-                }).then(function afterClaim(won) {
-                  if (won) {
-                    mine.push({ recipient: r, key: key });
-                  }
-                });
-              });
-            }, Promise.resolve())
-            .then(function queueMine() {
-              if (!mine.length) {
+  return Promise.all([workshopsStarting(now, new Date(now.getTime() + maxOffset(config.offsets) * MINUTE_MS)), brandColor()]).then(
+    function eachGroup(loaded) {
+      var groups = dueGroups(loaded[0], config.offsets, now);
+      var recipientsStep = null;
+      return groups
+        .reduce(function chain(previous, group) {
+          return previous
+            .then(function discord() {
+              return discordOn ? postGroup("workshop_all_discord", group, "all", settings, loaded[1]) : 0;
+            })
+            .then(function email() {
+              if (!emailOn) {
                 return undefined;
               }
-              var batchId = reminderKey("workshop_reminder", workshop);
-              var entries = mine.map(function toEntry(item) {
-                return {
-                  to: item.recipient.email,
-                  user: item.recipient.userId,
-                  templateKey: "workshop_reminder",
-                  category: "transactional",
-                  values: reminderValues(workshop, item.recipient.name),
-                };
-              });
-              return outbox.enqueueMany(entries, { batchId: batchId }).then(function afterQueue(count) {
-                queued += count;
-                return AutomationLog.updateMany(
-                  {
-                    key: {
-                      $in: mine.map(function pick(item) {
-                        return item.key;
-                      }),
-                    },
-                  },
-                  { $set: { status: "sent" } }
-                );
+              recipientsStep = recipientsStep || acceptedRecipients();
+              return recipientsStep.then(function sendGroup(recipients) {
+                return emailGroup(group, recipients).then(function count(n) {
+                  queued += n;
+                });
               });
             });
+        }, Promise.resolve())
+        .then(function done() {
+          return queued;
         });
-      });
-    }, Promise.resolve()).then(function done() {
-      return queued;
-    });
-  });
+    }
+  );
 }
 
 /**
- * Post "starting soon" for workshops entering the Discord reminder window.
- * @param {object} settings - CommunicationSettings.
- * @param {Date} now - The current time.
- * @returns {Promise<number>} Posts made.
+ * Email one group of workshops to the accepted participants who haven't had it.
+ * @param {object} group - From dueGroups.
+ * @param {Array<object>} recipients - Accepted participants.
+ * @returns {Promise<number>} Emails queued.
  */
-function runReminderDiscord(settings, now) {
-  if (!settings.reminderDiscord.enabled || !discordAnnouncements.isConfigured("discord_workshops")) {
-    return Promise.resolve(0);
-  }
-  var windowEnd = new Date(now.getTime() + settings.reminderDiscord.minutesBefore * MINUTE_MS);
-  var posted = 0;
-  return Promise.all([workshopsStarting(now, windowEnd), brandColor()]).then(function eachWorkshop(loaded) {
-    return loaded[0].reduce(function chain(previous, workshop) {
-      return previous.then(function post() {
-        var key = reminderKey("workshop_reminder_discord", workshop);
-        return claim({ key: key, kind: "workshop_reminder_discord", workshop: workshop._id }).then(function afterClaim(won) {
-          if (!won) {
-            return undefined;
-          }
-          return discordAnnouncements
-            .send("discord_workshops", {
-              title: "Starting soon: " + workshop.title,
-              description: startingSoonText(workshop),
-              url: workshopUrl(workshop._id),
-              color: loaded[1],
-            })
-            .then(function record(outcome) {
-              if (outcome.status === "sent") {
-                posted += 1;
-              }
-              return settle(key, { status: outcome.status, error: outcome.error, messageId: outcome.messageId });
-            });
+function emailGroup(group, recipients) {
+  var perUser = {};
+  var claimed = [];
+  return group.workshops
+    .reduce(function chain(previous, workshop) {
+      return previous.then(function claimWorkshop() {
+        return claimRecipients("workshop_all_email", workshop, group.offset, recipients).then(function afterClaim(won) {
+          claimed.push({ workshop: workshop, won: won });
+          won.forEach(function each(r) {
+            var id = String(r.userId);
+            perUser[id] = perUser[id] || { recipient: r, workshops: [] };
+            perUser[id].workshops.push(workshop);
+          });
         });
       });
-    }, Promise.resolve()).then(function done() {
-      return posted;
+    }, Promise.resolve())
+    .then(function queue() {
+      var clock = formatDayClock(group.startsAt);
+      var entries = Object.keys(perUser).map(function toEntry(id) {
+        var item = perUser[id];
+        var many = item.workshops.length > 1;
+        return {
+          to: item.recipient.email,
+          user: item.recipient.userId,
+          templateKey: "workshop_announcement",
+          category: "transactional",
+          values: {
+            name: item.recipient.name || "there",
+            headline: many ? "Coming up " + clock + ": " + item.workshops.length + " workshops" : "Coming up " + clock + ": " + item.workshops[0].title,
+            intro: many ? "These workshops are starting soon." : "This workshop is starting soon.",
+            workshops: item.workshops.map(workshopBlock).join("\n\n"),
+            workshopsUrl: workshopsUrl(),
+          },
+        };
+      });
+      if (!entries.length) {
+        return 0;
+      }
+      return outbox
+        .enqueueMany(entries, { batchId: "workshop_all:" + new Date(group.startsAt).toISOString() + ":" + group.offset })
+        .then(function afterQueue(count) {
+          return Promise.all(
+            claimed.map(function mark(item) {
+              return markQueued("workshop_all_email", item.workshop, group.offset, item.won);
+            })
+          ).then(function done() {
+            return count;
+          });
+        });
     });
-  });
+}
+
+/**
+ * Remind the people signed up for workshops, a set time before each one
+ * (email, and optionally a Discord post).
+ * @param {object} settings - CommunicationSettings.
+ * @param {Date} now - The current time.
+ * @returns {Promise<number>} Emails queued.
+ */
+function runSignedUpReminders(settings, now) {
+  var config = settings.reminderSignedUp;
+  var discordOn = config.discord && discordAnnouncements.isConfigured("discord_workshops");
+  var emailOn = config.email && mailer.isMailConfigured();
+  if ((!discordOn && !emailOn) || !config.offsets.length) {
+    return Promise.resolve(0);
+  }
+  var queued = 0;
+  return Promise.all([workshopsStarting(now, new Date(now.getTime() + maxOffset(config.offsets) * MINUTE_MS)), brandColor()]).then(
+    function eachGroup(loaded) {
+      return dueGroups(loaded[0], config.offsets, now)
+        .reduce(function chain(previous, group) {
+          return previous
+            .then(function discord() {
+              return discordOn ? postGroup("workshop_signed_discord", group, "signed", settings, loaded[1]) : 0;
+            })
+            .then(function email() {
+              if (!emailOn) {
+                return undefined;
+              }
+              return group.workshops.reduce(function eachWorkshop(p, workshop) {
+                return p.then(function remind() {
+                  return workshopRecipients(workshop._id).then(function claimEach(recipients) {
+                    return claimRecipients("workshop_signed_email", workshop, group.offset, recipients).then(function send(won) {
+                      if (!won.length) {
+                        return undefined;
+                      }
+                      var entries = won.map(function toEntry(r) {
+                        return {
+                          to: r.email,
+                          user: r.userId,
+                          templateKey: "workshop_reminder",
+                          category: "transactional",
+                          values: reminderValues(workshop, r.name, group.offset, now),
+                        };
+                      });
+                      return outbox
+                        .enqueueMany(entries, { batchId: reminderKey("workshop_reminder", workshop, group.offset) })
+                        .then(function afterQueue(count) {
+                          queued += count;
+                          return markQueued("workshop_signed_email", workshop, group.offset, won);
+                        });
+                    });
+                  });
+                });
+              }, Promise.resolve());
+            });
+        }, Promise.resolve())
+        .then(function done() {
+          return queued;
+        });
+    }
+  );
 }
 
 /**
@@ -912,12 +1388,18 @@ function runDigest(settings, now) {
           }
           return brandColor().then(function post(color) {
             return discordAnnouncements
-              .send("discord_workshops", {
-                title: "Workshops coming up",
-                description: digestLines(workshops) + "\n\nSign up on the dashboard: " + workshopsUrl(),
-                url: workshopsUrl(),
-                color: color,
-              })
+              .send(
+                "discord_workshops",
+                Object.assign(
+                  {
+                    title: "Workshops coming up",
+                    description: digestLines(workshops) + "\n\nSign up on the dashboard: " + workshopsUrl(),
+                    url: workshopsUrl(),
+                    color: color,
+                  },
+                  automatedMention(settings)
+                )
+              )
               .then(function record(outcome) {
                 return settle(key, { status: outcome.status, error: outcome.error, messageId: outcome.messageId });
               });
@@ -943,7 +1425,13 @@ function runDigest(settings, now) {
 function sendDigestEmails(workshops, due) {
   return Application.distinct("applicant", activeApplications.active({ status: "accepted" }))
     .then(function afterAccepted(ids) {
-      return User.find({ _id: { $in: ids }, marketingEmailConsent: true }).select("name email").lean();
+      return User.find({ _id: { $in: ids } }).select("name email marketingEmailConsent emailPreferences").lean();
+    })
+    .then(function onlyAllowed(users) {
+      // Everyone here is accepted: they get it unless they turned announcements off.
+      return users.filter(function allowed(user) {
+        return emailCategories.announcementsAllowed(user, true);
+      });
     })
     .then(function claimEach(users) {
       var mine = [];
@@ -1030,12 +1518,18 @@ function notifyWorkshopUpdate(workshop, kind) {
         lines.push("Sign up on the dashboard: " + workshopUrl(workshop._id));
         return brandColor().then(function post(color) {
           return discordAnnouncements
-            .send("discord_workshops", {
-              title: (kind === "published" ? "New workshop: " : "Workshop moved: ") + workshop.title,
-              description: lines.join("\n"),
-              url: workshopUrl(workshop._id),
-              color: color,
-            })
+            .send(
+              "discord_workshops",
+              Object.assign(
+                {
+                  title: (kind === "published" ? "New workshop: " : "Workshop moved: ") + workshop.title,
+                  description: lines.join("\n"),
+                  url: workshopUrl(workshop._id),
+                  color: color,
+                },
+                automatedMention(settings)
+              )
+            )
             .then(function record(outcome) {
               return settle(key, { status: outcome.status, error: outcome.error, messageId: outcome.messageId });
             });
@@ -1059,9 +1553,9 @@ function runWorkshopAutomations(at) {
       return undefined;
     }
     var settings = loaded[0];
-    return runReminderEmails(settings, now)
-      .then(function discord() {
-        return runReminderDiscord(settings, now);
+    return runAllReminders(settings, now)
+      .then(function signedUp() {
+        return runSignedUpReminders(settings, now);
       })
       .then(function digest() {
         return runDigest(settings, now);
@@ -1143,7 +1637,7 @@ function upcoming(at) {
       startsAt: { $gt: now, $lte: new Date(now.getTime() + NEXT_HORIZON_MS) },
     })
       .sort({ startsAt: 1 })
-      .limit(30)
+      .limit(40)
       .lean(),
   ]).then(function build(loaded) {
     var settings = loaded[0];
@@ -1162,90 +1656,163 @@ function upcoming(at) {
     if (!channels.workshops) {
       return items;
     }
-    var emailOn = settings.reminderEmail.enabled && channels.email;
-    var discordOn = settings.reminderDiscord.enabled && channels.discord_workshops;
+    var all = settings.reminderAll;
+    var signed = settings.reminderSignedUp;
+    var allEmail = all.email && channels.email;
+    var allDiscord = all.discord && channels.discord_workshops;
+    var signedEmail = signed.email && channels.email;
+    var signedDiscord = signed.discord && channels.discord_workshops;
 
-    return AutomationLog.find({
-      workshop: {
-        $in: workshops.map(function pick(w) {
-          return w._id;
-        }),
-      },
-      kind: { $in: ["workshop_reminder_email", "workshop_reminder_discord"] },
-    })
-      .select("key kind")
-      .lean()
-      .then(function addWorkshops(logs) {
-        var done = {};
-        logs.forEach(function mark(log) {
-          done[log.key] = true;
-        });
-        workshops.forEach(function each(workshop) {
-          var prefix = reminderKey("workshop_reminder_email", workshop) + ":";
-          var alreadyEmailed = logs.filter(function mine(log) {
-            return log.key.indexOf(prefix) === 0;
-          }).length;
-          var people = Math.max(0, (workshop.signupCount || 0) - alreadyEmailed);
-          var emailAt = new Date(new Date(workshop.startsAt).getTime() - settings.reminderEmail.minutesBefore * MINUTE_MS);
-          var discordAt = new Date(new Date(workshop.startsAt).getTime() - settings.reminderDiscord.minutesBefore * MINUTE_MS);
-          var discordPending = discordOn && !done[reminderKey("workshop_reminder_discord", workshop)];
-          var emailPending = emailOn && people > 0;
-          if (!emailPending && !discordPending) {
-            return;
-          }
-          var sameTime = emailPending && discordPending && +emailAt === +discordAt;
-          if (emailPending) {
-            items.push({
-              at: emailAt < now ? now : emailAt,
-              kind: "workshop_reminder",
-              workshop: String(workshop._id),
-              label: workshop.title + " reminder",
-              channels: sameTime ? ["email", "discord_workshops"] : ["email"],
-              recipients: people,
-            });
-          }
-          if (discordPending && !sameTime) {
-            items.push({
-              at: discordAt < now ? now : discordAt,
-              kind: "workshop_reminder",
-              workshop: String(workshop._id),
-              label: workshop.title + " starting soon post",
-              channels: ["discord_workshops"],
-            });
-          }
-        });
-
-        var digestDiscord = settings.digestDiscord.enabled && channels.discord_workshops;
-        var digestEmail = settings.digestEmail.enabled && channels.email;
-        if (digestDiscord || digestEmail) {
-          var due = digestTimeToday(settings, now);
-          var next = due.today;
-          if (now.getTime() - due.today.getTime() > 0) {
-            var tomorrow = zonedParts(new Date(due.today.getTime() + 26 * HOUR_MS));
-            var hm = settings.digestDiscord.time.split(":");
-            next = zonedTime(tomorrow.year, tomorrow.month, tomorrow.day, Number(hm[0]), Number(hm[1]));
-          }
-          var digestChannels = [];
-          if (digestEmail) {
-            digestChannels.push("email");
-          }
-          if (digestDiscord) {
-            digestChannels.push("discord_workshops");
-          }
-          items.push({ at: next, kind: "digest", label: "Workshop sign-up digest", channels: digestChannels });
-        }
-
-        return items
-          .sort(function byTime(a, b) {
-            return new Date(a.at) - new Date(b.at);
-          })
-          .slice(0, 15);
+    return Promise.all([
+      AutomationLog.find({
+        workshop: {
+          $in: workshops.map(function pick(w) {
+            return w._id;
+          }),
+        },
+        kind: { $in: ["workshop_all_email", "workshop_all_discord", "workshop_signed_email", "workshop_signed_discord"] },
+      })
+        .select("key")
+        .lean(),
+      allEmail ? acceptedRecipients() : Promise.resolve([]),
+    ]).then(function addWorkshops(results) {
+      var logs = results[0];
+      var accepted = results[1].length;
+      var done = {};
+      logs.forEach(function mark(log) {
+        done[log.key] = true;
       });
+      function loggedFor(kind, workshop, offset) {
+        var prefix = reminderKey(kind, workshop, offset) + ":";
+        return logs.filter(function mine(log) {
+          return log.key.indexOf(prefix) === 0;
+        }).length;
+      }
+      function atOf(workshop, offset) {
+        var when = new Date(new Date(workshop.startsAt).getTime() - offset * MINUTE_MS);
+        return when < now ? now : when;
+      }
+      // Offsets still ahead, or the one that is due right now.
+      function pendingOffsets(workshop, offsets) {
+        var current = dueOffset(workshop, offsets, now);
+        return offsets.filter(function keep(offset) {
+          var reached = new Date(workshop.startsAt).getTime() - offset * MINUTE_MS <= now.getTime();
+          return !reached || offset === current;
+        });
+      }
+
+      // Everyone: workshops that start together are one item.
+      if (allEmail || allDiscord) {
+        var groups = {};
+        workshops.forEach(function each(workshop) {
+          pendingOffsets(workshop, all.offsets).forEach(function eachOffset(offset) {
+            var discordPending = allDiscord && !done[reminderKey("workshop_all_discord", workshop, offset)];
+            var left = allEmail ? Math.max(0, accepted - loggedFor("workshop_all_email", workshop, offset)) : 0;
+            if (!discordPending && left === 0) {
+              return;
+            }
+            var key = new Date(workshop.startsAt).toISOString() + "|" + offset;
+            groups[key] = groups[key] || { offset: offset, startsAt: workshop.startsAt, workshops: [], discord: false, people: 0 };
+            groups[key].workshops.push(workshop);
+            groups[key].discord = groups[key].discord || discordPending;
+            groups[key].people = Math.max(groups[key].people, left);
+          });
+        });
+        Object.keys(groups).forEach(function each(key) {
+          var group = groups[key];
+          var first = group.workshops[0];
+          var channelList = [];
+          if (group.people > 0) {
+            channelList.push("email");
+          }
+          if (group.discord) {
+            channelList.push("discord_workshops");
+          }
+          var item = {
+            at: atOf(first, group.offset),
+            kind: "workshop_reminder",
+            scope: "all",
+            offset: group.offset,
+            workshop: String(first._id),
+            label:
+              group.workshops.length === 1
+                ? first.title + " announcement"
+                : group.workshops.length + " workshops announcement (" + formatClock(group.startsAt) + ")",
+            channels: channelList,
+          };
+          if (group.people > 0) {
+            item.recipients = group.people;
+          }
+          items.push(item);
+        });
+      }
+
+      // Signed up: one item per workshop and offset.
+      if (signedEmail || signedDiscord) {
+        workshops.forEach(function each(workshop) {
+          pendingOffsets(workshop, signed.offsets).forEach(function eachOffset(offset) {
+            var discordPending = signedDiscord && !done[reminderKey("workshop_signed_discord", workshop, offset)];
+            var people = signedEmail ? Math.max(0, (workshop.signupCount || 0) - loggedFor("workshop_signed_email", workshop, offset)) : 0;
+            if (!discordPending && people === 0) {
+              return;
+            }
+            var channelList = [];
+            if (people > 0) {
+              channelList.push("email");
+            }
+            if (discordPending) {
+              channelList.push("discord_workshops");
+            }
+            var item = {
+              at: atOf(workshop, offset),
+              kind: "workshop_reminder",
+              scope: "signed",
+              offset: offset,
+              workshop: String(workshop._id),
+              label: workshop.title + (offset <= STARTING_NOW_MINUTES ? " starting now reminder" : " reminder (" + formatLead(offset) + " before)"),
+              channels: channelList,
+            };
+            if (people > 0) {
+              item.recipients = people;
+            }
+            items.push(item);
+          });
+        });
+      }
+
+      var digestDiscord = settings.digestDiscord.enabled && channels.discord_workshops;
+      var digestEmail = settings.digestEmail.enabled && channels.email;
+      if (digestDiscord || digestEmail) {
+        var due = digestTimeToday(settings, now);
+        var next = due.today;
+        if (now.getTime() - due.today.getTime() > 0) {
+          var tomorrow = zonedParts(new Date(due.today.getTime() + 26 * HOUR_MS));
+          var hm = settings.digestDiscord.time.split(":");
+          next = zonedTime(tomorrow.year, tomorrow.month, tomorrow.day, Number(hm[0]), Number(hm[1]));
+        }
+        var digestChannels = [];
+        if (digestEmail) {
+          digestChannels.push("email");
+        }
+        if (digestDiscord) {
+          digestChannels.push("discord_workshops");
+        }
+        items.push({ at: next, kind: "digest", label: "Workshop sign-up digest", channels: digestChannels });
+      }
+
+      return items
+        .sort(function byTime(a, b) {
+          return new Date(a.at) - new Date(b.at);
+        })
+        .slice(0, 20);
+    });
   });
 }
 
 module.exports = {
   validateSettings: validateSettings,
+  loadTags: loadTags,
+  discordPostFor: discordPostFor,
   serializeSettings: serializeSettings,
   channelStatus: channelStatus,
   listAudiences: listAudiences,
@@ -1259,7 +1826,6 @@ module.exports = {
   emailStatusCounts: emailStatusCounts,
   runWorkshopAutomations: runWorkshopAutomations,
   notifyWorkshopUpdate: notifyWorkshopUpdate,
-  startingSoonText: startingSoonText,
   tick: tick,
   startWorker: startWorker,
   stopWorker: stopWorker,

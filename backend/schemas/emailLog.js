@@ -42,6 +42,7 @@ var EMAIL_CATEGORIES = ["transactional", "announcement", "test"];
  * @property {string} lastError - Why the latest attempt failed ("" when it didn't).
  * @property {Date} [lastAttemptAt] - Start of the latest attempt.
  * @property {Date} [nextAttemptAt] - When a queued row is next due.
+ * @property {number} [priority] - Queue order for bulk-queued rows; higher sends first.
  * @property {Date} [lockedUntil] - Set while an attempt is in flight (a lease).
  * @property {Date} [sentAt] - When the SMTP server accepted it.
  * @property {string} [messageId] - The SMTP server's id for the message.
@@ -75,6 +76,9 @@ var emailLogSchema = new Schema(
     lastError: { type: String, default: "" },
     lastAttemptAt: { type: Date },
     nextAttemptAt: { type: Date },
+    // Queue order for bulk-queued rows: higher sends first (see
+    // utils/emailCategories queuePriority). Rows without one sort last.
+    priority: { type: Number, default: 0 },
     lockedUntil: { type: Date },
     sentAt: { type: Date },
     messageId: { type: String },
@@ -103,6 +107,7 @@ var emailLogSchema = new Schema(
 // also serves the admin's status filter and counts), the admin list newest
 // first, and the TTL on `expiresAt` above.
 emailLogSchema.index({ status: 1, nextAttemptAt: 1 });
+emailLogSchema.index({ status: 1, priority: -1, nextAttemptAt: 1 });
 emailLogSchema.index({ createdAt: -1 });
 
 // Internal fields the admin list has no use for. The calendar invite in

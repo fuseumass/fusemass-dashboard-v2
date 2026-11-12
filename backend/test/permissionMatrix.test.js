@@ -311,6 +311,11 @@ var MATRIX = [
       return { proposals: [{ memberEmails: [ids.attendeeEmail, "sneaky@example.com"], name: "Sneaky team" }] };
     },
   }),
+  row("POST", "/api/admin/team-builder/notify-conflicts", "admin", {
+    body: function body() {
+      return { statuses: ["accepted", "pending"] };
+    },
+  }),
   row("GET", "/api/admin/team-builder/unteamed", "admin"),
   row("GET", "/api/admin/team-builder/unteamed.csv", "admin"),
   row("GET", "/api/admin/setup-reminders", "admin"),

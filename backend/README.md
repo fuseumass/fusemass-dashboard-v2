@@ -130,9 +130,12 @@ hiccups. Admins see it at `/dashboard/admin/outbox` (API: `/api/admin/outbox`).
   set, `List-Unsubscribe-Post: List-Unsubscribe=One-Click`
   (`POST /api/auth/unsubscribe/one-click?token=`). Preferences are checked
   again right before each send; an opted-out email is marked cancelled with
-  the reason. Announcements are opt-in (`User.marketingEmailConsent`, off by
-  default; the application form's "Email me announcements and reminders"
-  checkbox sets it and event email); the rest are on until turned off
+  the reason. Announcements go to people who opted in, and to people with an
+  accepted application unless they opted out (`emailPreferences.announcements`
+  is true, false or unset; `marketingEmailConsent` is kept in step; see
+  `emailCategories.announcementsAllowed`). The unsubscribe link, preferences
+  page and the application form's "Email me announcements and reminders"
+  checkbox set it explicitly. The rest are on until turned off
   (`User.emailPreferences`). Bulk sends are `announcement` by default (only
   opted-in people); `category: "transactional"` sends to the whole segment
   but still respects each person's category (a custom template counts as
@@ -158,15 +161,23 @@ Optional environment variables:
 outbox, announcements category) and to two Discord channels by webhook,
 `DISCORD_ANNOUNCEMENTS_WEBHOOK_URL` and `DISCORD_WORKSHOPS_WEBHOOK_URL`
 (Technical settings, write-only). Posts are embeds within Discord's limits,
-retried after a 429, and never ping anyone unless "Mention @everyone" is on.
+retried after a 429. An announcement has separate email text and Discord text;
+in Discord the writer types `@everyone`, `@here` or `@label`, where labels are
+saved role tags (`CommunicationSettings.discordTags`, `{ label, roleId }`).
+`@label` becomes `<@&roleId>` and `allowed_mentions` lists exactly the roles
+used, so nothing else pings.
 Announcements can be scheduled; history shows counts per channel, "Send
 again" and "Cancel scheduled". Workshop automations (singleton
-`CommunicationSettings`, admins edit): reminder email to everyone signed up
-and a "starting soon" Discord post 45 minutes before (each configurable), a
+`CommunicationSettings`, admins edit): an announcement of each published
+workshop to all accepted participants (Discord workshops post plus an `event`
+email, default 2 hours before, workshops starting together combined), reminder
+emails to the people signed up (default 45 and 5 minutes before; the last says
+"starting now in <room>"; an optional Discord post at the same times), all
+offsets editable lists, an optional role mention in automated posts, a
 daily sign-up post at 09:00 event time listing the next 24 hours of workshops
 with spots, an optional daily email digest (off by default), and a post when
 a workshop is published or moves. Each automated send is claimed first with a
-unique `AutomationLog` key (workshop, start time, person), so it happens once
+unique `AutomationLog` key (workshop, start time, offset, person), so it happens once
 even with two processes or a restart, and a moved workshop gets new
 reminders.
 
@@ -250,8 +261,18 @@ work too.
   Full names without an email are matched when exactly one applicant in the
   round has that name; other names ("Didy, Jeffrey") are shown raw.
 - **Grouping:** in-scope applicants (default: accepted) are joined to what
-  they listed; connected components are the proposals. Listed people with no
-  account or application are members too and get an invite.
+  they listed; connected components are candidate groups. Listed people with
+  no account or application are members too and get an invite.
+- **Consistency:** each lister A claims `T(A)`: A plus everyone A listed. A
+  member who listed nobody (blank, "N/A", or only names that match no one) is
+  silent and agrees by default. If every lister in the group has the same `T`
+  the group is `ready`: one team is created, named "<first name>'s team"
+  after the earliest lister (who leads; the last name or a number is added
+  when the name is taken), and one-sided listings are simply invited. If two
+  listers differ (A lists x, y and x lists y, z; or A lists x and x lists y),
+  or the group is larger than `teamMaxSize`, it is a `conflict` and the apply
+  endpoint refuses to create or merge anything for it. Proposal `status` is
+  `ready`, `conflict` or `done` (everyone is on a team or invited).
 - **Applying:** the server rebuilds the proposals and only acts on people in
   one of them. A new team's leader is the earliest applicant who can lead;
   members with an account on no team are added, everyone else is sent the
@@ -261,6 +282,12 @@ work too.
   team or invited. Each proposal is applied under the team lock
   (`utils/judging/state`). Runs are kept in `teambuilderruns`, and each team
   logs `builder_add` / `builder_invite` in `staffChanges`.
+- **Conflict emails:** `POST /api/admin/team-builder/notify-conflicts` sends
+  the built-in `team_conflict` email to each in-scope lister in a conflict who
+  is on no team ("Your teammate list doesn't match ...", with both lists and a
+  link to `/dashboard/team`). A `teamconflictnotices` row (user, round, hash
+  of the lists) makes it once per person: a re-run skips them until the lists
+  change. `dryRun` only counts.
 
 Account setup reminders (`utils/setupReminders.js`) issue each accepted
 person who still can't sign in a fresh 7-day link and send it with the
@@ -434,6 +461,7 @@ emailed on acceptance (or via "Forgot password").
 | GET    | `/api/admin/groups/emails`      | admin     | The group's emails, for "Copy emails" (`no-store`) |
 | GET    | `/api/admin/groups/export.csv`  | admin     | The group as a formula-safe CSV: contact and event fields plus every form answer |
 | GET    | `/api/admin/team-builder/proposals` | admin | Proposed teams from the teammates question (`?round=&statuses=accepted,pending`), flags, unmatched answers, recent runs |
+| POST   | `/api/admin/team-builder/notify-conflicts` | admin | Email every lister in a conflicting group once (`{ round?, statuses?, dryRun?, allowOverLimit? }`) |
 | POST   | `/api/admin/team-builder/apply` | admin     | Create proposed teams / merge into existing ones (`{ proposals: [{ memberEmails, name?, leaderEmail?, mergeIntoTeamId? }], round?, statuses?, dryRun?, allowOverLimit? }`) |
 | GET    | `/api/admin/team-builder/unteamed` | admin  | Accepted people on no team and with no invite, split by research-study answer |
 | GET    | `/api/admin/team-builder/unteamed.csv` | admin | The same as CSV (`?answer=<value>` or `__none__` for one group) |
