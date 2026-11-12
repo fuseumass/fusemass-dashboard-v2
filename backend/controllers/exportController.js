@@ -3,6 +3,7 @@
 var path = require("path");
 
 var Application = require("../schemas/application");
+var activeApplications = require("../utils/activeApplications");
 var ApplicationRound = require("../schemas/applicationRound");
 var CheckIn = require("../schemas/checkin");
 var MealService = require("../schemas/mealService");
@@ -429,7 +430,7 @@ function exportResumes(req, res) {
         return undefined;
       }
 
-      var filter = { status: "accepted", resumeBlobName: { $exists: true, $nin: ["", null] } };
+      var filter = activeApplications.active({ status: "accepted", resumeBlobName: { $exists: true, $nin: ["", null] } });
       filter["answers." + consentKey] = true;
       if (scope.round) {
         filter.round = scope.match.round;

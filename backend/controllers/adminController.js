@@ -11,6 +11,7 @@ var primaryClientOrigin = require("../utils/clientOrigin").primaryClientOrigin;
 var formConfigUtil = require("../utils/formConfig");
 var applicationStatus = require("../utils/applicationStatus");
 var applicationFlags = require("../utils/applicationFlags");
+var activeApplications = require("../utils/activeApplications");
 var waitlist = require("../utils/waitlist");
 var decisions = require("../utils/decisions");
 var hardwareReturnBy = require("../utils/hardwareReturnBy");
@@ -19,7 +20,7 @@ var mongoose = require("mongoose");
 
 // The review table's columns (see listApplications). `flagged` is just the
 // yes/no; the reasons come with the full application.
-var LIST_FIELDS = "name university status round applicant resumeBlobName flagged createdAt updatedAt";
+var LIST_FIELDS = "name university status round applicant resumeBlobName flagged removedAt createdAt updatedAt";
 
 // Staff routes pass this to toJSON to include the flag fields applicants
 // never see (see the Application schema's toJSON).
@@ -32,10 +33,13 @@ var WITH_FLAGS = { includeFlags: true };
  *   ?status=draft|pending|accepted|rejected|waitlisted
  *   ?round=<roundId>
  *   ?flagged=true   only flagged applications
+ *   ?removed=true   include removed applications (hidden by default)
  *
  * Also returns `flaggedCount`: how many applications are flagged among those
  * matching status/round (the flagged filter itself doesn't change it), so the
- * page can show "Flagged (3)" whichever list is on screen.
+ * page can show "Flagged (3)" whichever list is on screen. `removedCount` is
+ * how many removed applications match status/round, for the "Show removed"
+ * toggle.
  *
  * @param {object} req - Express request.
  * @param {object} res - Express response.
@@ -49,6 +53,11 @@ function listApplications(req, res) {
   }
   if (req.query && req.query.round) {
     filter.round = req.query.round;
+  }
+  var showRemoved = Boolean(req.query) && (req.query.removed === "true" || req.query.removed === "1");
+  var removedFilter = Object.assign({}, filter, { removedAt: { $ne: null } });
+  if (!showRemoved) {
+    filter = activeApplications.active(filter);
   }
   var flaggedOnly = Boolean(req.query) && (req.query.flagged === "true" || req.query.flagged === "1");
   var listFilter = flaggedOnly ? Object.assign({}, filter, { flagged: true }) : filter;
@@ -64,6 +73,7 @@ function listApplications(req, res) {
       .populate("round", "name")
       .sort({ createdAt: -1 }),
     Application.countDocuments(Object.assign({}, filter, { flagged: true })),
+    Application.countDocuments(removedFilter),
   ])
     .then(function afterFind(found) {
       res.status(200).json({
@@ -71,6 +81,7 @@ function listApplications(req, res) {
           return application.toJSON(WITH_FLAGS);
         }),
         flaggedCount: found[1],
+        removedCount: found[2],
       });
     })
     .catch(function onError(err) {
@@ -99,6 +110,8 @@ function getApplication(req, res) {
     .populate("applicant", "name email role")
     .populate("round", "name formConfig profileFields")
     .populate("flaggedBy", "name email")
+    .populate("removedBy", "name email")
+    .populate("duplicateOf", "name")
     .populate("edits.by", "name email")
     .then(function afterFind(application) {
       if (!application) {
@@ -231,6 +244,10 @@ function decideApplication(req, res) {
         .then(function afterReload(existing) {
           if (!existing) {
             res.status(404).json({ error: "Application not found." });
+            return;
+          }
+          if (existing.removedAt) {
+            res.status(409).json({ error: "This application is removed. Restore it before deciding." });
             return;
           }
           res.status(200).json({ application: existing.toJSON(WITH_FLAGS) });

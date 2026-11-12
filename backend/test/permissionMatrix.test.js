@@ -239,6 +239,25 @@ var MATRIX = [
     use: { id: "application" },
     body: { fields: { name: "Matrix Edit" }, user: { email: "matrix-edit@example.com" } },
   }),
+  row("GET", "/api/admin/applications/search", "moderator"),
+  row("GET", "/api/admin/applications/duplicates", "moderator"),
+  row("POST", "/api/admin/applications/duplicates/dismiss", "moderator", {
+    body: function body(ids) {
+      return { ids: [ids.application, ids.attendeeApplication] };
+    },
+  }),
+  row("POST", "/api/admin/applications/:id/remove", "moderator", {
+    use: { id: "application" },
+    body: { reason: "Matrix check" },
+  }),
+  row("POST", "/api/admin/applications/:id/restore", "moderator", { use: { id: "application" } }),
+  row("GET", "/api/admin/applications/:id/compare", "moderator", { use: { id: "application" } }),
+  row("POST", "/api/admin/applications/:id/merge", "moderator", {
+    use: { id: "application" },
+    body: function body(ids) {
+      return { otherId: ids.attendeeApplication, keep: "this" };
+    },
+  }),
   row("GET", "/api/admin/teams", "moderator"),
   row("GET", "/api/staff/attendees", "moderator"),
   row("GET", "/api/staff/attendee", "moderator"),
@@ -375,7 +394,7 @@ async function seed() {
     name: "Pending Applicant",
     status: "pending",
   });
-  await Application.create({
+  var attendeeApplication = await Application.create({
     applicant: attendee.user._id,
     round: round._id,
     name: "Accepted Attendee",
@@ -409,6 +428,7 @@ async function seed() {
       attendee: String(attendee.user._id),
       attendeeEmail: attendee.user.email,
       application: String(application._id),
+      attendeeApplication: String(attendeeApplication._id),
       round: String(round._id),
       template: String(template._id),
       meal: String(meal._id),

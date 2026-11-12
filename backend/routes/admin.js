@@ -5,6 +5,7 @@ var rateLimit = require("express-rate-limit");
 var multer = require("multer");
 var adminController = require("../controllers/adminController");
 var applicationEditController = require("../controllers/applicationEditController");
+var applicationDuplicatesController = require("../controllers/applicationDuplicatesController");
 var outboxController = require("../controllers/outboxController");
 var resumeController = require("../controllers/resumeController");
 var teamController = require("../controllers/teamController");
@@ -69,7 +70,27 @@ function handleImageUploadError(err, _req, res, next) {
 // ---- Reviewer routes: moderators OR admins ---------------------------------
 // Moderators can review applications (approve/reject) and list them.
 router.get("/applications", isModerator, adminController.listApplications);
+// Duplicate handling. The fixed paths come before "/applications/:id".
+router.get("/applications/search", isModerator, applicationDuplicatesController.searchApplications);
+router.get("/applications/duplicates", isModerator, applicationDuplicatesController.listDuplicates);
+router.post("/applications/duplicates/dismiss", isModerator, applicationDuplicatesController.dismissDuplicates);
 router.get("/applications/:id", isModerator, adminController.getApplication);
+// Mark an application removed (soft delete, with a reason) / undo it, and
+// merge two duplicates into one. Moderators and admins; recorded in `edits`.
+router.post(
+  "/applications/:id/remove",
+  isModerator,
+  validateBody({ reason: { required: true, type: "string" } }),
+  applicationDuplicatesController.removeApplication
+);
+router.post("/applications/:id/restore", isModerator, applicationDuplicatesController.restoreApplication);
+router.get("/applications/:id/compare", isModerator, applicationDuplicatesController.compareApplications);
+router.post(
+  "/applications/:id/merge",
+  isModerator,
+  validateBody({ otherId: { required: true, type: "string" }, keep: { required: true, type: "string", enum: ["this", "other"] } }),
+  applicationDuplicatesController.mergeApplications
+);
 router.patch(
   "/applications/:id",
   isModerator,

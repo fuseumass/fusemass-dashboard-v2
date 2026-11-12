@@ -8,6 +8,7 @@ var Item = require("../schemas/hardwareItem");
 var Checkout = require("../schemas/hardwareCheckout");
 var Facility = require("../schemas/hardwareFacility");
 var Application = require("../schemas/application");
+var activeApplications = require("../utils/activeApplications");
 var staff = require("./staffController");
 var csv = require("../utils/csv");
 var parseCsv = require("csv-parse/sync").parse;
@@ -62,7 +63,7 @@ function email(user, item, loan, key) {
   }).catch(function mailError(err) { console.error("Hardware email failed:", err); });
 }
 /** @param {object} req - Request. @returns {Promise<boolean>} Attendee access. */
-async function accepted(req) { return Boolean(await Application.exists({ applicant: req.user.id, status: "accepted" })); }
+async function accepted(req) { return Boolean(await Application.exists(activeApplications.active({ applicant: req.user.id, status: "accepted" }))); }
 
 /** @param {object} req - Request. @param {object} res - Response. @returns {Promise<object>} Inventory and facilities. */
 async function inventory(req, res) {

@@ -2,6 +2,7 @@
 
 var EmailLog = require("../schemas/emailLog");
 var Application = require("../schemas/application");
+var activeApplications = require("./activeApplications");
 var User = require("../schemas/user");
 var emailCategories = require("./emailCategories");
 
@@ -365,7 +366,7 @@ function preferencesAllow(row) {
       if (category !== "announcements" || !user || emailCategories.announcementChoice(user) !== null) {
         return [user, false];
       }
-      return Application.exists({ applicant: user._id, status: "accepted" }).then(function found(hit) {
+      return Application.exists(activeApplications.active({ applicant: user._id, status: "accepted" })).then(function found(hit) {
         return [user, Boolean(hit)];
       });
     })

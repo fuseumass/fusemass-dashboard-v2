@@ -1,6 +1,7 @@
 "use strict";
 
 var Application = require("../schemas/application");
+var activeApplications = require("./activeApplications");
 var EmailLog = require("../schemas/emailLog");
 var User = require("../schemas/user");
 var mailer = require("./mailer");
@@ -40,7 +41,7 @@ function noSignInFilter() {
  *   total: accepted people who still need to set up their account.
  */
 async function findCandidates() {
-  var applicantIds = await Application.distinct("applicant", { status: "accepted" });
+  var applicantIds = await Application.distinct("applicant", activeApplications.active({ status: "accepted" }));
   var users = await User.find(
     Object.assign({ _id: { $in: applicantIds }, role: { $ne: "judge" } }, noSignInFilter())
   )

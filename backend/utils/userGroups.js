@@ -1,6 +1,7 @@
 "use strict";
 
 var mongoose = require("mongoose");
+var activeApplications = require("./activeApplications");
 
 var applicationStatus = require("./applicationStatus");
 var applicationScope = require("./applicationScope");
@@ -346,10 +347,10 @@ function accommodationExpression(questions) {
  * @returns {Array<object>}
  */
 function buildPipeline(round, filters, usersCollection) {
-  var match = {
+  var match = activeApplications.active({
     round: new mongoose.Types.ObjectId(String(round._id)),
     status: filters.statuses.length ? { $in: filters.statuses.slice() } : { $ne: "draft" },
-  };
+  });
   if (filters.flagged === true) match.flagged = true;
   if (filters.flagged === false) match.flagged = { $ne: true };
   var answerConditions = filters.answers.map(answerCondition).filter(function nonEmpty(condition) {

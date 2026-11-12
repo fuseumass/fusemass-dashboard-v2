@@ -6,6 +6,7 @@ var mongoose = require("mongoose");
 var User = require("../schemas/user");
 var Workshop = require("../schemas/workshop");
 var Application = require("../schemas/application");
+var activeApplications = require("../utils/activeApplications");
 var orgSettingsCache = require("../utils/orgSettingsCache");
 var features = require("../utils/features");
 var signToken = require("../utils/signToken");
@@ -192,7 +193,7 @@ function me(req, res) {
       var safeUser = user.toJSON();
       // Participant pages (workshops, hardware, judging sheet) stay hidden
       // until the person has an accepted application.
-      safeUser.accepted = Boolean(await Application.exists({ applicant: user._id, status: "accepted" }));
+      safeUser.accepted = Boolean(await Application.exists(activeApplications.active({ applicant: user._id, status: "accepted" })));
       // Shows "Organize workshops" in the nav for people assigned to one.
       var settings = await orgSettingsCache.get();
       safeUser.organizesWorkshops = features.isEnabled(settings, "workshops")

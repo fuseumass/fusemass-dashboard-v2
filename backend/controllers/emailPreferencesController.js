@@ -2,6 +2,7 @@
 
 var mongoose = require("mongoose");
 var Application = require("../schemas/application");
+var activeApplications = require("../utils/activeApplications");
 var User = require("../schemas/user");
 var emailCategories = require("../utils/emailCategories");
 var unsubscribe = require("../utils/unsubscribe");
@@ -29,7 +30,7 @@ function describeFor(user) {
   if (emailCategories.announcementChoice(user) !== null) {
     return Promise.resolve(describe(user, false));
   }
-  return Application.exists({ applicant: user._id, status: "accepted" }).then(function found(hit) {
+  return Application.exists(activeApplications.active({ applicant: user._id, status: "accepted" })).then(function found(hit) {
     return describe(user, Boolean(hit));
   });
 }

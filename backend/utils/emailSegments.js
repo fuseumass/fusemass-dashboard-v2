@@ -1,6 +1,7 @@
 "use strict";
 
 var Application = require("../schemas/application");
+var activeApplications = require("../utils/activeApplications");
 var User = require("../schemas/user");
 var emailCategories = require("./emailCategories");
 
@@ -62,7 +63,7 @@ function applyAcceptedDefault(recipients) {
   if (!undecided.length) {
     return Promise.resolve(recipients);
   }
-  return Application.distinct("applicant", { applicant: { $in: undecided }, status: "accepted" }).then(function mark(ids) {
+  return Application.distinct("applicant", activeApplications.active({ applicant: { $in: undecided }, status: "accepted" })).then(function mark(ids) {
     var accepted = {};
     ids.forEach(function each(id) {
       accepted[String(id)] = true;
@@ -79,11 +80,17 @@ function applyAcceptedDefault(recipients) {
 /**
  * Each applicant's latest application (by creation time), optionally limited
  * to one round.
+ * Removed applications (duplicates, test entries) are left out unless
+ * `includeRemoved` is set.
  * @param {*} [round] - ApplicationRound _id to limit to.
+ * @param {boolean} [includeRemoved] - Also read removed applications.
  * @returns {Promise<Array<object>>} `{ applicant, status, name }` per applicant.
  */
-function latestApplications(round) {
+function latestApplications(round, includeRemoved) {
   var filter = round ? { round: round } : {};
+  if (!includeRemoved) {
+    filter = activeApplications.active(filter);
+  }
   return Application.find(filter)
     .select("applicant status name createdAt")
     .lean()
@@ -139,7 +146,8 @@ function byApplicationStatus(status) {
  */
 function notApplied(ctx) {
   return Promise.all([
-    latestApplications(ctx.round),
+    // A removed application still means they applied: don't nag them to apply.
+    latestApplications(ctx.round, true),
     User.find({ role: "applicant" }).select(USER_FIELDS).lean(),
   ]).then(function afterLoad(results) {
     var applied = {};

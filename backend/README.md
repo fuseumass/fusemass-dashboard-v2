@@ -205,6 +205,24 @@ to the old address. Each change is appended to the application's `edits`
 offers to resend the acceptance email through
 `POST /api/staff/attendee/resend-qr`.
 
+Duplicates (moderators and admins). `POST /api/admin/applications/:id/remove`
+(`{ reason, duplicateOf? }`) marks an application removed (`removedAt`,
+`removedBy`, `removedReason`, `duplicateOf`) without deleting anything;
+`POST .../restore` undoes it; both are recorded in `edits` (`kind`). Every
+query that counts or acts on applications merges `utils/activeApplications`
+(`{ removedAt: null }`) so a removed one is skipped (stats, exports, user
+groups, email segments and audiences, auto-accept, decisions, check-in and
+meal eligibility, workshops, hardware, team builder). The review list hides
+removed ones unless `?removed=true`. `GET .../:id/compare?otherId=` shows both
+applications with what hangs off each account; `POST .../:id/merge`
+(`{ otherId, keep: "this"|"other", fields: { <field>: "this"|"other" } }`)
+updates the kept one, removes the other ("Merged into ...") and audits both,
+moving nothing else. It refuses (409) when both are accepted and both checked
+in unless an admin sends `confirmBothCheckedIn`. `GET /api/admin/applications/duplicates`
+suggests groups (same phone, same normalized name, Gmail-equivalent email) and
+`POST .../duplicates/dismiss` (`{ ids }`) remembers "not a duplicate".
+`GET .../search?q=` finds the other application for a merge.
+
 `PATCH /api/admin/judges/:id` (admins, judging feature) takes
 `{ name?, email?, hardware? }`. A new email cancels a pending invite link (the
 admin resends it from the list); changing `hardware` while an assignment
