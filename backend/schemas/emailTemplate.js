@@ -44,6 +44,28 @@ var DEFAULT_TEMPLATES = [
       "Hi {{name}},\n\nYou're no longer signed up for {{title}} ({{when}}).\n\nThe attachment removes it from your calendar.",
   },
   {
+    // Sent to everyone signed up, a set time before the workshop starts
+    // (Communications page, workshop automations).
+    key: "workshop_reminder",
+    subject: "Starting soon: {{title}}",
+    body:
+      "Hi {{name}},\n\n{{title}} starts soon.\n\nWhen: {{when}}\nWhere: {{location}}\nHost: {{host}}\n\nSee you there. Details are on the dashboard: {{workshopUrl}}",
+  },
+  {
+    // The optional daily list of upcoming workshops with open spots, for
+    // accepted participants who opted in to announcements.
+    key: "workshop_digest",
+    subject: "Upcoming workshops at {{orgName}}",
+    body: "Hi {{name}},\n\nThese workshops are coming up and still have room:\n\n{{workshops}}\n\nSign up on the dashboard: {{workshopsUrl}}",
+  },
+  {
+    // A message written on the Communications page. {{message}} is the text
+    // staff typed; {{link}} the optional link under it.
+    key: "announcement",
+    subject: "{{title}}",
+    body: "Hi {{name}},\n\n{{message}}\n\n{{link}}",
+  },
+  {
     // Sent to each raffle winner; {{organizerRoom}} comes from org settings.
     key: "raffle_winner",
     subject: "You won a raffle at {{title}}",

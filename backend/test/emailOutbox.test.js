@@ -476,8 +476,8 @@ test("B26: email outbox log, retry and backoff", async function emailOutbox(t) {
     assert.equal(mail.calls.length, 1);
     assert.equal(mail.calls[0].to, "in@example.com");
     assert.match(mail.calls[0].text, /Unsubscribe: http/);
-    assert.match(mail.calls[0].html, /<a href="http[^"]+\/unsubscribe\?u=/);
-    assert.match(mail.calls[0].headers["List-Unsubscribe"], /\/unsubscribe\?u=/);
+    assert.match(mail.calls[0].html, /<a href="http[^"]+\/unsubscribe\?token=/);
+    assert.match(mail.calls[0].headers["List-Unsubscribe"], /\/unsubscribe\?token=/);
     var skipped = await EmailLog.findOne({ to: "out@example.com" });
     assert.equal(skipped.status, "cancelled");
     assert.equal(String(skipped.user), String(optedOut.user._id));

@@ -7,6 +7,7 @@ var EmailTemplate = require("../schemas/emailTemplate");
 var User = require("../schemas/user");
 var applicationStatus = require("../utils/applicationStatus");
 var emailSegments = require("../utils/emailSegments");
+var emailCategories = require("../utils/emailCategories");
 var mailer = require("../utils/mailer");
 var outbox = require("../utils/outbox");
 var passwordToken = require("../utils/passwordToken");
@@ -275,6 +276,7 @@ function sendCopy(row, admin) {
     .sendTemplateEmail(row.to, row.templateKey, Object.assign({}, values), {
       retry: false,
       category: row.category,
+      preferenceCategory: row.preferenceCategory,
       userId: row.user,
       requestedBy: admin.id,
       resendOf: row._id,
@@ -684,14 +686,19 @@ function runBulk(req, res, plan) {
                   return undefined;
                 }
                 var batchId = crypto.randomBytes(8).toString("hex");
+                var preferenceCategory = bulkPreferenceCategory(plan, category, body);
                 var entries = toSend.map(function toEntry(recipient) {
-                  return {
+                  var entry = {
                     to: recipient.email,
                     user: recipient.userId,
                     templateKey: plan.templateKey,
                     category: category,
                     values: { name: recipient.name, status: statusFor(segment) },
                   };
+                  if (preferenceCategory) {
+                    entry.preferenceCategory = preferenceCategory;
+                  }
+                  return entry;
                 });
                 return outbox
                   .enqueueMany(entries, { batchId: batchId, segment: segment.key, requestedBy: req.user.id })
@@ -709,6 +716,26 @@ function runBulk(req, res, plan) {
         res.status(500).json({ error: "Could not queue the emails." });
       }
     });
+}
+
+/**
+ * The email-preference category a transactional bulk send goes out under.
+ * Built-in templates keep their own; a custom template counts as an event
+ * update (not an announcement, which only opted-in people get) unless the
+ * request names a category with `emailCategory`.
+ * @param {object} plan - See runBulk.
+ * @param {string} category - Delivery category of the send.
+ * @param {object} body - Request body.
+ * @returns {string|undefined}
+ */
+function bulkPreferenceCategory(plan, category, body) {
+  if (category !== "transactional") {
+    return undefined;
+  }
+  if (body && emailCategories.isOptional(body.emailCategory)) {
+    return body.emailCategory;
+  }
+  return emailCategories.TEMPLATE_CATEGORIES[plan.templateKey] ? undefined : "event";
 }
 
 /**

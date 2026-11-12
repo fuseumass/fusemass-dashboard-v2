@@ -101,6 +101,9 @@ export default function ApplicationForm({ mode = "account" }) {
   // that address already has an account (then they should log in instead).
   const [submittedEmail, setSubmittedEmail] = useState("");
   const [accountExists, setAccountExists] = useState(false);
+  // "Email me announcements and reminders": on unless the person already
+  // chose otherwise (it sets their announcement and event-email preferences).
+  const [emailOptIn, setEmailOptIn] = useState(true);
 
   useEffect(() => {
     if (isPublic) {
@@ -110,6 +113,15 @@ export default function ApplicationForm({ mode = "account" }) {
         .finally(() => setLoading(false));
       return;
     }
+    apiFetch("/api/auth/me/email-preferences")
+      .then((data) => {
+        if (data.updatedAt) {
+          setEmailOptIn(
+            data.preferences.announcements && data.preferences.event,
+          );
+        }
+      })
+      .catch(() => {});
     apiFetch("/api/applications/me")
       .then((data) => {
         setRound(data.round);
@@ -269,6 +281,7 @@ export default function ApplicationForm({ mode = "account" }) {
       fd.append("programmingSkills", JSON.stringify(form.programmingSkills));
       fd.append("hardwareSkills", JSON.stringify(form.hardwareSkills));
       fd.append("answers", JSON.stringify(form.answers));
+      fd.append("marketingEmailConsent", emailOptIn ? "true" : "false");
 
       if (resumeFile) {
         fd.append("resume", resumeFile);
@@ -661,6 +674,25 @@ export default function ApplicationForm({ mode = "account" }) {
               placeholder="Search skills, or type your own and press Enter"
             />
           </Field>
+        </Section>
+
+        <Separator />
+
+        <Section title="Email" single>
+          <div className="space-y-1.5">
+            <CheckRow
+              id={idOf("emailOptIn")}
+              checked={emailOptIn}
+              onChange={setEmailOptIn}
+            >
+              Email me announcements and reminders
+            </CheckRow>
+            <p className="pl-6.5 text-[0.8rem] text-muted-foreground">
+              News, workshop reminders and event updates. Emails about your
+              application still come. You can change this later from the link in
+              any email.
+            </p>
+          </div>
         </Section>
       </div>
 

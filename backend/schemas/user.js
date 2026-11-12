@@ -116,6 +116,22 @@ var userSchema = new Schema(
       type: Boolean,
       default: false,
     },
+    // Which optional emails the person wants (see utils/emailCategories).
+    // On unless turned off, from the dashboard or an email's unsubscribe
+    // link. Announcements are `marketingEmailConsent` above, which stays the
+    // one place that opt-in lives. Security email (password and sign-in
+    // links) can't be turned off.
+    emailPreferences: {
+      decisions: { type: Boolean, default: true },
+      account: { type: Boolean, default: true },
+      event: { type: Boolean, default: true },
+    },
+    // When the person last chose their preferences (null: never), so a form
+    // can tell "never asked" from "said no".
+    emailPreferencesUpdatedAt: {
+      type: Date,
+      default: null,
+    },
     // Last "set up your account" reminder (admin User groups page), so the
     // same person isn't reminded twice within 24 hours.
     setupReminderSentAt: {

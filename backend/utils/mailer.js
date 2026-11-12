@@ -6,6 +6,7 @@ var renderTemplate = require("./renderTemplate");
 var qrCode = require("./qrCode");
 var outbox = require("./outbox");
 var unsubscribe = require("./unsubscribe");
+var emailCategories = require("./emailCategories");
 
 // Every send is logged in the outbox (utils/outbox, schemas/emailLog): its
 // status, attempts and last error, so failures are visible and retryable.
@@ -251,8 +252,11 @@ function renderEmail(template, values, options) {
  * @param {string} [options.qrId] - Use this code instead of looking it up.
  * @param {object} [options.icalEvent] - Calendar invite, passed to
  *   nodemailer as-is: { filename, method, content }.
- * @param {string} [options.unsubscribeUrl] - Announcements: adds an unsubscribe
+ * @param {string} [options.unsubscribeUrl] - Optional email: adds an unsubscribe
  *   footer and the List-Unsubscribe header, and fills {{unsubscribeUrl}}.
+ * @param {object} [options.unsubscribeHeaders] - List-Unsubscribe (and
+ *   List-Unsubscribe-Post) headers to send instead of the plain one.
+ * @param {string} [options.emailCategory] - Category, for the footer wording.
  * @returns {Promise<{messageId: string, subject: string}>}
  */
 function deliverRendered(to, template, values, options) {
@@ -275,14 +279,17 @@ function deliverRendered(to, template, values, options) {
       if (opts.unsubscribeUrl && text.indexOf(opts.unsubscribeUrl) === -1) {
         // The template didn't place {{unsubscribeUrl}} itself, so add the footer.
         var orgName = process.env.ORG_NAME || "the hackathon";
-        var note = "You're receiving this because you opted in to announcements from {{orgName}}.";
+        var note = footerNote(opts.emailCategory);
+        var linkLabel = opts.emailCategory && opts.emailCategory !== "announcements" ? "Email preferences" : "Unsubscribe";
         text += "\n\n--\n" + renderTemplate(note, { orgName: orgName }) + "\nUnsubscribe: " + opts.unsubscribeUrl;
         html +=
           '<p style="color:#666;font-size:12px;margin-top:24px;">' +
           renderTemplate(note, { orgName: orgName }, { escapeHtml: true }) +
           ' <a href="' +
           opts.unsubscribeUrl +
-          '">Unsubscribe</a></p>';
+          '">' +
+          linkLabel +
+          "</a></p>";
       }
 
       var mail = {
@@ -292,7 +299,9 @@ function deliverRendered(to, template, values, options) {
         text: text,
         html: html,
       };
-      if (opts.unsubscribeUrl) {
+      if (opts.unsubscribeHeaders) {
+        mail.headers = opts.unsubscribeHeaders;
+      } else if (opts.unsubscribeUrl) {
         mail.headers = { "List-Unsubscribe": "<" + opts.unsubscribeUrl + ">" };
       }
       if (rendered.attachments.length) {
@@ -339,8 +348,25 @@ function deliverByKey(to, templateKey, values, options, lookup) {
 }
 
 /**
+ * The line above the unsubscribe link, by email category.
+ * @param {string} [category] - Email category (utils/emailCategories).
+ * @returns {string} Template text ({{orgName}} is filled in).
+ */
+function footerNote(category) {
+  if (!category || category === "announcements") {
+    return "You're receiving this because you opted in to announcements from {{orgName}}.";
+  }
+  return (
+    "You're receiving this because you have an account with {{orgName}}. You can turn off " +
+    emailCategories.NOUNS[category] +
+    " or choose which emails you get."
+  );
+}
+
+/**
  * What a log row says about how its email is delivered: the calendar invite
- * it was queued with, and the unsubscribe link announcements carry.
+ * it was queued with, and the unsubscribe link every optional email carries
+ * (an admin's test send gets the announcements one, so they see it).
  * @param {object} row - EmailLog document.
  * @returns {object} Options for deliverRendered.
  */
@@ -349,8 +375,14 @@ function optionsForRow(row) {
   if (row.options && row.options.icalEvent) {
     options.icalEvent = row.options.icalEvent;
   }
-  if ((row.category === "announcement" || row.category === "test") && row.user) {
-    options.unsubscribeUrl = unsubscribe.link(row.user);
+  if (!row.user) {
+    return options;
+  }
+  var category = row.category === "test" ? "announcements" : emailCategories.forRow(row);
+  if (emailCategories.isOptional(category)) {
+    options.emailCategory = category;
+    options.unsubscribeUrl = unsubscribe.categoryLink(row.user, category);
+    options.unsubscribeHeaders = unsubscribe.headers(row.user, category);
   }
   return options;
 }
@@ -409,6 +441,8 @@ function sendRenderedTemplate(to, template, values, options) {
  * @param {string} [options.category] - "transactional" (default) or "announcement"
  *   (only sent to people who opted in; carries an unsubscribe link).
  * @param {*} [options.userId] - The recipient's user id, when known.
+ * @param {string} [options.preferenceCategory] - Email-preference category to
+ *   send under instead of the template's own (utils/emailCategories).
  * @param {*} [options.requestedBy] - Admin who triggered the send.
  * @param {*} [options.resendOf] - Outbox row this sends again.
  * @returns {Promise<void>}
@@ -425,6 +459,7 @@ function sendTemplateEmail(to, templateKey, values, options) {
     values: values,
     options: { icalEvent: opts.icalEvent },
     category: opts.category,
+    preferenceCategory: opts.preferenceCategory,
     user: opts.userId,
     retry: opts.retry,
     sensitive: opts.sensitive,

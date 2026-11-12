@@ -2,6 +2,7 @@
 
 var express = require("express");
 var authController = require("../controllers/authController");
+var emailPreferencesController = require("../controllers/emailPreferencesController");
 var isAuthenticated = require("../utils/isAuthenticated");
 var passportUtil = require("../utils/passport");
 var googleStatus = require("../utils/googleStatus");
@@ -126,6 +127,23 @@ router.post(
   authController.unsubscribe
 );
 
+// Public: the email-preferences page behind every optional email's
+// unsubscribe link (the signed token is the proof). Lookup changes nothing;
+// update and one-click (RFC 8058, POSTed by mail clients) are idempotent.
+router.post(
+  "/email-preferences/lookup",
+  authRateLimit.unsubscribe,
+  validateBody({ token: { required: true, type: "string" } }),
+  emailPreferencesController.lookupByToken
+);
+router.post(
+  "/email-preferences/update",
+  authRateLimit.unsubscribe,
+  validateBody({ token: { required: true, type: "string" }, preferences: { required: true, type: "object" } }),
+  emailPreferencesController.updateByToken
+);
+router.post("/unsubscribe/one-click", authRateLimit.unsubscribe, emailPreferencesController.oneClick);
+
 router.post("/judge/accept", require("../controllers/judgeController").accept);
 
 // Requires a valid token.
@@ -137,5 +155,9 @@ router.patch(
   validateBody({ marketingEmailConsent: { required: true, type: "boolean" } }),
   authController.updateMe
 );
+
+// Own email preferences, one switch per optional category.
+router.get("/me/email-preferences", isAuthenticated, emailPreferencesController.getMine);
+router.put("/me/email-preferences", isAuthenticated, emailPreferencesController.updateMine);
 
 module.exports = router;

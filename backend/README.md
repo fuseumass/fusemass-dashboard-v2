@@ -119,13 +119,24 @@ hiccups. Admins see it at `/dashboard/admin/outbox` (API: `/api/admin/outbox`).
   `POST /api/admin/outbox/cancel-queued` stops a send. `resend-acceptance`
   re-sends the acceptance email (with the QR) to accepted applicants who have
   no sent one logged.
-- **Consent:** `User.marketingEmailConsent` is off by default (sign-up,
-  `PATCH /api/auth/me`, or the public application form can set it). Bulk
-  sends are `announcement` by default: only opted-in people get them, each
-  with an unsubscribe link (`/unsubscribe` page, `POST /api/auth/unsubscribe`,
-  `List-Unsubscribe` header), and consent is checked again right before each
-  send. Pass `category: "transactional"` for things people need (it ignores
-  consent), e.g. re-sending acceptance emails.
+- **Email preferences:** every template has a category
+  (`utils/emailCategories.js`): `security` (password reset, email
+  verification, judge invite: always sent, no unsubscribe link), `decisions`,
+  `account`, `event` and `announcements` (also any custom template). People
+  turn the optional ones off on their Account page or from the link at the
+  bottom of every optional email (`/unsubscribe?token=`, a signed token with
+  the email's category; `POST /api/auth/email-preferences/lookup|update`).
+  Those emails also carry `List-Unsubscribe` and, when `API_PUBLIC_URL` is
+  set, `List-Unsubscribe-Post: List-Unsubscribe=One-Click`
+  (`POST /api/auth/unsubscribe/one-click?token=`). Preferences are checked
+  again right before each send; an opted-out email is marked cancelled with
+  the reason. Announcements are opt-in (`User.marketingEmailConsent`, off by
+  default; the application form's "Email me announcements and reminders"
+  checkbox sets it and event email); the rest are on until turned off
+  (`User.emailPreferences`). Bulk sends are `announcement` by default (only
+  opted-in people); `category: "transactional"` sends to the whole segment
+  but still respects each person's category (a custom template counts as
+  `event`, or pass `emailCategory`). Old `?u=&t=` links keep working.
 - **Daily limit:** bulk sends and "retry all" refuse to go over
   `EMAIL_DAILY_LIMIT` emails per rolling 24 h (default 500, the personal Gmail
   limit; `0` turns the check off) unless the request has
@@ -140,11 +151,31 @@ Optional environment variables:
 | `EMAIL_RETRY_INTERVAL_MS` | `30000` | How often the retry worker looks for due emails |
 | `EMAIL_LOG_RETENTION_DAYS`| `90`    | How long outbox rows are kept                 |
 
+### Communications page
+
+`/dashboard/staff/communications` (moderators and admins; API under
+`/api/staff/communications`) sends announcements to email (through the
+outbox, announcements category) and to two Discord channels by webhook,
+`DISCORD_ANNOUNCEMENTS_WEBHOOK_URL` and `DISCORD_WORKSHOPS_WEBHOOK_URL`
+(Technical settings, write-only). Posts are embeds within Discord's limits,
+retried after a 429, and never ping anyone unless "Mention @everyone" is on.
+Announcements can be scheduled; history shows counts per channel, "Send
+again" and "Cancel scheduled". Workshop automations (singleton
+`CommunicationSettings`, admins edit): reminder email to everyone signed up
+and a "starting soon" Discord post 45 minutes before (each configurable), a
+daily sign-up post at 09:00 event time listing the next 24 hours of workshops
+with spots, an optional daily email digest (off by default), and a post when
+a workshop is published or moves. Each automated send is claimed first with a
+unique `AutomationLog` key (workshop, start time, person), so it happens once
+even with two processes or a restart, and a moved workshop gets new
+reminders.
+
 ### Background workers
 
-`server.js` starts two timers once it is listening: the outbox worker above
-(sends and retries emails) and domain auto-accept (accepts applications). Set
-`DISABLE_BACKGROUND_WORKERS=true` (or `1`) to keep both off; the server logs
+`server.js` starts three timers once it is listening: the outbox worker above
+(sends and retries emails), domain auto-accept (accepts applications) and the
+communications scheduler (every minute, `COMMUNICATIONS_INTERVAL_MS`). Set
+`DISABLE_BACKGROUND_WORKERS=true` (or `1`) to keep all of them off; the server logs
 "Background workers disabled." Use it for a local instance pointed at a real
 database (with no SMTP settings, so requests can't send email either). Leave it
 unset in production. It is deliberately not editable from Technical settings.
