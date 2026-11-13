@@ -924,9 +924,10 @@ function isEligible(member) {
  * eligible account on no team), else the earliest in-scope applicant who can.
  * @param {Array<object>} members - Members in leader-preference order.
  * @param {string|null} wanted - Requested leader email.
+ * @param {boolean} [onlyWanted] - Only the requested person; null otherwise.
  * @returns {object|null}
  */
-function pickLeader(members, wanted) {
+function pickLeader(members, wanted, onlyWanted) {
   function canLead(m) {
     return isEligible(m) && m.hasAccount && m.userId && !m.team;
   }
@@ -936,6 +937,9 @@ function pickLeader(members, wanted) {
   })[0];
   if (asked && canLead(asked)) {
     return asked;
+  }
+  if (onlyWanted) {
+    return null;
   }
   return (
     members.filter(function lister(m) {
@@ -1018,7 +1022,9 @@ function planApply(proposal, request, ctx) {
     plan.name = target.name;
     capacity = ctx.maxSize - (target.size || 0) - (target.invites || 0);
   } else {
-    leader = pickLeader(members, request.leaderEmail);
+    // An imported team is only started by the person the import names, so
+    // running the same import again doesn't start a second team.
+    leader = request.inviteOnly ? pickLeader(members, request.leaderEmail, true) : pickLeader(members, request.leaderEmail);
     if (!leader) {
       plan.reason = "No one here can lead a new team: everyone is already on a team or has no account.";
       return plan;
@@ -1043,7 +1049,8 @@ function planApply(proposal, request, ctx) {
       return;
     }
     capacity -= 1;
-    if (plan.action === "create" && m.hasAccount && m.userId) {
+    // Imported (suggested) teams only invite: people choose to accept.
+    if (plan.action === "create" && !request.inviteOnly && m.hasAccount && m.userId) {
       plan.add.push(m);
     } else {
       plan.invite.push(m);
