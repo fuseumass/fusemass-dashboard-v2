@@ -45,7 +45,15 @@ function parseCsv(csv) {
   });
 }
 
-async function sendInvite(user, requestedBy) {
+/**
+ * Issue a judge's invite link and email it.
+ * @param {object} user - User document.
+ * @param {*} requestedBy - Admin id.
+ * @param {boolean} [retry] - Let the outbox retry a failed send with a fresh
+ *   link (background sends). Off when the admin is told about a failure.
+ * @returns {Promise<void>}
+ */
+async function sendInvite(user, requestedBy, retry) {
   user.judgeInvitePending = true;
   var raw = await passwordToken.issuePasswordToken(
     user,
@@ -58,7 +66,7 @@ async function sendInvite(user, requestedBy) {
       name: user.name,
       inviteUrl: primaryClientOrigin() + "/judge/accept?token=" + raw,
     },
-    { retry: false, userId: user._id, requestedBy: requestedBy },
+    { retry: retry === true, userId: user._id, requestedBy: requestedBy },
   );
 }
 
@@ -110,7 +118,7 @@ async function inviteOne(row, requestedBy) {
 async function sendInvitesInBackground(users, requestedBy) {
   for (var user of users) {
     try {
-      await sendInvite(user, requestedBy);
+      await sendInvite(user, requestedBy, true);
     } catch (err) {
       console.error("Judge invite failed for " + user.email + ":", err && err.message);
     }

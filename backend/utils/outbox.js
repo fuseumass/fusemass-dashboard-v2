@@ -5,6 +5,7 @@ var Application = require("../schemas/application");
 var activeApplications = require("./activeApplications");
 var User = require("../schemas/user");
 var emailCategories = require("./emailCategories");
+var linkReissue = require("./linkReissue");
 
 /**
  * The email outbox: a log row per email, plus retries.
@@ -247,7 +248,10 @@ function send(entry, deliver) {
   var now = Date.now();
   doc.status = "queued";
   doc.attempts = 1;
-  doc.maxAttempts = redacted || entry.retry === false ? 1 : DEFAULT_MAX_ATTEMPTS;
+  // A single-use link can't be stored, so it is only retried when a fresh
+  // link can be issued for the retry (see linkReissue).
+  var oneShot = (redacted && !linkReissue.canReissue(entry.templateKey)) || entry.retry === false;
+  doc.maxAttempts = oneShot ? 1 : DEFAULT_MAX_ATTEMPTS;
   doc.lastAttemptAt = new Date(now);
   // Claimed from the start, so the retry worker can't pick it up while this
   // first attempt is still running.
@@ -554,7 +558,10 @@ function attemptStored(id) {
     if (!row) {
       return null;
     }
-    return runDelivery(row, deliverStored).then(
+    var attempt = row.redacted && linkReissue.canReissue(row.templateKey)
+      ? reissueAndDeliver(row)
+      : runDelivery(row, deliverStored);
+    return attempt.then(
       function ok() {
         return row;
       },
@@ -563,6 +570,33 @@ function attemptStored(id) {
       }
     );
   });
+}
+
+/**
+ * Retry a stored email whose single-use link wasn't kept: issue a fresh link
+ * (replacing the old one) and send that, or cancel the row when the person no
+ * longer needs it.
+ * @param {object} row - Claimed EmailLog document.
+ * @returns {Promise<void>} Rejects when the send fails (already recorded).
+ */
+function reissueAndDeliver(row) {
+  return linkReissue.freshValues(row).then(
+    function afterValues(fresh) {
+      if (fresh.skip) {
+        return finish(row, { status: "cancelled", lastError: fresh.skip, lockedUntil: null, nextAttemptAt: null });
+      }
+      return runDelivery(row, function deliverFresh(r) {
+        var plain = typeof r.toObject === "function" ? r.toObject() : Object.assign({}, r);
+        plain.values = fresh.values;
+        return deliverStored(plain);
+      });
+    },
+    function onError(err) {
+      return markFailed(row, err).then(function rethrow() {
+        throw err;
+      });
+    }
+  );
 }
 
 /**
@@ -770,7 +804,7 @@ function sendNow(id) {
   return recoverInterrupted()
     .then(function requeue() {
       return EmailLog.updateOne(
-        { _id: id, status: "failed", redacted: { $ne: true } },
+        Object.assign({ _id: id, status: "failed" }, retryableContent()),
         {
           $set: {
             status: "queued",
@@ -793,9 +827,19 @@ function sendNow(id) {
 }
 
 /**
+ * Rows whose content can be sent again: stored content, or a single-use link
+ * that can be reissued.
+ * @returns {object} Query fragment.
+ */
+function retryableContent() {
+  return { $or: [{ redacted: { $ne: true } }, { templateKey: { $in: linkReissue.REISSUABLE_KEYS } }] };
+}
+
+/**
  * Failed rows the admin's "retry all failed" may requeue. Rows that were
  * interrupted mid-send (they may already have been delivered), can never
- * succeed, or held a single-use link are left alone.
+ * succeed, or held a single-use link are left alone (the admin route reissues
+ * setup links separately).
  *
  * @param {number} limit - Most rows to return.
  * @returns {Promise<Array<*>>} The _ids.

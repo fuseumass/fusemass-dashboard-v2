@@ -350,7 +350,7 @@ test("B26: email outbox log, retry and backoff", async function emailOutbox(t) {
     assert.doesNotMatch(JSON.stringify(await EmailLog.collection.findOne({ _id: failed._id })), /SECRETTOKEN123/);
   });
 
-  await t.test("account-setup emails (single-use link in the values) are stored without the link and never retried", async function (t2) {
+  await t.test("account-setup emails (single-use link in the values) are stored without the link; a retry needs a fresh one", async function (t2) {
     await resetFixtures();
     var mail = flaky.mockFlakyTransport(t2);
     var link = "http://localhost:3000/reset-password?token=SETUPSECRET456&setup=1";
@@ -362,10 +362,16 @@ test("B26: email outbox log, retry and backoff", async function emailOutbox(t) {
 
     var row = await EmailLog.findOne({ to: "setup@example.com" });
     assert.equal(row.redacted, true);
-    assert.equal(row.status, "failed");
+    assert.equal(row.status, "queued", "retried later with a freshly issued link (utils/linkReissue)");
     assert.equal(row.values, undefined);
     assert.doesNotMatch(JSON.stringify(await EmailLog.collection.findOne({ _id: row._id })), /SETUPSECRET456/);
-    assert.equal(await outbox.processDue({ force: true }), 0);
+    // No account behind the address, so there is no link to issue: cancelled.
+    await makeDue(row._id);
+    await outbox.processDue({ force: true });
+    var retried = await EmailLog.findById(row._id);
+    assert.equal(retried.status, "cancelled");
+    assert.match(retried.lastError, /no account/);
+    assert.ok(mail.calls.every(function noOldLink(c) { return !/SETUPSECRET456/.test(c.text || ""); }));
 
     // Any template carrying such a link is treated the same way.
     await mailer.sendTemplateEmail("other@example.com", "application_received", { name: "O", extra: link });

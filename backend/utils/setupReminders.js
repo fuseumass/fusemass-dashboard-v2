@@ -116,14 +116,10 @@ async function remindOne(userId, adminId) {
         return true;
       },
       function onMailError(err) {
-        // Logged as failed in the outbox. Release the claim so the next run
-        // can try this person again instead of waiting a day.
-        console.error("Account setup reminder failed:", err && err.message);
-        return User.updateOne({ _id: user._id, setupReminderSentAt: now }, { $unset: { setupReminderSentAt: 1 } }).then(
-          function released() {
-            return false;
-          }
-        );
+        // The outbox retries it with a fresh link (see linkReissue), so the
+        // claim stays: releasing it could send this person a second reminder.
+        console.error("Account setup reminder failed (will retry):", err && err.message);
+        return false;
       }
     );
 }
