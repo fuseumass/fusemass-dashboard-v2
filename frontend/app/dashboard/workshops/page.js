@@ -65,6 +65,8 @@ function WorkshopsList() {
     {
       accessorKey: "title",
       header: "Workshop",
+      // Long titles and rooms wrap instead of pushing Sign up off screen.
+      meta: { className: "min-w-48 whitespace-normal" },
       cell: ({ row }) => (
         <div className="max-w-sm space-y-1">
           <Link
@@ -73,18 +75,37 @@ function WorkshopsList() {
           >
             {row.original.title}
           </Link>
-          <p className="text-muted-foreground">{row.original.description}</p>
+          {row.original.description
+            ? <p className="line-clamp-3 text-muted-foreground">
+                {row.original.description}
+              </p>
+            : null}
         </div>
       ),
     },
-    { accessorKey: "host", header: "Host" },
+    {
+      accessorKey: "host",
+      header: "Host",
+      meta: {
+        className:
+          "min-w-28 max-w-48 whitespace-normal [overflow-wrap:anywhere]",
+      },
+    },
     {
       accessorKey: "startsAt",
       header: "Time",
+      meta: { className: "min-w-32 max-w-44 whitespace-normal" },
       cell: ({ row }) =>
         formatRange(row.original.startsAt, row.original.endsAt),
     },
-    { accessorKey: "location", header: "Place" },
+    {
+      accessorKey: "location",
+      header: "Place",
+      meta: {
+        className:
+          "min-w-28 max-w-48 whitespace-normal [overflow-wrap:anywhere]",
+      },
+    },
     {
       id: "spots",
       header: "Spots left",
