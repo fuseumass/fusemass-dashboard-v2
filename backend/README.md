@@ -462,7 +462,7 @@ emailed on acceptance (or via "Forgot password").
 | GET    | `/api/admin/groups/export.csv`  | admin     | The group as a formula-safe CSV: contact and event fields plus every form answer |
 | GET    | `/api/admin/team-builder/proposals` | admin | Proposed teams from the teammates question (`?round=&statuses=accepted,pending`), flags, unmatched answers, recent runs |
 | POST   | `/api/admin/team-builder/notify-conflicts` | admin | Email every lister in a conflicting group once (`{ round?, statuses?, dryRun?, allowOverLimit? }`) |
-| POST   | `/api/admin/team-builder/apply` | admin     | Create proposed teams / merge into existing ones (`{ proposals: [{ memberEmails, name?, leaderEmail?, mergeIntoTeamId? }], round?, statuses?, dryRun?, allowOverLimit? }`) |
+| POST   | `/api/admin/team-builder/apply` | admin     | Create proposed teams / merge into existing ones (`{ proposals: [{ memberEmails, name?, leaderEmail?, mergeIntoTeamId? }], round?, statuses?, dryRun?, allowOverLimit? }`). Or import suggested teams with `{ imported: [{ emails }] }` instead of `proposals`: the first in-scope applicant in each team starts it, everyone else is invited (never added), and listed teammates are ignored |
 | GET    | `/api/admin/team-builder/unteamed` | admin  | Accepted people on no team and with no invite, split by research-study answer |
 | GET    | `/api/admin/team-builder/unteamed.csv` | admin | The same as CSV (`?answer=<value>` or `__none__` for one group) |
 | GET    | `/api/admin/setup-reminders`    | admin     | Accepted people with no password or Google sign-in, and how many can be reminded now |
