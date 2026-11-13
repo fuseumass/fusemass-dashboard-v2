@@ -98,8 +98,8 @@ const plural = (n, word) => `${n} ${word}${n === 1 ? "" : "s"}`;
 
 /**
  * Admin dialog: upload suggested teams (a CSV with team and email columns).
- * For each team the first accepted applicant starts it and everyone else is
- * invited, so people choose whether to join. Always previews first.
+ * Each member is emailed the suggestion; nobody is on a team until they
+ * accept. Always previews first.
  * @param {{open: boolean, onOpenChange: function, onDone: function}} props
  * @returns {JSX.Element}
  */
@@ -127,9 +127,9 @@ export default function ImportTeamsDialog({ open, onOpenChange, onDone }) {
     setFile(parsed);
     setBusy(true);
     try {
-      const res = await apiFetch("/api/admin/team-builder/apply", {
+      const res = await apiFetch("/api/admin/team-builder/suggest", {
         method: "POST",
-        body: JSON.stringify({ imported: parsed.teams, dryRun: true }),
+        body: JSON.stringify({ teams: parsed.teams, dryRun: true }),
       });
       setPreview(res);
     } catch (err) {
@@ -142,12 +142,12 @@ export default function ImportTeamsDialog({ open, onOpenChange, onDone }) {
   async function submit() {
     setBusy(true);
     try {
-      const res = await apiFetch("/api/admin/team-builder/apply", {
+      const res = await apiFetch("/api/admin/team-builder/suggest", {
         method: "POST",
-        body: JSON.stringify({ imported: file.teams }),
+        body: JSON.stringify({ teams: file.teams }),
       });
       notifySuccess(
-        `${plural(res.totals.created, "team")} started, ${plural(res.totals.invited, "invite")} sent`,
+        `${plural(res.totals.suggested, "team")} suggested, ${plural(res.queued, "email")} on the way`,
       );
       reset();
       onOpenChange(false);
@@ -184,9 +184,10 @@ export default function ImportTeamsDialog({ open, onOpenChange, onDone }) {
           <DialogTitle>Import suggested teams</DialogTitle>
           <DialogDescription>
             Upload a CSV with a team column and an email column, one row per
-            person. The first accepted applicant in each team starts it and
-            everyone else gets an invite they can accept or decline. People
-            already on a team or invited are left alone.
+            person. Everyone in a team gets an email suggesting it and sees it
+            on their Team page. Nobody is put on a team: the first person to
+            accept starts it and the others join when they accept. People
+            already on a team, already suggested, judges and staff are left out.
           </DialogDescription>
         </DialogHeader>
         <div className="space-y-2">
@@ -209,13 +210,21 @@ export default function ImportTeamsDialog({ open, onOpenChange, onDone }) {
               <p>
                 {plural(file.teams.length, "team")} and{" "}
                 {plural(file.people, "person")} in the file.{" "}
-                {plural(preview.totals.created, "team")} will be started and{" "}
-                {plural(preview.totals.invited, "invite")} sent.
+                {plural(preview.totals.suggested, "team")} will be suggested and{" "}
+                {plural(preview.totals.people, "person")} emailed.
               </p>
+              {preview.emailConfigured === false
+                ? <Alert variant="destructive">
+                    <AlertDescription>
+                      Email isn't set up on the server, so the suggestions will
+                      only show on people's Team page.
+                    </AlertDescription>
+                  </Alert>
+                : null}
               {preview.overLimit
                 ? <Alert variant="destructive">
                     <AlertDescription>
-                      These invites would go over the daily email limit. Import
+                      These emails would go over the daily email limit. Import
                       fewer teams or wait.
                     </AlertDescription>
                   </Alert>
@@ -248,11 +257,11 @@ export default function ImportTeamsDialog({ open, onOpenChange, onDone }) {
             onClick={submit}
             loading={busy}
             disabled={
-              !preview || preview.overLimit || !preview.totals.created || busy
+              !preview || preview.overLimit || !preview.totals.suggested || busy
             }
           >
             <Upload aria-hidden="true" />
-            Start teams and send invites
+            Suggest teams and send emails
           </Button>
         </DialogFooter>
       </DialogContent>

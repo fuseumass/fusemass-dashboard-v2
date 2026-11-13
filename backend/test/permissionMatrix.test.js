@@ -221,6 +221,8 @@ var MATRIX = [
   row("DELETE", "/api/teams/me/invites/:email", "authenticated"),
   row("POST", "/api/teams/invites/:teamId/accept", "authenticated", { use: { teamId: "team" } }),
   row("POST", "/api/teams/invites/:teamId/decline", "authenticated", { use: { teamId: "team" } }),
+  row("POST", "/api/teams/suggestions/:id/accept", "authenticated"),
+  row("POST", "/api/teams/suggestions/:id/decline", "authenticated"),
 
   // ---- Moderators and admins: reviewing and event-day staff ---------------
   row("GET", "/api/admin/applications", "moderator"),
@@ -309,6 +311,11 @@ var MATRIX = [
   row("POST", "/api/admin/team-builder/apply", "admin", {
     body: function body(ids) {
       return { proposals: [{ memberEmails: [ids.attendeeEmail, "sneaky@example.com"], name: "Sneaky team" }] };
+    },
+  }),
+  row("POST", "/api/admin/team-builder/suggest", "admin", {
+    body: function body(ids) {
+      return { teams: [{ emails: [ids.attendeeEmail, "sneaky@example.com"] }], dryRun: true };
     },
   }),
   row("POST", "/api/admin/team-builder/notify-conflicts", "admin", {

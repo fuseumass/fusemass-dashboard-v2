@@ -6,7 +6,6 @@ var Application = require("../schemas/application");
 var activeApplications = require("../utils/activeApplications");
 var ApplicationRound = require("../schemas/applicationRound");
 var OrgSettings = require("../schemas/orgSettings");
-var validator = require("validator");
 var Team = require("../schemas/team");
 var TeamBuilderRun = require("../schemas/teamBuilderRun");
 var TeamConflictNotice = require("../schemas/teamConflictNotice");
@@ -117,85 +116,12 @@ function indexTeams(teams) {
 }
 
 /**
- * Validate imported (suggested) teams: { imported: [{ emails: [...] }] }.
- * @param {*} list - body.imported.
- * @param {number} maxSize - Largest team.
- * @returns {{teams: (Array<Array<string>>|undefined), error: (string|undefined)}}
- */
-function readImported(list, maxSize) {
-  if (!Array.isArray(list) || !list.length) {
-    return { error: "Send imported: a list of { emails } teams." };
-  }
-  if (list.length > MAX_PROPOSALS_PER_RUN) {
-    return { error: "At most " + MAX_PROPOSALS_PER_RUN + " teams per import." };
-  }
-  var seen = {};
-  var teams = [];
-  for (var i = 0; i < list.length; i++) {
-    var item = list[i];
-    if (!item || typeof item !== "object" || !Array.isArray(item.emails)) {
-      return { error: "Team " + (i + 1) + " needs emails (a list)." };
-    }
-    var emails = [];
-    for (var j = 0; j < item.emails.length; j++) {
-      var email = typeof item.emails[j] === "string" ? teamProposals.normalizeEmail(item.emails[j]) : "";
-      if (!email || !validator.isEmail(email)) {
-        return { error: "Team " + (i + 1) + " has an invalid email: " + String(item.emails[j]) + "." };
-      }
-      var key = teamProposals.matchKey(email);
-      if (seen[key]) {
-        return { error: email + " is in more than one team (teams " + seen[key] + " and " + (i + 1) + ")." };
-      }
-      seen[key] = i + 1;
-      emails.push(email);
-    }
-    if (emails.length < 2 || emails.length > maxSize) {
-      return { error: "Team " + (i + 1) + " has " + emails.length + " people; teams are 2 to " + maxSize + "." };
-    }
-    teams.push(emails);
-  }
-  return { teams: teams };
-}
-
-/**
- * Replace everyone's listed teammates with the imported teams, so the
- * proposals are exactly those teams. In each team the first person with an
- * in-scope application leads (lists the rest); everyone else lists nobody
- * and is invited.
- * @param {Array<object>} applications - From loadContext (mutated).
- * @param {Array<Array<string>>} teams - From readImported.
- * @returns {Array<object>} Apply requests, one per team.
- */
-function applyImported(applications, teams) {
-  var appByKey = {};
-  applications.forEach(function index(app) {
-    app.teammates = "";
-    if (app.inScope) {
-      appByKey[teamProposals.matchKey(app.email)] = app;
-    }
-  });
-  return teams.map(function toRequest(emails) {
-    var leaderEmail = emails.filter(function hasApp(email) {
-      return appByKey[teamProposals.matchKey(email)];
-    })[0] || "";
-    if (leaderEmail) {
-      appByKey[teamProposals.matchKey(leaderEmail)].teammates = emails
-        .filter(function others(email) {
-          return email !== leaderEmail;
-        })
-        .join(", ");
-    }
-    return { memberEmails: emails, name: "", leaderEmail: leaderEmail, mergeIntoTeamId: "", inviteOnly: true };
-  });
-}
-
-/**
  * Load everything the proposals are built from.
  * @param {object} round - The round (lean, with formConfig).
  * @param {Array<string>} statuses - Statuses in scope.
  * @returns {Promise<object>} { questions, applications, input, teams }
  */
-async function loadContext(round, statuses, imported) {
+async function loadContext(round, statuses) {
   var questions = teamProposals.teamQuestions(round.formConfig);
   var settings = await OrgSettings.getSingleton();
   var maxSize = settings.teamMaxSize || 4;
@@ -221,8 +147,6 @@ async function loadContext(round, statuses, imported) {
         doc: doc,
       };
     });
-
-  var importedRequests = imported ? applyImported(applications, imported) : null;
 
   // Accounts for the listed emails. Gmail aliases are compared by match key,
   // so every Gmail account is a candidate.
@@ -252,7 +176,6 @@ async function loadContext(round, statuses, imported) {
   return {
     questions: questions,
     applications: applications,
-    importedRequests: importedRequests,
     maxSize: maxSize,
     teams: teams,
     input: {
@@ -743,20 +666,10 @@ function totalsOf(results) {
 async function applyProposals(req, res) {
   try {
     var body = req.body || {};
-    var importing = body.imported !== undefined;
-    var parsed = importing ? { requests: [] } : readApplyBody(body);
+    var parsed = readApplyBody(body);
     if (parsed.error) {
       res.status(400).json({ error: parsed.error });
       return;
-    }
-    var imported = null;
-    if (importing) {
-      var settings = await OrgSettings.getSingleton();
-      imported = readImported(body.imported, settings.teamMaxSize || 4);
-      if (imported.error) {
-        res.status(400).json({ error: imported.error });
-        return;
-      }
     }
     var scope = await readScope(res, body.round, body.statuses);
     if (!scope) {
@@ -766,10 +679,7 @@ async function applyProposals(req, res) {
       res.status(400).json({ error: "There is no application round to build teams from." });
       return;
     }
-    var ctx = await loadContext(scope.round, scope.statuses, imported ? imported.teams : null);
-    if (importing) {
-      parsed = { requests: ctx.importedRequests };
-    }
+    var ctx = await loadContext(scope.round, scope.statuses);
     var built = teamProposals.buildProposals(ctx.input);
     var byKey = {};
     built.proposals.forEach(function index(p) {
