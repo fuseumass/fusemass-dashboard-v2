@@ -42,7 +42,7 @@ function escapeRegExp(text) {
  * @returns {{mode: string, note: (string|undefined)}}
  */
 function resendMode(row) {
-  var isSetupLink = row.templateKey === "account_setup";
+  var isSetupLink = row.templateKey === "account_setup" || row.templateKey === "account_setup_reminder";
   if (row.status === "cancelled") {
     return { mode: "none", note: "Cancelled emails aren't sent. Start a new send instead." };
   }
@@ -320,10 +320,11 @@ function reissueSetupLink(row, admin) {
           return EmailLog.findOne({ resendOf: row._id }).sort({ createdAt: -1 });
         })
         .then(function afterSend(newRow) {
-          if (newRow && newRow.status === "sent" && row.status === "failed") {
-            // The failed row is dealt with; keep it out of the failures list.
+          if (newRow && newRow.status === "sent" && (row.status === "failed" || row.status === "queued")) {
+            // The failed row is dealt with: keep it out of the failures list,
+            // and stop a pending automatic retry from sending a second email.
             return EmailLog.updateOne(
-              { _id: row._id, status: "failed" },
+              { _id: row._id, status: { $in: ["failed", "queued"] }, lockedUntil: null },
               { $set: { status: "cancelled", lastError: "Replaced by a newly issued link." } }
             ).then(function done() {
               return { row: newRow };

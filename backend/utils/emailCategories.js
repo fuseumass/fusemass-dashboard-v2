@@ -62,6 +62,7 @@ var TEMPLATE_CATEGORIES = {
 
   checked_in: "event",
   team_invite: "event",
+  team_suggestion: "event",
   team_conflict: "event",
   hardware_checkout: "event",
   hardware_return: "event",

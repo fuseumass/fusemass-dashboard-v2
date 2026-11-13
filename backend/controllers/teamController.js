@@ -5,6 +5,8 @@ var mongoose = require("mongoose");
 var validator = require("validator");
 
 var Team = require("../schemas/team");
+var TeamSuggestion = require("../schemas/teamSuggestion");
+var teamProposals = require("../utils/teamProposals");
 var User = require("../schemas/user");
 var Application = require("../schemas/application");
 var activeApplications = require("../utils/activeApplications");
@@ -92,11 +94,13 @@ function sendMine(req, res, status) {
     var me = results[1];
     var maxSize = results[2];
     var email = me ? me.email : "";
-    return Team.find({ "invites.email": email })
-      .select("name members invites lockedAt")
-      .populate("invites.invitedBy", "name")
-      .then(function afterInvites(teams) {
+    return Promise.all([
+      Team.find({ "invites.email": email }).select("name members invites lockedAt").populate("invites.invitedBy", "name"),
+      team ? [] : suggestionsFor(email, maxSize),
+    ]).then(function afterInvites(found) {
+        var teams = found[0];
         res.status(status || 200).json({
+          suggestions: found[1],
           team: team ? teamView(team, maxSize) : null,
           invites: teams.map(function toInvite(t) {
             var invite = t.invites.find(function mine(i) {
@@ -115,6 +119,131 @@ function sendMine(req, res, status) {
         });
       });
   });
+}
+
+/**
+ * Open suggested teams for someone who isn't on a team: who is in each and
+ * whether they've joined.
+ * @param {string} email - The caller's email.
+ * @param {number} maxSize - Maximum team size.
+ * @returns {Promise<Array<object>>}
+ */
+function suggestionsFor(email, maxSize) {
+  if (!email) {
+    return Promise.resolve([]);
+  }
+  return TeamSuggestion.find({ members: { $elemMatch: { email: email, status: "pending" } } })
+    .populate("team", "name members lockedAt")
+    .sort({ createdAt: 1 })
+    .lean()
+    .then(function toView(list) {
+      return list.map(function view(s) {
+        var team = s.team || null;
+        return {
+          _id: s._id,
+          team: team ? { name: team.name, size: team.members.length, locked: Boolean(team.lockedAt) } : null,
+          full: Boolean(team) && team.members.length >= maxSize,
+          members: s.members.map(function member(m) {
+            return { name: m.name || m.email, status: m.status, me: m.email === email };
+          }),
+        };
+      });
+    });
+}
+
+var SUGGESTION_GONE = "That suggested team isn't open anymore.";
+
+/**
+ * POST /api/teams/suggestions/:id/accept
+ * Accept a suggested team. The first person to accept starts the team and
+ * leads it; later accepters join that team while it has room.
+ * @param {object} req - Express request.
+ * @param {object} res - Express response.
+ * @returns {Promise<void>}
+ */
+async function acceptSuggestion(req, res) {
+  try {
+    if (!mongoose.isValidObjectId(req.params.id)) {
+      res.status(404).json({ error: SUGGESTION_GONE });
+      return;
+    }
+    var me = await User.findById(req.user.id).select("name email");
+    if (!me) {
+      res.status(401).json({ error: "Authentication required." });
+      return;
+    }
+    if (await Team.exists({ members: me._id })) {
+      res.status(409).json({ error: ALREADY_ON_A_TEAM });
+      return;
+    }
+    var suggestion = await TeamSuggestion.findOne({
+      _id: req.params.id,
+      members: { $elemMatch: { email: me.email, status: "pending" } },
+    });
+    if (!suggestion) {
+      res.status(404).json({ error: SUGGESTION_GONE });
+      return;
+    }
+    var maxSize = await maxTeamSize();
+    var team = suggestion.team ? await Team.findById(suggestion.team) : null;
+    if (team) {
+      if (team.lockedAt) {
+        res.status(400).json({ error: "That team is checked in for judging, so it can't take new members." });
+        return;
+      }
+      var full = {};
+      full["members." + (maxSize - 1)] = { $exists: false };
+      var joined = await Team.findOneAndUpdate(Object.assign({ _id: team._id, lockedAt: null }, full), {
+        $push: { members: me._id },
+      });
+      if (!joined) {
+        res.status(400).json({ error: "That team is full." });
+        return;
+      }
+    } else {
+      // Nobody has accepted yet (or everyone left): start the team.
+      var taken = {};
+      (await Team.distinct("nameKey")).forEach(function mark(key) {
+        taken[key] = true;
+      });
+      var name = teamProposals.proposalTeamName(me.name || me.email, taken, Team.nameKeyFor);
+      team = await Team.create({ name: name, nameKey: Team.nameKeyFor(name), leader: me._id, members: [me._id] });
+      suggestion.team = team._id;
+    }
+    suggestion.members.forEach(function mark(m) {
+      if (m.email === me.email) {
+        m.status = "accepted";
+        m.user = me._id;
+        m.respondedAt = new Date();
+      }
+    });
+    await suggestion.save();
+    hardwareTeamChange(req.user.id);
+    await sendMine(req, res);
+  } catch (err) {
+    sendError(res, "acceptSuggestion", err, { members: ALREADY_ON_A_TEAM });
+  }
+}
+
+/**
+ * POST /api/teams/suggestions/:id/decline
+ * @param {object} req - Express request.
+ * @param {object} res - Express response.
+ * @returns {Promise<void>}
+ */
+async function declineSuggestion(req, res) {
+  try {
+    var me = await User.findById(req.user.id).select("email");
+    if (me && mongoose.isValidObjectId(req.params.id)) {
+      await TeamSuggestion.updateOne(
+        { _id: req.params.id, members: { $elemMatch: { email: me.email, status: "pending" } } },
+        { $set: { "members.$.status": "declined", "members.$.respondedAt": new Date() } }
+      );
+    }
+    await sendMine(req, res);
+  } catch (err) {
+    sendError(res, "declineSuggestion", err);
+  }
 }
 
 /**
@@ -562,6 +691,8 @@ module.exports = {
   cancelInvite: guarded(cancelInvite),
   acceptInvite: guarded(acceptInvite),
   declineInvite: guarded(declineInvite),
+  acceptSuggestion: guarded(acceptSuggestion),
+  declineSuggestion: guarded(declineSuggestion),
   leave: guarded(leave),
   removeMember: guarded(removeMember),
   listAllTeams: listAllTeams,

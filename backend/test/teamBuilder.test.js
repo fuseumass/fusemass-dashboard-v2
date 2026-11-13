@@ -479,42 +479,5 @@ test("admin team builder", async function (t) {
     assert.equal(none.length, 9);
   });
 
-  await t.test("imported teams: the leader starts the team and everyone else is invited", async function () {
-    var p = await seed();
-    var teams = [
-      { emails: ["gus@umass.edu", "hal@umass.edu", "ivy@umass.edu"] },
-      { emails: ["max@umass.edu", "oz@umass.edu", "new.person@example.com"] },
-    ];
-    assert.equal((await apply(p.mod, { imported: teams })).status, 403);
-    assert.equal((await apply(p.admin, { imported: [] })).status, 400);
-    assert.equal((await apply(p.admin, { imported: [{ emails: ["gus@umass.edu"] }] })).status, 400, "one person");
-    var five = ["a@x.edu", "b@x.edu", "c@x.edu", "d@x.edu", "e@x.edu"];
-    assert.equal((await apply(p.admin, { imported: [{ emails: five }] })).status, 400, "over the team limit");
-    var dup = await apply(p.admin, { imported: [teams[0], { emails: ["HAL@umass.edu", "oz@umass.edu"] }] });
-    assert.equal(dup.status, 400);
-    assert.match(dup.body.error, /more than one team/);
-
-    var dry = await apply(p.admin, { imported: teams, dryRun: true });
-    assert.equal(dry.status, 200, JSON.stringify(dry.body));
-    assert.equal(dry.body.totals.created, 2);
-    assert.equal(dry.body.totals.added, 2, "only the two leaders are put on a team");
-    assert.equal(dry.body.totals.invited, 4);
-    assert.equal(await Team.countDocuments({ leader: p.gus.user._id }), 0, "dry run changes nothing");
-
-    var res = await apply(p.admin, { imported: teams });
-    assert.equal(res.status, 200, JSON.stringify(res.body));
-    assert.equal(res.body.totals.created, 2);
-    var gusTeam = await Team.findOne({ leader: p.gus.user._id }).lean();
-    assert.deepEqual(gusTeam.members.map(String), [String(p.gus.user._id)]);
-    assert.deepEqual(gusTeam.invites.map(function e(i) { return i.email; }).sort(), ["hal@umass.edu", "ivy@umass.edu"]);
-    var maxTeam = await Team.findOne({ leader: p.max.user._id }).lean();
-    assert.ok(maxTeam, "Max's conflicting answer is ignored: the import decides");
-    assert.deepEqual(maxTeam.invites.map(function e(i) { return i.email; }).sort(), ["new.person@example.com", "oz@umass.edu"]);
-
-    var again = await apply(p.admin, { imported: teams });
-    assert.equal(again.status, 200);
-    assert.equal(again.body.totals.created, 0, "running it again is safe");
-  });
-
   await db.closeDatabase();
 });

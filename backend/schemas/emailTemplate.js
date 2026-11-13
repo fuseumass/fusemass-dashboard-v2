@@ -157,6 +157,14 @@ var DEFAULT_TEMPLATES = [
       "Hi {{name}},\n\nYou're accepted to {{orgName}}, but your dashboard account isn't set up yet. You'll need it to see your check-in QR code, join a team and get event updates.\n\nSet your password here (this link works for 7 days and replaces any earlier link we sent):\n{{setupUrl}}\n\nIf it has expired, use \"Forgot password\" on the login page with this email address.",
   },
   {
+    // Sent to everyone in a suggested team (Teams page -> Import suggested
+    // teams). Nobody is on the team yet: the first to accept starts it.
+    key: "team_suggestion",
+    subject: "Your {{orgName}} dream team is waiting",
+    body:
+      "Hi {{name}},\n\nBecause you asked for help finding a team, we've put together a suggested team for you at {{orgName}}: {{memberNames}}.\n\nLog in to accept or decline: {{teamsUrl}}\n\nThe team starts as soon as the first person accepts, and everyone who accepts after that joins it. You can still leave or join a different team later.\n\nIf you applied without an account and haven't set a password yet, use \"Forgot password\" on the login page with this email address.",
+  },
+  {
     // Sent when someone invites this email to their team. The invitee may
     // not have a password yet (applied without an account).
     key: "team_invite",

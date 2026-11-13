@@ -19,5 +19,7 @@ router.post("/me/invites", isAuthenticated, authRateLimit.teamInvite, teamContro
 router.delete("/me/invites/:email", isAuthenticated, teamController.cancelInvite);
 router.post("/invites/:teamId/accept", isAuthenticated, teamController.acceptInvite);
 router.post("/invites/:teamId/decline", isAuthenticated, teamController.declineInvite);
+router.post("/suggestions/:id/accept", isAuthenticated, teamController.acceptSuggestion);
+router.post("/suggestions/:id/decline", isAuthenticated, teamController.declineSuggestion);
 
 module.exports = router;

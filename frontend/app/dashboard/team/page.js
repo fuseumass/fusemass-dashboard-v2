@@ -112,6 +112,12 @@ export default function TeamPage() {
 
         {!data && !error ? <CardSkeleton lines={4} /> : null}
 
+        {!team && data?.suggestions?.length
+          ? data.suggestions.map((s) => (
+              <Suggestion key={s._id} suggestion={s} busy={busy} act={act} />
+            ))
+          : null}
+
         {data?.invites?.length
           ? <Invites
               invites={data.invites}
@@ -139,6 +145,90 @@ export default function TeamPage() {
             : null}
       </div>
     </div>
+  );
+}
+
+const SUGGESTION_STATUS = {
+  accepted: "Joined",
+  pending: "Not answered yet",
+  declined: "Declined",
+};
+
+// A team staff suggested because the person asked for help finding one.
+// Nobody is on it until they accept; the first to accept starts the team.
+function Suggestion({ suggestion, busy, act }) {
+  const { _id: id, team, full, members } = suggestion;
+  const others = members.filter((m) => !m.me);
+  const blocked = full || team?.locked;
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>A suggested team for you</CardTitle>
+        <CardDescription>
+          Because you asked for help finding a team, we put together a suggested
+          team for you.{" "}
+          {team
+            ? `It has started as ${team.name}. Accept to join it.`
+            : "Nobody has accepted yet: accept to start the team, and the others join when they accept."}
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <ul className="divide-y rounded-lg border">
+          {others.map((m, i) => (
+            <li
+              key={`${m.name}-${i}`}
+              className="flex flex-wrap items-center justify-between gap-2 px-3 py-2"
+            >
+              <span className="min-w-0 break-words text-sm">{m.name}</span>
+              <Badge
+                variant={m.status === "accepted" ? "secondary" : "outline"}
+              >
+                {SUGGESTION_STATUS[m.status] || m.status}
+              </Badge>
+            </li>
+          ))}
+        </ul>
+        {blocked
+          ? <p className="text-sm text-muted-foreground">
+              {team?.locked
+                ? "This team is checked in for judging, so it can't take new members."
+                : "This team is full."}
+            </p>
+          : null}
+        <div className="flex flex-wrap gap-2">
+          <Button
+            type="button"
+            disabled={Boolean(blocked) || Boolean(busy)}
+            loading={busy === `suggest-accept-${id}`}
+            onClick={() =>
+              act(
+                `suggest-accept-${id}`,
+                `/api/teams/suggestions/${id}/accept`,
+                { method: "POST" },
+                team ? `You joined ${team.name}.` : "You started the team.",
+              )
+            }
+          >
+            Accept
+          </Button>
+          <Button
+            type="button"
+            variant="outline"
+            disabled={Boolean(busy)}
+            loading={busy === `suggest-decline-${id}`}
+            onClick={() =>
+              act(
+                `suggest-decline-${id}`,
+                `/api/teams/suggestions/${id}/decline`,
+                { method: "POST" },
+              )
+            }
+          >
+            Decline
+          </Button>
+        </div>
+      </CardContent>
+    </Card>
   );
 }
 

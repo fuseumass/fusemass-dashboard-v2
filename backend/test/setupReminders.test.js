@@ -102,12 +102,19 @@ test("account setup reminders", async function (t) {
     assert.equal(await setupReminders.remindOne(reminded._id, p.admin.user._id), false);
   });
 
-  await t.test("a failed send releases the claim so the next run retries", async function (t2) {
+  await t.test("a failed send is retried with a fresh link, and skipped once it isn't needed", async function (t2) {
     var nodemailer = require("nodemailer");
-    t2.mock.method(nodemailer, "createTransport", function failing() {
+    var outbox = require("../utils/outbox");
+    var failing = true;
+    var sent = [];
+    t2.mock.method(nodemailer, "createTransport", function transport() {
       return {
-        sendMail: function sendMail() {
-          return Promise.reject(Object.assign(new Error("connect ECONNREFUSED"), { code: "ECONNECTION" }));
+        sendMail: function sendMail(options) {
+          if (failing) {
+            return Promise.reject(Object.assign(new Error("connect ECONNREFUSED"), { code: "ECONNECTION" }));
+          }
+          sent.push(options);
+          return Promise.resolve({ messageId: "retry-" + sent.length });
         },
       };
     });
@@ -115,10 +122,31 @@ test("account setup reminders", async function (t) {
     var res = await request(app).post("/api/admin/setup-reminders").set(as(p.admin)).send({});
     assert.equal(res.body.queued, 3);
     await setupReminders.idle();
+
     var user = await User.findOne({ email: "nopass1@example.com" });
-    assert.equal(user.setupReminderSentAt, undefined);
-    var summary = await request(app).get("/api/admin/setup-reminders").set(as(p.admin));
-    assert.equal(summary.body.eligible, 3, "failed rows don't count as a recent setup email");
+    assert.ok(user.setupReminderSentAt, "the claim is kept, so the next run doesn't remind them twice");
+    var firstToken = user.resetPasswordToken;
+    var row = await EmailLog.findOne({ to: "nopass1@example.com", templateKey: "account_setup_reminder" });
+    assert.equal(row.status, "queued", "queued for a retry");
+    assert.equal(row.maxAttempts, 6);
+    assert.equal(row.redacted, true, "the link itself is never stored");
+    assert.equal(row.values, undefined);
+
+    failing = false;
+    outbox.resetBreaker();
+    var after = await outbox.sendNow(row._id);
+    assert.equal(after.status, "sent");
+    assert.equal(sent.length, 1);
+    assert.match(sent[0].text, /reset-password\?token=[a-f0-9]+&setup=1/);
+    user = await User.findOne({ email: "nopass1@example.com" });
+    assert.notEqual(user.resetPasswordToken, firstToken, "the retry issued a fresh link");
+
+    var row2 = await EmailLog.findOne({ to: "nopass2@example.com", templateKey: "account_setup_reminder" });
+    await User.updateOne({ email: "nopass2@example.com" }, { $set: { passwordHash: "set-meanwhile" } });
+    var skipped = await outbox.sendNow(row2._id);
+    assert.equal(skipped.status, "cancelled");
+    assert.match(skipped.lastError, /set a password/);
+    assert.equal(sent.length, 1, "nothing sent to someone who no longer needs it");
   });
 
   await t.test("stays under the daily sending limit unless told otherwise", async function (t2) {
