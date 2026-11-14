@@ -39,7 +39,7 @@ const STATUS_LABELS = {
 
 // Discord authorization URL; Discord returns an OAuth `code` to this page.
 const DISCORD_AUTH_URL =
-  "https://discord.com/oauth2/authorize?client_id=1570111089184604180&response_type=code&redirect_uri=http%3A%2F%2Flocalhost%3A3000%2Fdashboard&scope=identify";
+  "https://discord.com/oauth2/authorize?client_id=1570979274213687378&response_type=code&redirect_uri=http%3A%2F%2Flocalhost%3A3000%2Fdashboard&scope=identify";
 
 export default function DashboardHome() {
   const user = useUser();

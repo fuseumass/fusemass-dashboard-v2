@@ -51,9 +51,11 @@ async function handler(req, res) { //for currently logged in user, map user id (
     });
 
     if (!tokenResponse.ok) {
+      console.log("ERR")
       res.status(502).json({ error: "Could not exchange the Discord authorization code." });
       return;
     }
+    console.log("SUCCESS")
 
     // The response contains both the short-lived access token and the
     // longer-lived refresh token. Keep the refresh token private.
