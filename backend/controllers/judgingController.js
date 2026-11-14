@@ -64,7 +64,8 @@ async function scores(req, res) {
     await control.locked(async function write(state) {
       var ctx = await writable(state, req.user.id, body.projectId);
       await validate(body);
-      if ((!ctx.current || String(ctx.current._id) !== String(body.projectId)) && !ctx.skipped.has(String(body.projectId)) && !ctx.done.has(String(body.projectId))) throw control.problem(409, "Score the current project first.");
+      // Judges may score their projects in any order; "current" is only the
+      // suggested next table.
       await Score.findOneAndUpdate({ judge: req.user.id, project: body.projectId },
         { $set: { scores: body.scores, comments: body.comments || "" } }, { upsert: true, new: true, runValidators: true });
       // Progress is derived from scores and explicit skips, never a cursor.
@@ -87,7 +88,7 @@ async function skip(req, res) {
         id = current._id;
       }
       var ctx = await writable(state, req.user.id, id);
-      if (!ctx.current || String(ctx.current._id) !== String(id)) throw control.problem(409, "Only the current project can be skipped.");
+      // Any project in the judge's queue can be skipped, any number of times.
       ctx.queue.skipped.addToSet(id);
       await ctx.assignment.save();
     });

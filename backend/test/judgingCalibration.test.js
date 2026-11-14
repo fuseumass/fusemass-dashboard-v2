@@ -146,9 +146,8 @@ test("judging calibration API", async function suite(t) {
   );
 
   await t.test(
-    "server validates rubric and enforces round order",
+    "server validates rubric; rounds can be scored in any order",
     async function validation() {
-      assert.equal((await submit(judge, 3, scores(criteria, 2))).status, 409);
       for (var invalid of [
         null,
         {},
@@ -169,14 +168,16 @@ test("judging calibration API", async function suite(t) {
         (await submit(judge, 1, scores(criteria, 2), 42)).status,
         400,
       );
-      assert.equal((await submit(judge, 1, scores(criteria, 2))).status, 200);
-      assert.equal((await submit(judge, 3, scores(criteria, 2))).status, 409);
       assert.equal(
-        (await submit(judge, 2, scores(criteria, 2))).body.calibrationDone,
+        (await submit(judge, 3, scores(criteria, 2))).body.calibrationDone,
         false,
       );
       assert.equal(
-        (await submit(judge, 3, scores(criteria, 2))).body.calibrationDone,
+        (await submit(judge, 1, scores(criteria, 2))).body.calibrationDone,
+        false,
+      );
+      assert.equal(
+        (await submit(judge, 2, scores(criteria, 2))).body.calibrationDone,
         true,
       );
     },

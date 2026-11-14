@@ -33,20 +33,19 @@ export default function JudgeSchedule({ data, skippedOnly = false }) {
   columns.push({
     id: "action",
     header: "",
-    cell: ({ row }) =>
-      row.original.status !== "upcoming" && (
-        <Button
-          asChild
-          size="sm"
-          variant="outline"
-          className="pointer-coarse:h-10"
-        >
-          <Link href={`/dashboard/judging/score?project=${row.original._id}`}>
-            {row.original.status === "done" ? "Rescore" : "Judge now"}
-            <span className="sr-only"> {row.original.name}</span>
-          </Link>
-        </Button>
-      ),
+    cell: ({ row }) => (
+      <Button
+        asChild
+        size="sm"
+        variant="outline"
+        className="pointer-coarse:h-10"
+      >
+        <Link href={`/dashboard/judging/score?project=${row.original._id}`}>
+          {row.original.status === "done" ? "Rescore" : "Judge now"}
+          <span className="sr-only"> {row.original.name}</span>
+        </Link>
+      </Button>
+    ),
   });
   return (
     <DataTable

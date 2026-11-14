@@ -205,7 +205,6 @@ export default function JudgeCalibration() {
             key={project.round}
             variant={round === i + 1 ? "default" : "outline"}
             className="pointer-coarse:h-11"
-            disabled={i > data.scores.length}
             aria-current={round === i + 1 ? "step" : undefined}
             onClick={() => setRound(i + 1)}
           >
