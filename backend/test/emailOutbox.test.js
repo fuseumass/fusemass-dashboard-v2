@@ -462,11 +462,19 @@ test("B26: email outbox log, retry and backoff", async function emailOutbox(t) {
         },
         { timeoutMs: 3000 }
       );
+      // The row is marked sent just after the mail server accepts the email,
+      // so poll for it instead of reading once (slow CI machines lose that race).
+      var status = "";
+      for (var tries = 0; tries < 300 && status !== "sent"; tries++) {
+        status = (await EmailLog.findOne({ to: "tick@example.com" })).status;
+        if (status !== "sent") await new Promise(function (r) { setTimeout(r, 10); });
+      }
     } finally {
       outbox.stopWorker();
       delete process.env.EMAIL_RETRY_INTERVAL_MS;
     }
-    assert.equal((await EmailLog.findOne({ to: "tick@example.com" })).status, "sent");
+    assert.equal(status, "sent");
+    assert.equal(mail.calls.length, 1, "sent exactly once");
   });
 
   await t.test("users and announcements: an unsubscribed recipient is skipped at send time", async function (t2) {
