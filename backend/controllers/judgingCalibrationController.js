@@ -198,19 +198,7 @@ async function scoreRound(req, res) {
       res.status(403).json({ error: "An active judge profile is required." });
       return;
     }
-    for (var previous = 1; previous < round; previous++) {
-      if (
-        !profile.calibrationScores.some(function scored(row) {
-          return (
-            row.round === previous &&
-            rubric.validScores(row.scores, settings.criteria)
-          );
-        })
-      ) {
-        res.status(409).json({ error: "Score the earlier rounds first." });
-        return;
-      }
-    }
+    // Rounds can be scored in any order; calibration is done once all are.
     profile.calibrationScores = profile.calibrationScores.filter(
       function other(row) {
         return row.round !== round;
