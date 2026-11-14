@@ -68,6 +68,22 @@ async function reset() {
   await EmailTemplate.seedDefaults();
   process.env.DISCORD_ANNOUNCEMENTS_WEBHOOK_URL = ANNOUNCE_URL;
   process.env.DISCORD_WORKSHOPS_WEBHOOK_URL = WORKSHOPS_URL;
+  // The daily digest runs on the real clock (09:00 event time by default, due
+  // for two hours). Pin it twelve hours from now so tests about other
+  // automations don't depend on the time of day; tests about the digest set
+  // their own time.
+  await CommunicationSettings.getSingleton();
+  await CommunicationSettings.updateOne({ key: "default" }, { $set: { "digestDiscord.time": hhmmIn(12 * 60) } });
+}
+
+/**
+ * The event-zone wall clock `minutes` from now, as "HH:MM".
+ * @param {number} minutes - Offset from now.
+ * @returns {string}
+ */
+function hhmmIn(minutes) {
+  var p = communications.zonedParts(new Date(Date.now() + minutes * MINUTE));
+  return String(p.hour).padStart(2, "0") + ":" + String(p.minute).padStart(2, "0");
 }
 
 /**
@@ -796,8 +812,7 @@ test("communications: announcements, Discord and workshop automations", async fu
     await workshopIn(400, [], { title: "Full one", capacity: 2, signupCount: 2 });
 
     var now = new Date();
-    var p = communications.zonedParts(now);
-    var hhmm = String(p.hour).padStart(2, "0") + ":" + String(p.minute).padStart(2, "0");
+    var hhmm = hhmmIn(0);
     await CommunicationSettings.getSingleton();
     await CommunicationSettings.updateOne(
       { key: "default" },
@@ -820,6 +835,78 @@ test("communications: announcements, Discord and workshop automations", async fu
     await AutomationLog.deleteMany({});
     await communications.runWorkshopAutomations(new Date(now.getTime() + 3 * 60 * MINUTE));
     assert.equal(discord.posts.length, 1);
+  });
+
+  await t.test("the digest and reminders due at the same moment each go out once, separately", async function (t2) {
+    await reset();
+    var mail = flaky.mockFlakyTransport(t2);
+    var discord = fakeDiscord(t2);
+    var round = await ApplicationRound.create({ name: "General", isOpen: true });
+    var ada = await fixtures.createUser({ email: "ada@example.com", name: "Ada" });
+    await Application.create({ applicant: ada.user._id, round: round._id, name: "Ada", status: "accepted" });
+    var soon = await workshopIn(44, [ada], { title: "Soon", capacity: 10 });
+    await workshopIn(100, [], { title: "Later", capacity: 10, signupCount: 4 });
+    // Digest due right now, inside the same window as both reminders.
+    await CommunicationSettings.updateOne({ key: "default" }, { $set: { "digestDiscord.time": hhmmIn(0) } });
+
+    var now = new Date();
+    await Promise.all([communications.runWorkshopAutomations(now), communications.runWorkshopAutomations(now)]);
+    await communications.runWorkshopAutomations(new Date(now.getTime() + MINUTE));
+    await settle();
+    var titles = discord.posts.map(function (post) { return post.body.embeds[0].title; }).sort();
+    assert.equal(titles.length, 3, "digest + one 2 hour announcement per start time: " + titles.join(" | "));
+    assert.equal(titles.filter(function (x) { return x === "Workshops coming up"; }).length, 1);
+    assert.deepEqual(titles.filter(function (x) { return /^Coming up: /.test(x); }), ["Coming up: Later", "Coming up: Soon"]);
+    var digest = discord.posts.find(function (post) { return post.body.embeds[0].title === "Workshops coming up"; });
+    assert.match(digest.body.embeds[0].description, /Soon[\s\S]*Later/);
+    // Email: one signed-up reminder for Ada's workshop, one announcement per workshop time.
+    var reminders = await EmailLog.find({ templateKey: "workshop_reminder" }).lean();
+    assert.deepEqual(reminders.map(function (r) { return [r.to, r.values.title]; }), [["ada@example.com", "Soon"]]);
+    assert.equal(await EmailLog.countDocuments({ templateKey: "workshop_announcement", to: "ada@example.com" }), 2);
+    assert.ok(mail.calls.length >= 3);
+    assert.equal(await AutomationLog.countDocuments({ workshop: soon._id, kind: "workshop_signed_email" }), 1);
+
+    // Later in the digest window and after it: nothing goes out twice.
+    await communications.runWorkshopAutomations(new Date(now.getTime() + 30 * MINUTE));
+    await settle();
+    assert.equal(discord.posts.filter(function (post) { return post.body.embeds[0].title === "Workshops coming up"; }).length, 1);
+    assert.equal(await EmailLog.countDocuments({ templateKey: "workshop_reminder", "values.headline": { $ne: "Starting now" } }), 1);
+  });
+
+  await t.test("with @everyone on, every automated workshop post pings @everyone", async function (t2) {
+    await reset();
+    flaky.mockFlakyTransport(t2);
+    var discord = fakeDiscord(t2);
+    var admin = await fixtures.createUser({ role: "admin" });
+    var a = await fixtures.createUser({ email: "a@example.com" });
+    await workshopIn(4, [a], { title: "Starting now one", capacity: 10 });
+    await workshopIn(100, [], { title: "Later", capacity: 10 });
+    var saved = await request(app)
+      .patch("/api/staff/communications/settings")
+      .set(as(admin))
+      .send({ workshopMention: { enabled: true, tag: "everyone" }, reminderSignedUp: { discord: true }, digestDiscord: { time: hhmmIn(0) } });
+    assert.equal(saved.status, 200);
+
+    await communications.runWorkshopAutomations();
+    var created = await request(app)
+      .post("/api/admin/workshops")
+      .set(as(admin))
+      .send({ title: "Fresh", host: "Lee", location: "Room 2", startsAt: new Date(Date.now() + 24 * 60 * MINUTE), endsAt: new Date(Date.now() + 25 * 60 * MINUTE) });
+    await request(app).patch("/api/admin/workshops/" + created.body.workshop._id).set(as(admin)).send({ published: true });
+    await waitForPosts(discord, 5);
+    await request(app).patch("/api/admin/workshops/" + created.body.workshop._id).set(as(admin)).send({ location: "Room 3" });
+    await waitForPosts(discord, 6);
+
+    var titles = discord.posts.map(function (post) { return post.body.embeds[0].title; });
+    ["Workshops coming up", "Starting now: Starting now one", "New workshop: Fresh", "Workshop moved: Fresh"].forEach(function (title) {
+      assert.ok(titles.indexOf(title) !== -1, "posted " + title + " in " + titles.join(" | "));
+    });
+    assert.ok(titles.indexOf("Coming up: Later") !== -1, "2 hour announcement posted");
+    discord.posts.forEach(function (post) {
+      assert.equal(post.url, WORKSHOPS_URL + "?wait=true");
+      assert.equal(post.body.content, "@everyone", post.body.embeds[0].title);
+      assert.deepEqual(post.body.allowed_mentions, { parse: ["everyone"] }, post.body.embeds[0].title);
+    });
   });
 
   await t.test("publishing or moving a workshop posts to the workshops channel", async function (t2) {
