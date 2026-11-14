@@ -164,6 +164,7 @@ var MATRIX = [
   row("GET", "/api/staff/hardware/checkouts", "moderator"),
   row("POST", "/api/staff/hardware/checkouts", "moderator"),
   row("POST", "/api/staff/hardware/checkouts/:id/return", "moderator"),
+  row("PATCH", "/api/staff/hardware/checkouts/:id", "moderator"),
   row("GET", "/api/staff/hardware/export.csv", "moderator"),
   row("POST", "/api/staff/hardware/reminders", "moderator"),
   row("GET", "/api/admin/hardware", "admin"),

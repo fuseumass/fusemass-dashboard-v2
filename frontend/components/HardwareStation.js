@@ -24,8 +24,23 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { apiDownload, apiFetch } from "@/lib/api";
 import { formatDateTime } from "@/lib/datetime";
@@ -45,6 +60,19 @@ function hasFinePointer() {
     typeof window.matchMedia === "function" &&
     window.matchMedia("(pointer: fine)").matches
   );
+}
+
+/**
+ * @param {string|null} value - ISO time or null.
+ * @returns {string} The "YYYY-MM-DDTHH:mm" a datetime-local input wants, in
+ *   this browser's time zone (the same zone the checkout form uses).
+ */
+function toLocalInput(value) {
+  if (!value) return "";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+  const pad = (n) => String(n).padStart(2, "0");
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
 }
 
 /**
@@ -99,6 +127,12 @@ export default function HardwareStation({
   const [checkingOut, setCheckingOut] = useState(false);
   const [returning, setReturning] = useState(null);
   const [returnBusy, setReturnBusy] = useState(false);
+  const [editing, setEditing] = useState(null);
+  const [editItemId, setEditItemId] = useState("");
+  const [editDueAt, setEditDueAt] = useState("");
+  const [editNotes, setEditNotes] = useState("");
+  const [editBusy, setEditBusy] = useState(false);
+  const [editError, setEditError] = useState("");
   const [allLoans, setAllLoans] = useState([]);
   const [loansFilter, setLoansFilter] = useState("open");
   const [loansLoading, setLoansLoading] = useState(true);
@@ -289,6 +323,40 @@ export default function HardwareStation({
     }
   }
 
+  function startEdit(loan) {
+    setEditing(loan);
+    setEditItemId(loan.item?._id || "");
+    setEditDueAt(toLocalInput(loan.dueAt));
+    setEditNotes(loan.notes || "");
+    setEditError("");
+  }
+
+  async function saveEdit(e) {
+    e.preventDefault();
+    if (!editing || editBusy) return;
+    setEditBusy(true);
+    setEditError("");
+    const body = {
+      dueAt: editDueAt ? new Date(editDueAt).toISOString() : null,
+      notes: editNotes,
+    };
+    if (editItemId && editItemId !== editing.item?._id)
+      body.itemId = editItemId;
+    try {
+      await apiFetch(`/api/staff/hardware/checkouts/${editing._id}`, {
+        method: "PATCH",
+        body: JSON.stringify(body),
+      });
+      notifySuccess("Loan updated");
+      setEditing(null);
+      await refreshAfterChange();
+    } catch (err) {
+      setEditError(err.message);
+    } finally {
+      setEditBusy(false);
+    }
+  }
+
   async function sendReminders() {
     setReminding(true);
     try {
@@ -386,16 +454,25 @@ export default function HardwareStation({
     },
     {
       id: "return",
-      header: <span className="sr-only">Return</span>,
+      header: <span className="sr-only">Edit or return</span>,
       enableSorting: false,
       cell: ({ row }) => (
-        <Button
-          size="sm"
-          variant="outline"
-          onClick={() => setReturning({ ...row.original })}
-        >
-          Return
-        </Button>
+        <div className="flex gap-2">
+          <Button
+            size="sm"
+            variant="ghost"
+            onClick={() => startEdit({ ...row.original })}
+          >
+            Edit
+          </Button>
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => setReturning({ ...row.original })}
+          >
+            Return
+          </Button>
+        </div>
       ),
     },
   ];
@@ -478,6 +555,13 @@ export default function HardwareStation({
                                     </p>
                                   : null}
                               </div>
+                              <Button
+                                variant="ghost"
+                                size="lg"
+                                onClick={() => startEdit({ ...loan })}
+                              >
+                                Edit
+                              </Button>
                               <Button
                                 variant="outline"
                                 size="lg"
@@ -786,6 +870,97 @@ export default function HardwareStation({
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      <Dialog
+        open={Boolean(editing)}
+        onOpenChange={(open) => {
+          if (!open && !editBusy) setEditing(null);
+        }}
+      >
+        <DialogContent>
+          <form onSubmit={saveEdit} className="space-y-4">
+            <DialogHeader>
+              <DialogTitle>Edit loan</DialogTitle>
+              <DialogDescription>
+                {editing?.user?.name || attendee?.name || "The attendee"} keeps
+                the loan. Changing the item puts one{" "}
+                {editing?.item?.name || "unit"} back in stock and takes one of
+                the new item.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="space-y-2">
+              <Label htmlFor="edit-loan-item">Item</Label>
+              <Select value={editItemId} onValueChange={setEditItemId}>
+                <SelectTrigger id="edit-loan-item" className="w-full">
+                  <SelectValue
+                    placeholder={editing?.item?.name || "Archived item"}
+                  />
+                </SelectTrigger>
+                <SelectContent position="popper" className="max-h-72">
+                  {items.map((item) => (
+                    <SelectItem
+                      key={item._id}
+                      value={item._id}
+                      disabled={
+                        item._id !== editing?.item?._id && item.availableQty < 1
+                      }
+                    >
+                      {item.name}
+                      {item._id === editing?.item?._id
+                        ? " (current)"
+                        : ` (${item.availableQty} left)`}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="edit-loan-due">
+                Due time (optional, your local time)
+              </Label>
+              <Input
+                id="edit-loan-due"
+                type="datetime-local"
+                value={editDueAt}
+                onChange={(e) => setEditDueAt(e.target.value)}
+              />
+              <p className="text-xs text-muted-foreground">
+                Leave blank to have it back before they leave the event.
+              </p>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="edit-loan-notes">Notes</Label>
+              <Textarea
+                id="edit-loan-notes"
+                rows={2}
+                value={editNotes}
+                onChange={(e) => setEditNotes(e.target.value)}
+              />
+            </div>
+            <div aria-live="polite">
+              {editError
+                ? <Alert variant="destructive">
+                    <CircleAlert aria-hidden="true" />
+                    <AlertDescription>{editError}</AlertDescription>
+                  </Alert>
+                : null}
+            </div>
+            <DialogFooter>
+              <Button
+                type="button"
+                variant="outline"
+                disabled={editBusy}
+                onClick={() => setEditing(null)}
+              >
+                Cancel
+              </Button>
+              <Button type="submit" loading={editBusy}>
+                Save changes
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
 
       <AlertDialog
         open={remindOpen}
