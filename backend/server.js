@@ -27,6 +27,7 @@ var systemConfig = require("./utils/systemConfig");
  */
 function createApp() {
   var authRoutes = require("./routes/auth");
+  var discordRoutes = require("./routes/discord");
   var applicationRoutes = require("./routes/applications");
   var adminRoutes = require("./routes/admin");
   var metaRoutes = require("./routes/meta");
@@ -100,6 +101,7 @@ function createApp() {
 
   app.use("/api/judging", require("./routes/judging"));
   app.use("/api/auth", authRoutes);
+  app.use("/api/discord", discordRoutes);
   app.use("/api/applications", applicationRoutes);
   app.use("/api/admin", adminRoutes);
   app.use("/api/meta", metaRoutes);

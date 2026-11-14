@@ -41,6 +41,10 @@ var userSchema = new Schema(
       index: true,
       sparse: true,
     },
+    discordId: { // set for a user when they link their discord account
+      type: String,
+      required: false,
+    },
     // URL of the user's Google profile photo, if any.
     avatarUrl: {
       type: String,
