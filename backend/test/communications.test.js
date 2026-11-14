@@ -545,8 +545,8 @@ test("communications: announcements, Discord and workshop automations", async fu
       return request(app).patch("/api/staff/communications/settings").set(as(who)).send(body);
     }
     var defaults = (await request(app).get("/api/staff/communications").set(as(admin))).body.settings;
-    assert.deepEqual(defaults.reminderAll, { discord: true, email: true, offsets: [120] });
-    assert.deepEqual(defaults.reminderSignedUp, { email: true, discord: false, offsets: [45, 5] });
+    assert.deepEqual(defaults.reminderAll, { discord: true, email: true, offsets: [120], checkedInOnly: false });
+    assert.deepEqual(defaults.reminderSignedUp, { email: true, discord: false, offsets: [45, 5], checkedInOnly: false });
     assert.deepEqual(defaults.discordTags, []);
     assert.deepEqual(defaults.workshopMention, { enabled: false, tag: "" });
     assert.equal(defaults.digestDiscord.enabled, true);
@@ -556,7 +556,8 @@ test("communications: announcements, Discord and workshop automations", async fu
     assert.equal((await patch(mod, { digestEmail: { enabled: true } })).status, 403);
     var ok = await patch(admin, { reminderAll: { offsets: [30, 180] }, digestDiscord: { time: "18:30", windowHours: 12 } });
     assert.equal(ok.status, 200);
-    assert.deepEqual(ok.body.settings.reminderAll, { discord: true, email: true, offsets: [180, 30] });
+    assert.deepEqual(ok.body.settings.reminderAll, { discord: true, email: true, offsets: [180, 30], checkedInOnly: false });
+    assert.equal((await patch(admin, { reminderAll: { checkedInOnly: "yes" } })).status, 400);
     assert.equal(ok.body.settings.digestDiscord.time, "18:30");
     assert.ok(Array.isArray(ok.body.next));
 
@@ -835,6 +836,84 @@ test("communications: announcements, Discord and workshop automations", async fu
     await AutomationLog.deleteMany({});
     await communications.runWorkshopAutomations(new Date(now.getTime() + 3 * 60 * MINUTE));
     assert.equal(discord.posts.length, 1);
+  });
+
+  await t.test("overlapping scheduler runs still send one combined email per person", async function (t2) {
+    await reset();
+    flaky.mockFlakyTransport(t2);
+    fakeDiscord(t2);
+    var round = await ApplicationRound.create({ name: "General", isOpen: true });
+    var people = [];
+    var COUNT = 40;
+    for (var i = 0; i < COUNT; i++) {
+      var person = await fixtures.createUser({ email: "p" + i + "@example.com", name: "P" + i });
+      await Application.create({ applicant: person.user._id, round: round._id, name: "P" + i, status: "accepted" });
+      people.push(person);
+    }
+    var startsAt = new Date(Date.now() + 100 * MINUTE);
+    var ends = new Date(startsAt.getTime() + 60 * MINUTE);
+    for (var title of ["A", "B", "C"]) await workshopIn(100, [], { title: title, startsAt: startsAt, endsAt: ends });
+    // Email only: with Discord on, the run that wins the post waits on it and
+    // the runs stop overlapping, which hides the race this test is about.
+    await CommunicationSettings.updateOne({ key: "default" }, { $set: { "reminderAll.discord": false } });
+    // Slow every claim down by a random few milliseconds so the parallel runs
+    // interleave the way they do on a busy machine (CI).
+    var realCreate = AutomationLog.create.bind(AutomationLog);
+    t2.mock.method(AutomationLog, "create", function slowCreate(doc) {
+      return new Promise(function (r) { setTimeout(r, Math.floor(Math.random() * 4)); }).then(function () { return realCreate(doc); });
+    });
+
+    await Promise.all([1, 2, 3, 4, 5].map(function () { return communications.runWorkshopAutomations(); }));
+    await communications.runWorkshopAutomations();
+    await settle();
+    var rows = await EmailLog.find({ templateKey: "workshop_announcement" }).lean();
+    assert.equal(rows.length, COUNT, "one email per person");
+    assert.equal(new Set(rows.map(function (r) { return r.to; })).size, COUNT);
+    rows.forEach(function (r) { assert.match(r.values.headline, /3 workshops/); });
+
+    // A workshop added to the same slot later is announced on its own, once.
+    await workshopIn(100, [], { title: "D", startsAt: startsAt, endsAt: ends });
+    await Promise.all([1, 2, 3].map(function () { return communications.runWorkshopAutomations(); }));
+    await settle();
+    var later = await EmailLog.find({ templateKey: "workshop_announcement", _id: { $nin: rows.map(function (r) { return r._id; }) } }).lean();
+    assert.equal(later.length, COUNT);
+    later.forEach(function (r) {
+      assert.match(r.values.workshops, /^D\b/);
+      assert.doesNotMatch(r.values.workshops, /\bA\n/);
+    });
+  });
+
+  await t.test("checked-in only: workshop emails skip people who haven't checked in", async function (t2) {
+    await reset();
+    flaky.mockFlakyTransport(t2);
+    fakeDiscord(t2);
+    var admin = await fixtures.createUser({ role: "admin" });
+    var round = await ApplicationRound.create({ name: "General", isOpen: true });
+    var here = await fixtures.createUser({ email: "here@example.com", name: "Here", checkedIn: true });
+    var away = await fixtures.createUser({ email: "away@example.com", name: "Away" });
+    for (var person of [here, away]) await Application.create({ applicant: person.user._id, round: round._id, name: person.user.name, status: "accepted" });
+    await workshopIn(44, [here, away], { title: "Soon" });
+    await workshopIn(100, [], { title: "Later" });
+    var saved = await request(app)
+      .patch("/api/staff/communications/settings")
+      .set(as(admin))
+      .send({ reminderAll: { checkedInOnly: true }, reminderSignedUp: { checkedInOnly: true } });
+    assert.equal(saved.status, 200);
+    assert.equal(saved.body.settings.reminderAll.checkedInOnly, true);
+    assert.equal(saved.body.settings.reminderAll.email, true, "other fields keep their values");
+
+    await communications.runWorkshopAutomations();
+    await settle();
+    var reminders = await EmailLog.find({ templateKey: "workshop_reminder" }).lean();
+    assert.deepEqual(reminders.map(function (r) { return r.to; }), ["here@example.com"]);
+    var announced = await EmailLog.distinct("to", { templateKey: "workshop_announcement" });
+    assert.deepEqual(announced, ["here@example.com"]);
+
+    // Turned off: everyone signed up is reminded, including people not checked in.
+    await CommunicationSettings.updateOne({ key: "default" }, { $set: { "reminderSignedUp.checkedInOnly": false } });
+    await communications.runWorkshopAutomations();
+    await settle();
+    assert.deepEqual((await EmailLog.distinct("to", { templateKey: "workshop_reminder" })).sort(), ["away@example.com", "here@example.com"]);
   });
 
   await t.test("the digest and reminders due at the same moment each go out once, separately", async function (t2) {

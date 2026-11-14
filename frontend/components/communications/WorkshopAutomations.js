@@ -32,9 +32,11 @@ function toDraft(s) {
     allDiscord: s.reminderAll.discord,
     allEmail: s.reminderAll.email,
     allOffsets: s.reminderAll.offsets,
+    allCheckedIn: Boolean(s.reminderAll.checkedInOnly),
     signedEmail: s.reminderSignedUp.email,
     signedDiscord: s.reminderSignedUp.discord,
     signedOffsets: s.reminderSignedUp.offsets,
+    signedCheckedIn: Boolean(s.reminderSignedUp.checkedInOnly),
     mentionOn: s.workshopMention.enabled,
     mentionTag: s.workshopMention.tag,
     digestDiscordOn: s.digestDiscord.enabled,
@@ -108,11 +110,13 @@ export default function WorkshopAutomations({
             discord: draft.allDiscord,
             email: draft.allEmail,
             offsets: draft.allOffsets,
+            checkedInOnly: draft.allCheckedIn,
           },
           reminderSignedUp: {
             email: draft.signedEmail,
             discord: draft.signedDiscord,
             offsets: draft.signedOffsets,
+            checkedInOnly: draft.signedCheckedIn,
           },
           workshopMention: {
             enabled: draft.mentionOn,
@@ -183,6 +187,14 @@ export default function WorkshopAutomations({
             onToggle={(v) => set("allEmail", v)}
             disabled={disabled}
           />
+          <Row
+            id="auto-all-checked-in"
+            title="Only email people checked in to the event"
+            hint="Skips accepted participants who haven't checked in at the front desk. Discord posts are unaffected."
+            on={draft.allCheckedIn}
+            onToggle={(v) => set("allCheckedIn", v)}
+            disabled={disabled}
+          />
           <div className="space-y-2 py-3">
             <p className="text-sm font-medium">
               Announce this long before a workshop starts
@@ -203,6 +215,14 @@ export default function WorkshopAutomations({
             }
             on={draft.signedEmail}
             onToggle={(v) => set("signedEmail", v)}
+            disabled={disabled}
+          />
+          <Row
+            id="auto-signed-checked-in"
+            title="Only remind people checked in to the event"
+            hint="Signed-up people who haven't checked in at the front desk get no reminder."
+            on={draft.signedCheckedIn}
+            onToggle={(v) => set("signedCheckedIn", v)}
             disabled={disabled}
           />
           <Row

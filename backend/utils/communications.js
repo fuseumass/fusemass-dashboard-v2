@@ -199,8 +199,8 @@ function settle(key, fields) {
 // ---- Settings ---------------------------------------------------------------
 
 var SETTING_RULES = {
-  reminderAll: { discord: "boolean", email: "boolean", offsets: "offsets" },
-  reminderSignedUp: { email: "boolean", discord: "boolean", offsets: "offsets" },
+  reminderAll: { discord: "boolean", email: "boolean", offsets: "offsets", checkedInOnly: "boolean" },
+  reminderSignedUp: { email: "boolean", discord: "boolean", offsets: "offsets", checkedInOnly: "boolean" },
   digestDiscord: { enabled: "boolean", time: "time", windowHours: [1, 72] },
   digestEmail: { enabled: "boolean" },
   updatesDiscord: { enabled: "boolean" },
@@ -492,11 +492,13 @@ function validateAudience(input) {
  * @param {*} workshopId - Workshop _id.
  * @returns {Promise<Array<object>>} `{ userId, email, name, consent }`.
  */
-function workshopRecipients(workshopId) {
+function workshopRecipients(workshopId, checkedInOnly) {
   return Signup.find({ workshop: workshopId })
     .distinct("user")
     .then(function afterSignups(userIds) {
-      return User.find({ _id: { $in: userIds } })
+      var filter = { _id: { $in: userIds } };
+      if (checkedInOnly === true) filter.checkedIn = true;
+      return User.find(filter)
         .select(emailSegments.USER_FIELDS + " checkedIn")
         .lean();
     })
@@ -1122,12 +1124,15 @@ function markQueued(kind, workshop, offset, recipients) {
 
 /**
  * Accepted participants who haven't turned off event email.
+ * @param {boolean} [checkedInOnly] - Only those checked in to the event.
  * @returns {Promise<Array<object>>} `{ userId, email, name }`.
  */
-function acceptedRecipients() {
+function acceptedRecipients(checkedInOnly) {
   return Application.distinct("applicant", activeApplications.active({ status: "accepted" }))
     .then(function afterAccepted(ids) {
-      return User.find({ _id: { $in: ids }, "emailPreferences.event": { $ne: false } })
+      var filter = { _id: { $in: ids }, "emailPreferences.event": { $ne: false } };
+      if (checkedInOnly === true) filter.checkedIn = true;
+      return User.find(filter)
         .select("name email")
         .lean();
     })
@@ -1172,7 +1177,7 @@ function runAllReminders(settings, now) {
               if (!emailOn) {
                 return undefined;
               }
-              recipientsStep = recipientsStep || acceptedRecipients();
+              recipientsStep = recipientsStep || acceptedRecipients(config.checkedInOnly);
               return recipientsStep.then(function sendGroup(recipients) {
                 return emailGroup(group, recipients).then(function count(n) {
                   queued += n;
@@ -1196,8 +1201,48 @@ function runAllReminders(settings, now) {
 function emailGroup(group, recipients) {
   var perUser = {};
   var claimed = [];
-  return group.workshops
-    .reduce(function chain(previous, workshop) {
+  // One combined email per person: claim each person once for this exact set
+  // of workshops before the per-workshop claims, so two overlapping scheduler
+  // runs can't split one person's workshops across two emails. A workshop
+  // added to the slot later makes a new set, and the per-workshop claims
+  // still stop anything being announced twice.
+  var ids = group.workshops
+    .map(function id(w) {
+      return String(w._id);
+    })
+    .sort()
+    .join(",");
+  var groupPrefix =
+    "workshop_all_email_group:" + new Date(group.startsAt).toISOString() + ":" + group.offset + ":" + ids + ":";
+  var scheduledFor = new Date(new Date(group.startsAt).getTime() - group.offset * MINUTE_MS);
+  var mine = [];
+  var escaped = groupPrefix.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return AutomationLog.find({ kind: "workshop_all_email_group", key: { $regex: "^" + escaped } })
+    .select("key")
+    .lean()
+    .then(function skipClaimed(logs) {
+      var taken = {};
+      logs.forEach(function mark(log) {
+        taken[log.key] = true;
+      });
+      return recipients.filter(function open(r) {
+        return !taken[groupPrefix + String(r.userId)];
+      });
+    })
+    .then(function claimEach(pending) {
+      return pending.reduce(function claimPerson(previous, r) {
+      return previous.then(function tryClaim() {
+        return claim({ key: groupPrefix + String(r.userId), kind: "workshop_all_email_group", user: r.userId, scheduledFor: scheduledFor }).then(
+          function afterClaim(ok) {
+            if (ok) mine.push(r);
+          }
+        );
+      });
+    }, Promise.resolve());
+    })
+    .then(function perWorkshop() {
+      recipients = mine;
+      return group.workshops.reduce(function chain(previous, workshop) {
       return previous.then(function claimWorkshop() {
         return claimRecipients("workshop_all_email", workshop, group.offset, recipients).then(function afterClaim(won) {
           claimed.push({ workshop: workshop, won: won });
@@ -1208,7 +1253,8 @@ function emailGroup(group, recipients) {
           });
         });
       });
-    }, Promise.resolve())
+    }, Promise.resolve());
+    })
     .then(function queue() {
       var clock = formatDayClock(group.startsAt);
       var entries = Object.keys(perUser).map(function toEntry(id) {
@@ -1274,7 +1320,7 @@ function runSignedUpReminders(settings, now) {
               }
               return group.workshops.reduce(function eachWorkshop(p, workshop) {
                 return p.then(function remind() {
-                  return workshopRecipients(workshop._id).then(function claimEach(recipients) {
+                  return workshopRecipients(workshop._id, config.checkedInOnly).then(function claimEach(recipients) {
                     return claimRecipients("workshop_signed_email", workshop, group.offset, recipients).then(function send(won) {
                       if (!won.length) {
                         return undefined;
@@ -1674,7 +1720,7 @@ function upcoming(at) {
       })
         .select("key")
         .lean(),
-      allEmail ? acceptedRecipients() : Promise.resolve([]),
+      allEmail ? acceptedRecipients(all.checkedInOnly) : Promise.resolve([]),
     ]).then(function addWorkshops(results) {
       var logs = results[0];
       var accepted = results[1].length;

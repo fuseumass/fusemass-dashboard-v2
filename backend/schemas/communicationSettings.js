@@ -12,9 +12,9 @@ var Schema = mongoose.Schema;
  *
  * @typedef {object} CommunicationSettings
  * @property {string} key - Always "default".
- * @property {object} reminderAll - `{ discord, email, offsets }`: announce each published workshop to all accepted
+ * @property {object} reminderAll - `{ discord, email, offsets, checkedInOnly }`: announce each published workshop to all accepted
  *   participants (Discord workshops channel and email) this many minutes before it starts. Default [120].
- * @property {object} reminderSignedUp - `{ email, discord, offsets }`: remind the people signed up this many minutes
+ * @property {object} reminderSignedUp - `{ email, discord, offsets, checkedInOnly }`: remind the people signed up this many minutes
  *   before. Default [45, 5], email only.
  * @property {Array<object>} discordTags - Saved role mentions `{ label, roleId }` writers can use as `@label`.
  * @property {object} workshopMention - `{ enabled, tag }`: ping a tag (a saved label, "everyone" or "here") in automated workshop posts.
@@ -30,11 +30,14 @@ var communicationSettingsSchema = new Schema(
       discord: { type: Boolean, default: true },
       email: { type: Boolean, default: true },
       offsets: { type: [Number], default: [120] },
+      // Email only people checked in to the event (Discord posts are unaffected).
+      checkedInOnly: { type: Boolean, default: false },
     },
     reminderSignedUp: {
       email: { type: Boolean, default: true },
       discord: { type: Boolean, default: false },
       offsets: { type: [Number], default: [45, 5] },
+      checkedInOnly: { type: Boolean, default: false },
     },
     discordTags: {
       type: [{ _id: false, label: { type: String, required: true }, roleId: { type: String, required: true } }],

@@ -33,19 +33,21 @@ export default function JudgeSchedule({ data, skippedOnly = false }) {
   columns.push({
     id: "action",
     header: "",
-    cell: ({ row }) => (
-      <Button
-        asChild
-        size="sm"
-        variant="outline"
-        className="pointer-coarse:h-10"
-      >
-        <Link href={`/dashboard/judging/score?project=${row.original._id}`}>
-          {row.original.status === "done" ? "Rescore" : "Judge now"}
-          <span className="sr-only"> {row.original.name}</span>
-        </Link>
-      </Button>
-    ),
+    // Judged projects show their status only; no button to judge them again.
+    cell: ({ row }) =>
+      row.original.status === "done"
+        ? null
+        : <Button
+            asChild
+            size="sm"
+            variant="outline"
+            className="pointer-coarse:h-10"
+          >
+            <Link href={`/dashboard/judging/score?project=${row.original._id}`}>
+              Judge now
+              <span className="sr-only"> {row.original.name}</span>
+            </Link>
+          </Button>,
   });
   return (
     <DataTable
