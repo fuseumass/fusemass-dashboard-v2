@@ -165,6 +165,8 @@ test("workshop attendance and raffle lifecycle", async function (t) {
       );
       var me = await call(users[0], "get", base + "/me");
       assert.equal(me.body.attended, true);
+      assert.equal(typeof me.body.signedUp, "boolean");
+      assert.ok(me.body.spotsLeft === null || typeof me.body.spotsLeft === "number");
       assert.ok(!JSON.stringify(me.body).includes("attendanceSecret"));
       assert.ok(!JSON.stringify(me.body).includes(users[1].user.email));
       assert.ok(!JSON.stringify(me.body).includes("qrId"));

@@ -338,6 +338,13 @@ async function me(req, res, next) {
         await Attendance.exists({ workshop: workshop._id, user: req.user.id }),
       ),
       checkedIn: Boolean(user && user.checkedIn),
+      signedUp: Boolean(
+        await Signup.exists({ workshop: workshop._id, user: req.user.id }),
+      ),
+      spotsLeft:
+        workshop.capacity === 0
+          ? null
+          : Math.max(0, workshop.capacity - workshop.signupCount),
       wins: wins,
       organizerRoom: settings.organizerRoom || "the organizer room",
     });
