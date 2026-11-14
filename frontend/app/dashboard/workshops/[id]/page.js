@@ -11,6 +11,7 @@ import { Label } from "@/components/ui/label";
 import { useAcceptedOnly } from "@/lib/acceptedOnly";
 import { apiFetch } from "@/lib/api";
 import { formatRange } from "@/lib/datetime";
+import { notifySuccess } from "@/lib/notify";
 
 function WorkshopDetailView() {
   const { id } = useParams();
@@ -18,6 +19,7 @@ function WorkshopDetailView() {
   const [error, setError] = useState("");
   const [code, setCode] = useState("");
   const [pending, setPending] = useState(false);
+  const [signupBusy, setSignupBusy] = useState(false);
   const busy = useRef(false);
   const load = useCallback(async () => {
     try {
@@ -31,6 +33,25 @@ function WorkshopDetailView() {
     const timer = setInterval(load, 15000);
     return () => clearInterval(timer);
   }, [load]);
+  async function toggleSignup() {
+    if (signupBusy) return;
+    setSignupBusy(true);
+    setError("");
+    try {
+      const result = await apiFetch(`/api/workshops/${id}/signup`, {
+        method: data.signedUp ? "DELETE" : "POST",
+      });
+      notifySuccess(
+        data.signedUp ? "Signup cancelled" : "Signed up for workshop",
+      );
+      if (result.warning) notifySuccess(result.warning);
+      await load();
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setSignupBusy(false);
+    }
+  }
   async function attend(value) {
     if (busy.current || value.length !== 5) return;
     busy.current = true;
@@ -79,6 +100,26 @@ function WorkshopDetailView() {
                 workshop. Signing up or viewing materials does not enter you.
               </p>
             )}
+            <div className="flex flex-wrap items-center gap-3 rounded-lg border p-4">
+              <p className="flex-1 text-sm">
+                {data.signedUp
+                  ? "You're signed up."
+                  : data.spotsLeft === 0
+                    ? "This workshop is full."
+                    : data.spotsLeft === null
+                      ? "Signups are open."
+                      : `Signups are open: ${data.spotsLeft} ${data.spotsLeft === 1 ? "spot" : "spots"} left.`}
+              </p>
+              <Button
+                variant={data.signedUp ? "outline" : "default"}
+                loading={signupBusy}
+                disabled={!data.signedUp && data.spotsLeft === 0}
+                onClick={toggleSignup}
+              >
+                {data.signedUp ? "Cancel signup" : "Sign up"}
+              </Button>
+            </div>
+            <h2 className="text-base font-semibold">Attendance</h2>
             {data.attended
               ? <Alert>
                   <AlertDescription>
@@ -124,10 +165,32 @@ function WorkshopDetailView() {
                         Record attendance
                       </Button>
                     </form>
-                  : <p className="text-sm text-muted-foreground">
-                      Attendance is closed. Ask the organizer when to enter the
-                      code.
-                    </p>}
+                  : <div className="space-y-3 rounded-lg border border-dashed p-4">
+                      <p className="text-sm text-muted-foreground">
+                        {new Date(data.workshop.startsAt) > new Date()
+                          ? `${data.workshop.raffleEnabled ? "Raffle attendance" : "Attendance"} hasn't started yet. At the workshop, the organizer will show a code on screen to enter here.`
+                          : `${data.workshop.raffleEnabled ? "Raffle attendance" : "Attendance"} is closed. Ask the organizer when to enter the code.`}
+                      </p>
+                      {data.signedUp
+                        ? null
+                        : <p className="text-sm">
+                            Signups are separate and{" "}
+                            {data.spotsLeft === 0
+                              ? "this workshop is full"
+                              : "still open"}
+                            .
+                            {data.spotsLeft === 0
+                              ? null
+                              : <Button
+                                  className="ml-3"
+                                  size="sm"
+                                  loading={signupBusy}
+                                  onClick={toggleSignup}
+                                >
+                                  Sign up
+                                </Button>}
+                          </p>}
+                    </div>}
             {data.wins.map((win, index) => (
               <Alert key={`${win.prize}-${index}`}>
                 <AlertDescription>
