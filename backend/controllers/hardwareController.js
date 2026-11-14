@@ -191,6 +191,67 @@ async function returnCheckout(req, res) {
     return res.json({ checkout: loan, alreadyReturned: false });
   } catch (err) { return failure(res, err); }
 }
+/**
+ * Moves an open loan to another item, keeping stock and the attendee limit right.
+ * @param {object} loan - Open checkout document.
+ * @param {string} itemId - Target item id.
+ * @returns {Promise<object>} { loan } on success, or { status, error }.
+ */
+async function moveLoan(loan, itemId) {
+  var item = await Item.findOne({ _id: itemId, archived: false });
+  if (!item) return { status: 404, error: "Item not found." };
+  var open = await Checkout.countDocuments({ user: loan.user, item: item._id, returnedAt: null });
+  if (open >= item.maxPerAttendee) return { status: 409, error: "They already hold " + open + " of " + item.name + ", the limit per attendee. Raise the item's limit first." };
+  var stock = await Item.findOneAndUpdate({ _id: item._id, archived: false, maxPerAttendee: item.maxPerAttendee, availableQty: { $gt: 0 } }, { $inc: { availableQty: -1 } }, { new: true });
+  if (!stock) return { status: 409, error: item.name + " is out of stock." };
+  var moved = null;
+  try {
+    for (var slot = 0; slot < item.maxPerAttendee && !moved; slot += 1) {
+      try {
+        moved = await Checkout.findOneAndUpdate({ _id: loan._id, item: loan.item, returnedAt: null }, { $set: { item: item._id, slot: slot } }, { new: true });
+        if (!moved) break;
+      } catch (err) { if (err.code !== 11000) throw err; }
+    }
+  } catch (err) {
+    await Item.updateOne({ _id: item._id }, { $inc: { availableQty: 1 } });
+    throw err;
+  }
+  if (!moved) {
+    await Item.updateOne({ _id: item._id }, { $inc: { availableQty: 1 } });
+    return { status: 409, error: "The loan changed. Refresh and try again." };
+  }
+  // The old item's unit is back on the shelf (archived items keep their count).
+  await Item.updateOne({ _id: loan.item }, { $inc: { availableQty: 1 } });
+  return { loan: moved };
+}
+/** @param {object} req - Request. @param {object} res - Response. @returns {Promise<object>} Edited loan. */
+async function editCheckout(req, res) {
+  try {
+    if (!validId(req.params.id)) throw invalid("Invalid checkout id.");
+    var body = req.body || {};
+    var fields = {};
+    if (body.dueAt !== undefined) {
+      var dueAt = body.dueAt === null || body.dueAt === "" ? null : new Date(body.dueAt);
+      if (dueAt && !Number.isFinite(dueAt.getTime())) throw invalid("Enter a valid return deadline.");
+      fields.dueAt = dueAt;
+    }
+    if (body.notes !== undefined) {
+      if (typeof body.notes !== "string" || body.notes.length > 4000) throw invalid("Notes must be at most 4000 characters.");
+      fields.notes = body.notes;
+    }
+    if (body.itemId !== undefined && !validId(body.itemId)) throw invalid("Select an item.");
+    var loan = await Checkout.findById(req.params.id);
+    if (!loan) return res.status(404).json({ error: "Checkout not found." });
+    if (body.itemId !== undefined && String(body.itemId) !== String(loan.item)) {
+      if (loan.returnedAt) return res.status(409).json({ error: "This item was already returned. Check out the right item instead." });
+      var result = await moveLoan(loan, body.itemId);
+      if (result.error) return res.status(result.status).json({ error: result.error });
+      loan = result.loan;
+    }
+    if (Object.keys(fields).length) loan = await Checkout.findByIdAndUpdate(loan._id, { $set: fields }, { new: true, runValidators: true });
+    return res.json({ checkout: await Checkout.findById(loan._id).populate("user", "name email").populate("item", "name location").lean() });
+  } catch (err) { return failure(res, err); }
+}
 /** @param {object} req - Request. @param {object} res - Response. @returns {Promise<object>} Saved inventory. */
 async function saveItem(req, res) {
   try {
@@ -204,7 +265,8 @@ async function saveItem(req, res) {
     if (!item) return res.status(404).json({ error: "Item not found." });
     var delta = fields.totalQty === undefined ? 0 : fields.totalQty - item.totalQty;
     if (item.availableQty + delta < 0) throw invalid("Total stock cannot be lower than the quantity on loan.");
-    if (fields.maxPerAttendee !== undefined && fields.maxPerAttendee !== item.maxPerAttendee && (item.availableQty !== item.totalQty || await Checkout.exists({ item: item._id, returnedAt: null }))) throw invalid("Return all loans before changing the attendee limit.");
+    // The limit can change while items are out: a lower limit only stops new
+    // checkouts, it never takes back what attendees already hold.
     var updated = await Item.findOneAndUpdate({ _id: item._id, archived: false, availableQty: item.availableQty, totalQty: item.totalQty, maxPerAttendee: item.maxPerAttendee }, { $set: fields, $inc: { availableQty: delta } }, { new: true, runValidators: true });
     if (!updated) return res.status(409).json({ error: "Inventory changed. Refresh and try again." });
     return res.json({ item: updated });
@@ -301,4 +363,4 @@ async function deleteFacility(req, res) {
     return facility ? res.json({ deleted: true }) : res.status(404).json({ error: "Facility not found." });
   } catch (err) { return failure(res, err); }
 }
-module.exports = { inventory: inventory, mine: mine, checkouts: checkouts, checkout: checkout, returnCheckout: returnCheckout, saveItem: saveItem, deleteItem: deleteItem, importItems: importItems, exportCsv: exportCsv, labels: labels, remind: remind, saveFacility: saveFacility, deleteFacility: deleteFacility };
+module.exports = { inventory: inventory, mine: mine, checkouts: checkouts, checkout: checkout, returnCheckout: returnCheckout, editCheckout: editCheckout, saveItem: saveItem, deleteItem: deleteItem, importItems: importItems, exportCsv: exportCsv, labels: labels, remind: remind, saveFacility: saveFacility, deleteFacility: deleteFacility };
