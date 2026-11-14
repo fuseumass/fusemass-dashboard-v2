@@ -15,7 +15,7 @@
 
 // Every module that can be switched off. To add one: add its key here and in
 // the FEATURE_LABELS below, then mount requireFeature("<key>") on its router.
-var FEATURE_KEYS = ["meals", "hardware", "workshops", "judging", "raffle"];
+var FEATURE_KEYS = ["meals", "hardware", "workshops", "judging", "raffle", "discord"];
 
 var FEATURE_LABELS = {
   meals: "Meals",
@@ -23,6 +23,7 @@ var FEATURE_LABELS = {
   workshops: "Workshops",
   judging: "Judging",
   raffle: "Raffle",
+  discord: "Discord (account linking and bot)",
 };
 
 /**
