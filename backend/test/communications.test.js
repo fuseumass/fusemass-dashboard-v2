@@ -838,6 +838,51 @@ test("communications: announcements, Discord and workshop automations", async fu
     assert.equal(discord.posts.length, 1);
   });
 
+  await t.test("overlapping scheduler runs still send one combined email per person", async function (t2) {
+    await reset();
+    flaky.mockFlakyTransport(t2);
+    fakeDiscord(t2);
+    var round = await ApplicationRound.create({ name: "General", isOpen: true });
+    var people = [];
+    var COUNT = 40;
+    for (var i = 0; i < COUNT; i++) {
+      var person = await fixtures.createUser({ email: "p" + i + "@example.com", name: "P" + i });
+      await Application.create({ applicant: person.user._id, round: round._id, name: "P" + i, status: "accepted" });
+      people.push(person);
+    }
+    var startsAt = new Date(Date.now() + 100 * MINUTE);
+    var ends = new Date(startsAt.getTime() + 60 * MINUTE);
+    for (var title of ["A", "B", "C"]) await workshopIn(100, [], { title: title, startsAt: startsAt, endsAt: ends });
+    // Email only: with Discord on, the run that wins the post waits on it and
+    // the runs stop overlapping, which hides the race this test is about.
+    await CommunicationSettings.updateOne({ key: "default" }, { $set: { "reminderAll.discord": false } });
+    // Slow every claim down by a random few milliseconds so the parallel runs
+    // interleave the way they do on a busy machine (CI).
+    var realCreate = AutomationLog.create.bind(AutomationLog);
+    t2.mock.method(AutomationLog, "create", function slowCreate(doc) {
+      return new Promise(function (r) { setTimeout(r, Math.floor(Math.random() * 4)); }).then(function () { return realCreate(doc); });
+    });
+
+    await Promise.all([1, 2, 3, 4, 5].map(function () { return communications.runWorkshopAutomations(); }));
+    await communications.runWorkshopAutomations();
+    await settle();
+    var rows = await EmailLog.find({ templateKey: "workshop_announcement" }).lean();
+    assert.equal(rows.length, COUNT, "one email per person");
+    assert.equal(new Set(rows.map(function (r) { return r.to; })).size, COUNT);
+    rows.forEach(function (r) { assert.match(r.values.headline, /3 workshops/); });
+
+    // A workshop added to the same slot later is announced on its own, once.
+    await workshopIn(100, [], { title: "D", startsAt: startsAt, endsAt: ends });
+    await Promise.all([1, 2, 3].map(function () { return communications.runWorkshopAutomations(); }));
+    await settle();
+    var later = await EmailLog.find({ templateKey: "workshop_announcement", _id: { $nin: rows.map(function (r) { return r._id; }) } }).lean();
+    assert.equal(later.length, COUNT);
+    later.forEach(function (r) {
+      assert.match(r.values.workshops, /^D\b/);
+      assert.doesNotMatch(r.values.workshops, /\bA\n/);
+    });
+  });
+
   await t.test("checked-in only: workshop emails skip people who haven't checked in", async function (t2) {
     await reset();
     flaky.mockFlakyTransport(t2);
