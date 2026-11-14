@@ -165,10 +165,32 @@ function WorkshopDetailView() {
                         Record attendance
                       </Button>
                     </form>
-                  : <p className="text-sm text-muted-foreground">
-                      Attendance opens during the workshop. The organizer will
-                      show a code on screen to enter here.
-                    </p>}
+                  : <div className="space-y-3 rounded-lg border border-dashed p-4">
+                      <p className="text-sm text-muted-foreground">
+                        {new Date(data.workshop.startsAt) > new Date()
+                          ? `${data.workshop.raffleEnabled ? "Raffle attendance" : "Attendance"} hasn't started yet. At the workshop, the organizer will show a code on screen to enter here.`
+                          : `${data.workshop.raffleEnabled ? "Raffle attendance" : "Attendance"} is closed. Ask the organizer when to enter the code.`}
+                      </p>
+                      {data.signedUp
+                        ? null
+                        : <p className="text-sm">
+                            Signups are separate and{" "}
+                            {data.spotsLeft === 0
+                              ? "this workshop is full"
+                              : "still open"}
+                            .
+                            {data.spotsLeft === 0
+                              ? null
+                              : <Button
+                                  className="ml-3"
+                                  size="sm"
+                                  loading={signupBusy}
+                                  onClick={toggleSignup}
+                                >
+                                  Sign up
+                                </Button>}
+                          </p>}
+                    </div>}
             {data.wins.map((win, index) => (
               <Alert key={`${win.prize}-${index}`}>
                 <AlertDescription>
