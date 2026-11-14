@@ -45,7 +45,15 @@ function parseCsv(csv) {
   });
 }
 
-async function sendInvite(user, requestedBy) {
+/**
+ * Issue a judge's invite link and email it.
+ * @param {object} user - User document.
+ * @param {*} requestedBy - Admin id.
+ * @param {boolean} [retry] - Let the outbox retry a failed send with a fresh
+ *   link (background sends). Off when the admin is told about a failure.
+ * @returns {Promise<void>}
+ */
+async function sendInvite(user, requestedBy, retry) {
   user.judgeInvitePending = true;
   var raw = await passwordToken.issuePasswordToken(
     user,
@@ -58,11 +66,16 @@ async function sendInvite(user, requestedBy) {
       name: user.name,
       inviteUrl: primaryClientOrigin() + "/judge/accept?token=" + raw,
     },
-    { retry: false, userId: user._id, requestedBy: requestedBy },
+    { retry: retry === true, userId: user._id, requestedBy: requestedBy },
   );
 }
 
-async function inviteOne(row, requestedBy) {
+/**
+ * Create or update the judge account and profile for one CSV row (no email).
+ * @param {object} row - Parsed CSV row.
+ * @returns {Promise<object>} The User document.
+ */
+async function saveJudge(row) {
   var email = row.email.trim().toLowerCase();
   var user = await User.findOne({ email: email });
   // Inviting must not silently demote an organizer or administrator.
@@ -78,8 +91,38 @@ async function inviteOne(row, requestedBy) {
     { $set: { hardware: row.hardware, active: true } },
     { upsert: true, new: true },
   );
+  return user;
+}
+
+/**
+ * Save one judge and email their invite.
+ * @param {object} row - Parsed CSV row.
+ * @param {*} requestedBy - Admin id.
+ * @returns {Promise<object>} The User document.
+ */
+async function inviteOne(row, requestedBy) {
+  var user = await saveJudge(row);
   await sendInvite(user, requestedBy);
   return user;
+}
+
+/**
+ * Email invites one after another in the background. Sends are spaced about
+ * a second apart, so a big list takes minutes: far longer than a request may
+ * stay open behind the proxy. A failed send is in the outbox and can be
+ * resent from the judges list.
+ * @param {Array<object>} users - Saved judges.
+ * @param {*} requestedBy - Admin id.
+ * @returns {Promise<void>}
+ */
+async function sendInvitesInBackground(users, requestedBy) {
+  for (var user of users) {
+    try {
+      await sendInvite(user, requestedBy, true);
+    } catch (err) {
+      console.error("Judge invite failed for " + user.email + ":", err && err.message);
+    }
+  }
 }
 
 /**
@@ -336,20 +379,24 @@ async function bulk(req, res, next) {
         });
       return;
     }
+    // Save everyone first and answer right away; the emails follow in the
+    // background (see sendInvitesInBackground).
     var results = [];
+    var saved = [];
     for (var row of rows) {
       try {
-        await inviteOne(row, req.user.id);
-        results.push({ email: row.email, sent: true });
+        saved.push(await saveJudge(row));
+        results.push({ email: row.email, saved: true });
       } catch (_err) {
         results.push({
           email: row.email,
-          sent: false,
-          error: "Invite failed. Resend from the judges list.",
+          saved: false,
+          error: "Couldn't add this judge. Try inviting them on their own.",
         });
       }
     }
-    res.json({ results: results });
+    res.json({ results: results, emailing: saved.length });
+    sendInvitesInBackground(saved, req.user.id);
   } catch (err) {
     next(err);
   }

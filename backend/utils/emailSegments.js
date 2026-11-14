@@ -1,7 +1,9 @@
 "use strict";
 
 var Application = require("../schemas/application");
+var activeApplications = require("../utils/activeApplications");
 var User = require("../schemas/user");
+var emailCategories = require("./emailCategories");
 
 /**
  * The audiences an admin can send a bulk email to. Each segment resolves to a
@@ -13,6 +15,8 @@ var User = require("../schemas/user");
  * don't exist yet are listed as unavailable, so the admin UI can show them
  * greyed out with the reason instead of leaving them out silently.
  */
+
+var USER_FIELDS = "name email marketingEmailConsent emailPreferences";
 
 /**
  * @param {Array<object>} users - User documents (lean).
@@ -33,20 +37,60 @@ function toRecipients(users, namesByUser) {
       userId: user._id,
       email: email,
       name: applicationName || user.name || "",
-      consent: Boolean(user.marketingEmailConsent),
+      // The person's own choice (true, false, or null for "never chose");
+      // applyAcceptedDefault turns the unset ones into the final answer.
+      choice: emailCategories.announcementChoice(user),
+      consent: emailCategories.announcementChoice(user) === true,
     });
   });
   return out;
 }
 
 /**
+ * Settle `consent` for announcements: people who never chose get them when
+ * they have an accepted application (the rule in emailCategories).
+ * @param {Array<object>} recipients - From toRecipients.
+ * @returns {Promise<Array<object>>} The same recipients, `consent` final.
+ */
+function applyAcceptedDefault(recipients) {
+  var undecided = recipients
+    .filter(function unset(r) {
+      return r.choice === null;
+    })
+    .map(function pick(r) {
+      return r.userId;
+    });
+  if (!undecided.length) {
+    return Promise.resolve(recipients);
+  }
+  return Application.distinct("applicant", activeApplications.active({ applicant: { $in: undecided }, status: "accepted" })).then(function mark(ids) {
+    var accepted = {};
+    ids.forEach(function each(id) {
+      accepted[String(id)] = true;
+    });
+    recipients.forEach(function each(r) {
+      if (r.choice === null && accepted[String(r.userId)]) {
+        r.consent = true;
+      }
+    });
+    return recipients;
+  });
+}
+
+/**
  * Each applicant's latest application (by creation time), optionally limited
  * to one round.
+ * Removed applications (duplicates, test entries) are left out unless
+ * `includeRemoved` is set.
  * @param {*} [round] - ApplicationRound _id to limit to.
+ * @param {boolean} [includeRemoved] - Also read removed applications.
  * @returns {Promise<Array<object>>} `{ applicant, status, name }` per applicant.
  */
-function latestApplications(round) {
+function latestApplications(round, includeRemoved) {
   var filter = round ? { round: round } : {};
+  if (!includeRemoved) {
+    filter = activeApplications.active(filter);
+  }
   return Application.find(filter)
     .select("applicant status name createdAt")
     .lean()
@@ -86,7 +130,7 @@ function byApplicationStatus(status) {
           }),
         },
       })
-        .select("name email marketingEmailConsent")
+        .select(USER_FIELDS)
         .lean()
         .then(function afterUsers(users) {
           return toRecipients(users, names);
@@ -102,8 +146,9 @@ function byApplicationStatus(status) {
  */
 function notApplied(ctx) {
   return Promise.all([
-    latestApplications(ctx.round),
-    User.find({ role: "applicant" }).select("name email marketingEmailConsent").lean(),
+    // A removed application still means they applied: don't nag them to apply.
+    latestApplications(ctx.round, true),
+    User.find({ role: "applicant" }).select(USER_FIELDS).lean(),
   ]).then(function afterLoad(results) {
     var applied = {};
     results[0].forEach(function mark(application) {
@@ -123,7 +168,7 @@ function notApplied(ctx) {
  */
 function checkedIn() {
   return User.find({ checkedIn: true })
-    .select("name email marketingEmailConsent")
+    .select(USER_FIELDS)
     .lean()
     .then(toRecipients);
 }
@@ -135,7 +180,7 @@ function checkedIn() {
  */
 function testToMe(ctx) {
   return User.find({ _id: ctx.adminId })
-    .select("name email marketingEmailConsent")
+    .select(USER_FIELDS)
     .lean()
     .then(toRecipients);
 }
@@ -200,10 +245,13 @@ function list() {
  * @returns {Promise<Array<{userId: *, email: string, name: string, consent: boolean}>>}
  */
 function resolve(segment, ctx) {
-  return segment.resolve(ctx || {});
+  return segment.resolve(ctx || {}).then(applyAcceptedDefault);
 }
 
 module.exports = {
+  USER_FIELDS: USER_FIELDS,
+  toRecipients: toRecipients,
+  applyAcceptedDefault: applyAcceptedDefault,
   find: find,
   list: list,
   resolve: resolve,

@@ -17,6 +17,7 @@ var OrgSettings = require("../schemas/orgSettings");
 var parseToken = require("../utils/parseToken");
 var passwordToken = require("../utils/passwordToken");
 var signToken = require("../utils/signToken");
+var waitFor = require("./helpers/waitFor");
 
 function auth(token) {
   return "Bearer " + token;
@@ -334,11 +335,15 @@ test("judge role, credentials and administration", async function suite(t) {
         .send({ csv: csv, confirm: true });
       assert.equal(res.status, 200);
       assert.ok(
-        res.body.results.every(function sent(row) {
-          return row.sent;
+        res.body.results.every(function saved(row) {
+          return row.saved;
         }),
       );
-      assert.equal(mail.calls.length, 2);
+      assert.equal(res.body.emailing, 2);
+      assert.equal(await User.countDocuments({ email: /^bulk-/, role: "judge" }), 2, "judges exist before the emails go out");
+      await waitFor(function bothSent() {
+        return mail.calls.length === 2;
+      }, { timeoutMs: 5000 });
     },
   );
 

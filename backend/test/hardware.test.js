@@ -194,6 +194,47 @@ test("hardware lab", async function hardware(t) {
     await request(app).post("/api/staff/hardware/checkouts/" + loan.id + "/return").set(auth(p.mod)).expect(200);
     assert.equal((await checkout(p, p.attendee)).status, 201);
   });
+  await t.test("attendee limit changes while items are on loan", async function () {
+    var p = await seed();
+    await Item.updateOne({ _id: p.item.id }, { $set: { maxPerAttendee: 2 } });
+    assert.equal((await checkout(p, p.attendee)).status, 201);
+    assert.equal((await checkout(p, p.attendee)).status, 201);
+    assert.equal((await checkout(p, p.attendee)).status, 409);
+    var raised = await request(app).patch("/api/admin/hardware/items/" + p.item.id).set(auth(p.admin)).send({ maxPerAttendee: 3 });
+    assert.equal(raised.status, 200);
+    assert.equal((await checkout(p, p.attendee)).status, 201);
+    var lowered = await request(app).patch("/api/admin/hardware/items/" + p.item.id).set(auth(p.admin)).send({ maxPerAttendee: 1 });
+    assert.equal(lowered.status, 200);
+    assert.equal(lowered.body.item.availableQty, 0);
+    assert.equal(await Checkout.countDocuments({ returnedAt: null }), 3, "lowering never takes back loans");
+    var loan = await Checkout.findOne({ returnedAt: null });
+    await request(app).post("/api/staff/hardware/checkouts/" + loan.id + "/return").set(auth(p.mod)).expect(200);
+    assert.equal((await checkout(p, p.attendee)).status, 409, "still above the new limit");
+  });
+  await t.test("staff edit a loan's item, due time and notes", async function () {
+    var p = await seed();
+    var other = await Item.create({ name: "Sensor", totalQty: 1, availableQty: 1, maxPerAttendee: 1 });
+    var loan = (await checkout(p, p.attendee)).body.checkout;
+    var due = new Date(Date.now() + 3600000).toISOString();
+    var res = await request(app).patch("/api/staff/hardware/checkouts/" + loan._id).set(auth(p.mod)).send({ itemId: other.id, dueAt: due, notes: "Swapped" });
+    assert.equal(res.status, 200);
+    assert.equal(res.body.checkout.item.name, "Sensor");
+    assert.equal(res.body.checkout.notes, "Swapped");
+    assert.equal(new Date(res.body.checkout.dueAt).toISOString(), due);
+    assert.equal((await Item.findById(p.item.id)).availableQty, 3);
+    assert.equal((await Item.findById(other.id)).availableQty, 0);
+    var second = (await checkout(p, p.attendee)).body.checkout;
+    var full = await request(app).patch("/api/staff/hardware/checkouts/" + second._id).set(auth(p.mod)).send({ itemId: other.id });
+    assert.equal(full.status, 409);
+    assert.equal((await Item.findById(p.item.id)).availableQty, 2, "a refused move changes no stock");
+    await request(app).patch("/api/staff/hardware/checkouts/" + loan._id).set(auth(p.mod)).send({ dueAt: null }).expect(200);
+    assert.equal((await Checkout.findById(loan._id)).dueAt, null);
+    await request(app).post("/api/staff/hardware/checkouts/" + second._id + "/return").set(auth(p.mod)).expect(200);
+    var returned = await request(app).patch("/api/staff/hardware/checkouts/" + second._id).set(auth(p.mod)).send({ itemId: other.id });
+    assert.equal(returned.status, 409);
+    await request(app).patch("/api/staff/hardware/checkouts/" + second._id).set(auth(p.mod)).send({ notes: "Late" }).expect(200);
+    await request(app).patch("/api/staff/hardware/checkouts/" + second._id).set(auth(p.attendee)).send({ notes: "x" }).expect(403);
+  });
   await t.test("must be accepted AND checked in; QR resolution reused", async function () {
     var p = await seed();
     await Application.updateOne({ applicant: p.attendee.user._id }, { $set: { status: "rejected" } });

@@ -2,6 +2,7 @@
 
 var validator = require("validator");
 var Application = require("../schemas/application");
+var activeApplications = require("./activeApplications");
 var OrgSettings = require("../schemas/orgSettings");
 var User = require("../schemas/user");
 var decisions = require("./decisions");
@@ -152,7 +153,7 @@ function candidateFilter(config) {
   return User.find({ email: emailPattern(config.domains, config.includeSubdomains !== false) })
     .distinct("_id")
     .then(function afterUsers(userIds) {
-      return { status: "pending", flagged: { $ne: true }, applicant: { $in: userIds } };
+      return activeApplications.active({ status: "pending", flagged: { $ne: true }, applicant: { $in: userIds } });
     });
 }
 

@@ -8,11 +8,15 @@ var Draw = require("../schemas/raffleDraw");
 var Signup = require("../schemas/workshopSignup");
 var User = require("../schemas/user");
 var Application = require("../schemas/application");
+var activeApplications = require("../utils/activeApplications");
 var Settings = require("../schemas/orgSettings");
 var currentRole = require("../utils/currentRole").currentRole;
 var resolveAttendee = require("./staffController").resolveAttendee;
 var codeFor = require("../utils/workshopCode");
 var csv = require("../utils/csv");
+// "Open until an organizer closes it": far enough away that it never lapses,
+// so every `openUntil > now` check keeps working unchanged.
+var UNTIL_CLOSED = new Date("9999-12-31T00:00:00.000Z");
 var mailer = require("../utils/mailer");
 
 /** @param {object} req @param {object} res @param {function} next @returns {Promise<void>} */
@@ -38,18 +42,16 @@ async function manageable(req, res, next) {
 async function session(req, res, next) {
   try {
     var action = req.path.split("/").pop();
-    var minutes =
-      req.body && req.body.minutes !== undefined
-        ? Number(req.body.minutes)
-        : 10;
-    if (
-      action !== "close" &&
-      (!Number.isInteger(minutes) || minutes < 1 || minutes > 180)
-    ) {
+    // No minutes: attendance stays open until an organizer closes it.
+    var timed =
+      req.body && req.body.minutes !== undefined && req.body.minutes !== null;
+    var minutes = timed ? Number(req.body.minutes) : null;
+    if (action !== "close" && timed && (!Number.isInteger(minutes) || minutes < 1)) {
       return res
         .status(400)
-        .json({ error: "Minutes must be a whole number from 1 to 180." });
+        .json({ error: "Minutes must be a whole number, or leave it out to stay open until closed." });
     }
+    if (action === "extend" && !timed) minutes = 10;
     var now = Date.now();
     var query = { _id: req.workshop._id };
     var update;
@@ -65,7 +67,7 @@ async function session(req, res, next) {
       ];
       update = {
         $set: {
-          attendanceOpenUntil: new Date(now + minutes * 60000),
+          attendanceOpenUntil: timed ? new Date(now + minutes * 60000) : UNTIL_CLOSED,
           attendanceSecret: crypto.randomBytes(32).toString("hex"),
         },
       };
@@ -337,6 +339,13 @@ async function me(req, res, next) {
         await Attendance.exists({ workshop: workshop._id, user: req.user.id }),
       ),
       checkedIn: Boolean(user && user.checkedIn),
+      signedUp: Boolean(
+        await Signup.exists({ workshop: workshop._id, user: req.user.id }),
+      ),
+      spotsLeft:
+        workshop.capacity === 0
+          ? null
+          : Math.max(0, workshop.capacity - workshop.signupCount),
       wins: wins,
       organizerRoom: settings.organizerRoom || "the organizer room",
     });
@@ -382,10 +391,12 @@ async function pick(workshop, drawnBy, count, prize, redrawOf) {
     var attendees = await Attendance.find({ workshop: workshop._id }).distinct(
       "user",
     );
-    var accepted = await Application.find({
-      applicant: { $in: attendees },
-      status: "accepted",
-    }).distinct("applicant");
+    var accepted = await Application.find(
+      activeApplications.active({
+        applicant: { $in: attendees },
+        status: "accepted",
+      }),
+    ).distinct("applicant");
     var pool = await User.find({
       _id: { $in: accepted, $nin: excluded },
       checkedIn: true,
@@ -451,10 +462,7 @@ async function draw(req, res, next) {
       return res
         .status(409)
         .json({ error: "Raffle is disabled for this workshop." });
-    if (+req.workshop.endsAt > Date.now() && body.early !== true)
-      return res.status(409).json({
-        error: "The workshop has not ended. Choose End early to draw now.",
-      });
+    // Organizers draw whenever they choose; there is no wait for the end time.
     var result = await pick(
       req.workshop,
       req.user.id,

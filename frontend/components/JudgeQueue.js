@@ -145,9 +145,11 @@ export default function JudgeQueue({ userId, view = "schedule" }) {
                         identity={`${userId}:${data.version}:${project._id}`}
                       />
                     )}
-                    {project.status === "upcoming" && (
+                    {data.current && data.current._id !== project._id && (
                       <p className="text-sm text-muted-foreground">
-                        Score the current project before this table.
+                        Judge in any order. Your suggested next table is{" "}
+                        {data.current.tableNumber} ({data.current.name}), which
+                        keeps you on the suggested timings.
                       </p>
                     )}
                     <JudgeScoringForm
@@ -155,29 +157,28 @@ export default function JudgeQueue({ userId, view = "schedule" }) {
                       project={project}
                       criteria={data.criteria}
                       userId={userId}
-                      disabled={
-                        !data.judgingOpen || project.status === "upcoming"
-                      }
+                      disabled={!data.judgingOpen}
                       busy={busy}
                       onSave={save}
                     />
                     <div className="flex flex-wrap gap-2">
-                      {data.current?._id === project._id && (
-                        <Button
-                          variant="outline"
-                          className="pointer-coarse:h-11"
-                          disabled={!data.judgingOpen || busy}
-                          loading={busy}
-                          onClick={async () => {
-                            if (
-                              await action("skip", { projectId: project._id })
-                            )
-                              router.replace("/dashboard/judging/score");
-                          }}
-                        >
-                          Skip project
-                        </Button>
-                      )}
+                      {project.status !== "done" &&
+                        project.status !== "skipped" && (
+                          <Button
+                            variant="outline"
+                            className="pointer-coarse:h-11"
+                            disabled={!data.judgingOpen || busy}
+                            loading={busy}
+                            onClick={async () => {
+                              if (
+                                await action("skip", { projectId: project._id })
+                              )
+                                router.replace("/dashboard/judging/score");
+                            }}
+                          >
+                            Skip project
+                          </Button>
+                        )}
                       {selected && (
                         <Button
                           asChild
@@ -186,7 +187,7 @@ export default function JudgeQueue({ userId, view = "schedule" }) {
                           disabled={busy}
                         >
                           <Link href="/dashboard/judging/score">
-                            Return to current project
+                            Back to suggested next
                           </Link>
                         </Button>
                       )}

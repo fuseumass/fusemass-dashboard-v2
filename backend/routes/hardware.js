@@ -21,6 +21,7 @@ staff.get("/", controller.inventory);
 staff.get("/checkouts", controller.checkouts);
 staff.post("/checkouts", controller.checkout);
 staff.post("/checkouts/:id/return", controller.returnCheckout);
+staff.patch("/checkouts/:id", controller.editCheckout);
 staff.get("/export.csv", controller.exportCsv);
 staff.post("/reminders", controller.remind);
 admin.use(requireFeature("hardware"), isAuthenticated, isAdmin, staffInventory);

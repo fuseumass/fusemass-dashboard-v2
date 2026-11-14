@@ -100,6 +100,28 @@ test("workshop attendance and raffle lifecycle", async function (t) {
         ).status,
         200,
       );
+      // Without minutes it stays open until someone closes it.
+      assert.equal(
+        (await call(organizer, "post", base + "/attendance/close")).status,
+        200,
+      );
+      var untilClosed = await call(organizer, "post", base + "/attendance/open");
+      assert.equal(untilClosed.status, 200);
+      assert.ok(
+        +new Date(untilClosed.body.openUntil) > Date.now() + 365 * 24 * 3600 * 1000,
+      );
+      assert.equal(
+        (await call(organizer, "post", base + "/attendance/close")).status,
+        200,
+      );
+      assert.equal(
+        (
+          await call(organizer, "post", base + "/attendance/open", {
+            minutes: 10,
+          })
+        ).status,
+        200,
+      );
       assert.equal(
         (await call(moderator, "post", base + "/attendance/open")).status,
         409,
@@ -165,6 +187,8 @@ test("workshop attendance and raffle lifecycle", async function (t) {
       );
       var me = await call(users[0], "get", base + "/me");
       assert.equal(me.body.attended, true);
+      assert.equal(typeof me.body.signedUp, "boolean");
+      assert.ok(me.body.spotsLeft === null || typeof me.body.spotsLeft === "number");
       assert.ok(!JSON.stringify(me.body).includes("attendanceSecret"));
       assert.ok(!JSON.stringify(me.body).includes(users[1].user.email));
       assert.ok(!JSON.stringify(me.body).includes("qrId"));
@@ -326,17 +350,8 @@ test("workshop attendance and raffle lifecycle", async function (t) {
     },
   );
   await t.test(
-    "draw timing, flag, eligible pool, count cap, claim and exhausted pool",
+    "draw any time, flag, eligible pool, count cap, claim and exhausted pool",
     async function () {
-      assert.equal(
-        (
-          await call(admin, "post", base + "/raffle/draw", {
-            prize: "Kit",
-            count: 1,
-          })
-        ).status,
-        409,
-      );
       await Workshop.updateOne({ _id: workshop._id }, { raffleEnabled: false });
       assert.equal(
         (

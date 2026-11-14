@@ -10,7 +10,7 @@ var Schema = mongoose.Schema;
 // failed    gave up (out of attempts, or a permanent error) or was interrupted
 //           mid-send; waits for an admin to resend it
 // cancelled never sent on purpose: an admin cancelled it, or the recipient
-//           unsubscribed from announcements while it waited
+//           turned that kind of email off (see utils/emailCategories)
 var EMAIL_STATUSES = ["queued", "sent", "failed", "cancelled"];
 
 // transactional  always sent (decisions, QR codes, check-in, password links)
@@ -42,6 +42,7 @@ var EMAIL_CATEGORIES = ["transactional", "announcement", "test"];
  * @property {string} lastError - Why the latest attempt failed ("" when it didn't).
  * @property {Date} [lastAttemptAt] - Start of the latest attempt.
  * @property {Date} [nextAttemptAt] - When a queued row is next due.
+ * @property {number} [priority] - Queue order for bulk-queued rows; higher sends first.
  * @property {Date} [lockedUntil] - Set while an attempt is in flight (a lease).
  * @property {Date} [sentAt] - When the SMTP server accepted it.
  * @property {string} [messageId] - The SMTP server's id for the message.
@@ -56,6 +57,8 @@ var EMAIL_CATEGORIES = ["transactional", "announcement", "test"];
  *   have been delivered. Never retried in bulk; only an admin's single resend.
  * @property {string} [batchId] - Groups the rows of one bulk send.
  * @property {string} [segment] - The bulk-send audience, for the duplicate guard.
+ * @property {string} [preferenceCategory] - Email-preference category it is
+ *   sent under, when it isn't the template's own (utils/emailCategories).
  * @property {ObjectId} [resendOf] - The row this one re-sends.
  * @property {Date} [lastResentAt] - Guards against a double-clicked "send again".
  * @property {ObjectId} [requestedBy] - Admin who started a bulk send / resend.
@@ -73,6 +76,9 @@ var emailLogSchema = new Schema(
     lastError: { type: String, default: "" },
     lastAttemptAt: { type: Date },
     nextAttemptAt: { type: Date },
+    // Queue order for bulk-queued rows: higher sends first (see
+    // utils/emailCategories queuePriority). Rows without one sort last.
+    priority: { type: Number, default: 0 },
     lockedUntil: { type: Date },
     sentAt: { type: Date },
     messageId: { type: String },
@@ -84,6 +90,7 @@ var emailLogSchema = new Schema(
     interrupted: { type: Boolean, default: false },
     batchId: { type: String },
     segment: { type: String },
+    preferenceCategory: { type: String },
     resendOf: { type: Schema.Types.ObjectId, ref: "EmailLog" },
     lastResentAt: { type: Date },
     requestedBy: { type: Schema.Types.ObjectId, ref: "User" },
@@ -100,6 +107,7 @@ var emailLogSchema = new Schema(
 // also serves the admin's status filter and counts), the admin list newest
 // first, and the TTL on `expiresAt` above.
 emailLogSchema.index({ status: 1, nextAttemptAt: 1 });
+emailLogSchema.index({ status: 1, priority: -1, nextAttemptAt: 1 });
 emailLogSchema.index({ createdAt: -1 });
 
 // Internal fields the admin list has no use for. The calendar invite in

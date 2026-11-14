@@ -44,6 +44,37 @@ var DEFAULT_TEMPLATES = [
       "Hi {{name}},\n\nYou're no longer signed up for {{title}} ({{when}}).\n\nThe attachment removes it from your calendar.",
   },
   {
+    // Sent to everyone signed up, at the offsets set on the Communications
+    // page. {{headline}} and {{lead}} change for the last reminder
+    // ("Starting now" / "is starting now in <room>").
+    key: "workshop_reminder",
+    subject: "{{headline}}: {{title}}",
+    body:
+      "Hi {{name}},\n\n{{title}} {{lead}}.\n\nWhen: {{when}}\nWhere: {{location}}\nHost: {{host}}\n\nSee you there. Details are on the dashboard: {{workshopUrl}}",
+  },
+  {
+    // Sent to all accepted participants shortly before workshops start (one
+    // email even when several start together). {{workshops}} lists them.
+    key: "workshop_announcement",
+    subject: "{{headline}}",
+    body:
+      "Hi {{name}},\n\n{{intro}}\n\n{{workshops}}\n\nSign up or see details on the dashboard: {{workshopsUrl}}",
+  },
+  {
+    // The optional daily list of upcoming workshops with open spots, for
+    // accepted participants who opted in to announcements.
+    key: "workshop_digest",
+    subject: "Upcoming workshops at {{orgName}}",
+    body: "Hi {{name}},\n\nThese workshops are coming up and still have room:\n\n{{workshops}}\n\nSign up on the dashboard: {{workshopsUrl}}",
+  },
+  {
+    // A message written on the Communications page. {{message}} is the text
+    // staff typed; {{link}} the optional link under it.
+    key: "announcement",
+    subject: "{{title}}",
+    body: "Hi {{name}},\n\n{{message}}\n\n{{link}}",
+  },
+  {
     // Sent to each raffle winner; {{organizerRoom}} comes from org settings.
     key: "raffle_winner",
     subject: "You won a raffle at {{title}}",
@@ -117,12 +148,38 @@ var DEFAULT_TEMPLATES = [
       "Hi {{name}},\n\nYou've been accepted to {{orgName}}, and we've created an account for you so you can see your status and check-in QR code on the dashboard.\n\nSet your password here (this link works for 7 days):\n{{setupUrl}}\n\nIf it has expired, use \"Forgot password\" on the login page with this email address.",
   },
   {
+    // Sent from the User groups page to accepted applicants who still haven't
+    // set a password. Each send issues a fresh {{setupUrl}} (7 days) and
+    // replaces any earlier link.
+    key: "account_setup_reminder",
+    subject: "Reminder: set up your {{orgName}} account",
+    body:
+      "Hi {{name}},\n\nYou're accepted to {{orgName}}, but your dashboard account isn't set up yet. You'll need it to see your check-in QR code, join a team and get event updates.\n\nSet your password here (this link works for 7 days and replaces any earlier link we sent):\n{{setupUrl}}\n\nIf it has expired, use \"Forgot password\" on the login page with this email address.",
+  },
+  {
+    // Sent to everyone in a suggested team (Teams page -> Import suggested
+    // teams). Nobody is on the team yet: the first to accept starts it.
+    key: "team_suggestion",
+    subject: "Your {{orgName}} dream team is waiting",
+    body:
+      "Hi {{name}},\n\nBecause you asked for help finding a team, we've put together a suggested team for you at {{orgName}}: {{memberNames}}.\n\nLog in to accept or decline: {{teamsUrl}}\n\nThe team starts as soon as the first person accepts, and everyone who accepts after that joins it. You can still leave or join a different team later.\n\nIf you applied without an account and haven't set a password yet, use \"Forgot password\" on the login page with this email address.",
+  },
+  {
     // Sent when someone invites this email to their team. The invitee may
     // not have a password yet (applied without an account).
     key: "team_invite",
     subject: "{{inviterName}} invited you to join {{teamName}}",
     body:
       "Hi,\n\n{{inviterName}} invited you to join their team \"{{teamName}}\" for {{orgName}}.\n\nLog in to the dashboard to accept or decline: {{teamsUrl}}\n\nIf you applied without an account and haven't set a password yet, use \"Forgot password\" on the login page with this email address.",
+  },
+  {
+    // Sent from the admin team builder to each applicant whose teammate list
+    // disagrees with another applicant's. {{conflictDetails}} says who listed
+    // whom; no team was created for them.
+    key: "team_conflict",
+    subject: "Your teammate list doesn't match",
+    body:
+      "Hi {{name}},\n\n{{conflictDetails}}\n\nBecause of this we haven't created a team for you yet. Please create your team on the dashboard and invite your teammates there: {{teamsUrl}}",
   },
   {
     // Sent when staff check an attendee in on arrival. The run of show is
@@ -138,10 +195,14 @@ var DEFAULT_TEMPLATES = [
 // bodies independently when they still exactly match an older default.
 // Customized text is preserved, including when only the other field changes.
 var LEGACY_DEFAULT_SUBJECTS = {
+  workshop_reminder: ["Starting soon: {{title}}"],
   checked_in: ["You're checked in to {{orgName}}!"],
 };
 
 var LEGACY_DEFAULT_BODIES = {
+  workshop_reminder: [
+    "Hi {{name}},\n\n{{title}} starts soon.\n\nWhen: {{when}}\nWhere: {{location}}\nHost: {{host}}\n\nSee you there. Details are on the dashboard: {{workshopUrl}}",
+  ],
   hardware_checkout: [
     "Hi {{name}},\n\nYou checked out {{itemName}} at {{eventTime}}.\nReturn deadline: {{dueTime}}",
     "Hi {{name}},\n\nYou checked out {{itemName}} at {{eventTime}}.\n\nPlease return all hardware to the hardware desk before you leave for the day on {{returnBy}}.\n\nReturn deadline: {{dueTime}}",

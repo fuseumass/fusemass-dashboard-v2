@@ -10,7 +10,6 @@ import QRScanner from "@/components/QRScanner";
 import { CardSkeleton } from "@/components/skeletons";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
-import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { apiDownload, apiFetch } from "@/lib/api";
@@ -25,11 +24,9 @@ export default function WorkshopConsole() {
   const [message, setMessage] = useState("");
   const [pending, setPending] = useState(false);
   const busy = useRef(false);
-  const [minutes, setMinutes] = useState("10");
   const [userId, setUserId] = useState("");
   const [prize, setPrize] = useState("");
   const [count, setCount] = useState("1");
-  const [early, setEarly] = useState(false);
   const [now, setNow] = useState(0);
   const load = useCallback(async () => {
     try {
@@ -112,39 +109,37 @@ export default function WorkshopConsole() {
               </p>
               <p className="text-sm text-muted-foreground">
                 {+new Date(data.workshop.attendanceOpenUntil) > now
-                  ? `Open until ${formatDateTime(data.workshop.attendanceOpenUntil)}`
-                  : "Attendance is closed"}
+                  ? new Date(data.workshop.attendanceOpenUntil).getFullYear() >=
+                    9999
+                    ? "Attendance is open until you close it"
+                    : `Open until ${formatDateTime(data.workshop.attendanceOpenUntil)}`
+                  : "Attendance is not open"}
               </p>
               <div className="flex flex-wrap items-end gap-3">
-                <div className="space-y-2">
-                  <Label htmlFor="minutes">Minutes</Label>
-                  <Input
-                    id="minutes"
-                    type="number"
-                    min={1}
-                    max={180}
-                    className="w-24 pointer-coarse:h-11"
-                    value={minutes}
-                    onChange={(e) => setMinutes(e.target.value)}
-                  />
-                </div>
-                {["open", "extend", "close"].map((verb) => (
-                  <Button
-                    key={verb}
-                    variant="outline"
-                    className="pointer-coarse:h-11"
-                    loading={pending}
-                    onClick={() =>
-                      action(
-                        `attendance/${verb}`,
-                        { minutes: Number(minutes) },
-                        "Attendance session updated",
-                      )
-                    }
-                  >
-                    {verb.charAt(0).toUpperCase() + verb.slice(1)} attendance
-                  </Button>
-                ))}
+                {+new Date(data.workshop.attendanceOpenUntil) > now
+                  ? <Button
+                      variant="outline"
+                      className="pointer-coarse:h-11"
+                      loading={pending}
+                      onClick={() =>
+                        action("attendance/close", {}, "Attendance closed")
+                      }
+                    >
+                      Close attendance
+                    </Button>
+                  : <Button
+                      className="pointer-coarse:h-11"
+                      loading={pending}
+                      onClick={() =>
+                        action(
+                          "attendance/open",
+                          {},
+                          "Attendance open until you close it",
+                        )
+                      }
+                    >
+                      Open attendance
+                    </Button>}
                 <Button
                   asChild
                   variant="outline"
@@ -247,9 +242,8 @@ export default function WorkshopConsole() {
                   </p>
                 : <>
                     <p className="text-sm text-muted-foreground">
-                      Draw unlocks at {formatDateTime(data.workshop.endsAt)}.
-                      Only accepted, event checked-in attendees who have not won
-                      here are eligible.
+                      Draw whenever you're ready. Only accepted, event
+                      checked-in attendees who have not won here are eligible.
                     </p>
                     <form
                       className="flex flex-wrap items-end gap-3"
@@ -257,7 +251,7 @@ export default function WorkshopConsole() {
                         e.preventDefault();
                         action(
                           "raffle/draw",
-                          { prize, count: Number(count), early },
+                          { prize, count: Number(count) },
                           `Winners have been emailed to collect from ${data.organizerRoom}`,
                         );
                       }}
@@ -285,22 +279,11 @@ export default function WorkshopConsole() {
                           onChange={(e) => setCount(e.target.value)}
                         />
                       </div>
-                      <div className="flex items-center gap-2 pointer-coarse:min-h-11">
-                        <Checkbox
-                          id="early"
-                          checked={early}
-                          onCheckedChange={(value) => setEarly(value === true)}
-                        />
-                        <Label htmlFor="early">End early</Label>
-                      </div>
                       <Button
                         type="submit"
                         className="pointer-coarse:h-11"
                         loading={pending}
-                        disabled={
-                          !prize.trim() ||
-                          (!early && now < +new Date(data.workshop.endsAt))
-                        }
+                        disabled={!prize.trim()}
                       >
                         Draw winners
                       </Button>

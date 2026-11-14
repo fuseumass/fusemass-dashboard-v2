@@ -3,3 +3,8 @@ issues.md
 node_modules/
 .DS_Store
 .claude/settings.local.json
+
+# IRB study outputs (names, emails, arms): never commit
+irb-out/
+irb/**/*.csv
+__pycache__/

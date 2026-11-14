@@ -334,14 +334,17 @@ export default function JudgesPage() {
                     confirm: true,
                   });
                   if (data) {
-                    const failed = data.results.filter((row) => !row.sent);
+                    const failed = data.results.filter((row) => !row.saved);
                     setPreview(null);
                     setCsv("");
                     if (failed.length)
                       setError(
-                        `Invites failed for: ${failed.map((row) => row.email).join(", ")}. Resend from the judges list.`,
+                        `Couldn't add: ${failed.map((row) => row.email).join(", ")}. Try inviting them one at a time.`,
                       );
-                    else notifySuccess("Invites sent");
+                    if (data.emailing)
+                      notifySuccess(
+                        `${data.emailing} judges added. Their invites are going out now, about one a second.`,
+                      );
                   }
                 }}
               >

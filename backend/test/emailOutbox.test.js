@@ -350,7 +350,7 @@ test("B26: email outbox log, retry and backoff", async function emailOutbox(t) {
     assert.doesNotMatch(JSON.stringify(await EmailLog.collection.findOne({ _id: failed._id })), /SECRETTOKEN123/);
   });
 
-  await t.test("account-setup emails (single-use link in the values) are stored without the link and never retried", async function (t2) {
+  await t.test("account-setup emails (single-use link in the values) are stored without the link; a retry needs a fresh one", async function (t2) {
     await resetFixtures();
     var mail = flaky.mockFlakyTransport(t2);
     var link = "http://localhost:3000/reset-password?token=SETUPSECRET456&setup=1";
@@ -362,10 +362,16 @@ test("B26: email outbox log, retry and backoff", async function emailOutbox(t) {
 
     var row = await EmailLog.findOne({ to: "setup@example.com" });
     assert.equal(row.redacted, true);
-    assert.equal(row.status, "failed");
+    assert.equal(row.status, "queued", "retried later with a freshly issued link (utils/linkReissue)");
     assert.equal(row.values, undefined);
     assert.doesNotMatch(JSON.stringify(await EmailLog.collection.findOne({ _id: row._id })), /SETUPSECRET456/);
-    assert.equal(await outbox.processDue({ force: true }), 0);
+    // No account behind the address, so there is no link to issue: cancelled.
+    await makeDue(row._id);
+    await outbox.processDue({ force: true });
+    var retried = await EmailLog.findById(row._id);
+    assert.equal(retried.status, "cancelled");
+    assert.match(retried.lastError, /no account/);
+    assert.ok(mail.calls.every(function noOldLink(c) { return !/SETUPSECRET456/.test(c.text || ""); }));
 
     // Any template carrying such a link is treated the same way.
     await mailer.sendTemplateEmail("other@example.com", "application_received", { name: "O", extra: link });
@@ -456,11 +462,19 @@ test("B26: email outbox log, retry and backoff", async function emailOutbox(t) {
         },
         { timeoutMs: 3000 }
       );
+      // The row is marked sent just after the mail server accepts the email,
+      // so poll for it instead of reading once (slow CI machines lose that race).
+      var status = "";
+      for (var tries = 0; tries < 300 && status !== "sent"; tries++) {
+        status = (await EmailLog.findOne({ to: "tick@example.com" })).status;
+        if (status !== "sent") await new Promise(function (r) { setTimeout(r, 10); });
+      }
     } finally {
       outbox.stopWorker();
       delete process.env.EMAIL_RETRY_INTERVAL_MS;
     }
-    assert.equal((await EmailLog.findOne({ to: "tick@example.com" })).status, "sent");
+    assert.equal(status, "sent");
+    assert.equal(mail.calls.length, 1, "sent exactly once");
   });
 
   await t.test("users and announcements: an unsubscribed recipient is skipped at send time", async function (t2) {
@@ -476,8 +490,8 @@ test("B26: email outbox log, retry and backoff", async function emailOutbox(t) {
     assert.equal(mail.calls.length, 1);
     assert.equal(mail.calls[0].to, "in@example.com");
     assert.match(mail.calls[0].text, /Unsubscribe: http/);
-    assert.match(mail.calls[0].html, /<a href="http[^"]+\/unsubscribe\?u=/);
-    assert.match(mail.calls[0].headers["List-Unsubscribe"], /\/unsubscribe\?u=/);
+    assert.match(mail.calls[0].html, /<a href="http[^"]+\/unsubscribe\?token=/);
+    assert.match(mail.calls[0].headers["List-Unsubscribe"], /\/unsubscribe\?token=/);
     var skipped = await EmailLog.findOne({ to: "out@example.com" });
     assert.equal(skipped.status, "cancelled");
     assert.equal(String(skipped.user), String(optedOut.user._id));

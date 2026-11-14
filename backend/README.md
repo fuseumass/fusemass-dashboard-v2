@@ -119,13 +119,27 @@ hiccups. Admins see it at `/dashboard/admin/outbox` (API: `/api/admin/outbox`).
   `POST /api/admin/outbox/cancel-queued` stops a send. `resend-acceptance`
   re-sends the acceptance email (with the QR) to accepted applicants who have
   no sent one logged.
-- **Consent:** `User.marketingEmailConsent` is off by default (sign-up,
-  `PATCH /api/auth/me`, or the public application form can set it). Bulk
-  sends are `announcement` by default: only opted-in people get them, each
-  with an unsubscribe link (`/unsubscribe` page, `POST /api/auth/unsubscribe`,
-  `List-Unsubscribe` header), and consent is checked again right before each
-  send. Pass `category: "transactional"` for things people need (it ignores
-  consent), e.g. re-sending acceptance emails.
+- **Email preferences:** every template has a category
+  (`utils/emailCategories.js`): `security` (password reset, email
+  verification, judge invite: always sent, no unsubscribe link), `decisions`,
+  `account`, `event` and `announcements` (also any custom template). People
+  turn the optional ones off on their Account page or from the link at the
+  bottom of every optional email (`/unsubscribe?token=`, a signed token with
+  the email's category; `POST /api/auth/email-preferences/lookup|update`).
+  Those emails also carry `List-Unsubscribe` and, when `API_PUBLIC_URL` is
+  set, `List-Unsubscribe-Post: List-Unsubscribe=One-Click`
+  (`POST /api/auth/unsubscribe/one-click?token=`). Preferences are checked
+  again right before each send; an opted-out email is marked cancelled with
+  the reason. Announcements go to people who opted in, and to people with an
+  accepted application unless they opted out (`emailPreferences.announcements`
+  is true, false or unset; `marketingEmailConsent` is kept in step; see
+  `emailCategories.announcementsAllowed`). The unsubscribe link, preferences
+  page and the application form's "Email me announcements and reminders"
+  checkbox set it explicitly. The rest are on until turned off
+  (`User.emailPreferences`). Bulk sends are `announcement` by default (only
+  opted-in people); `category: "transactional"` sends to the whole segment
+  but still respects each person's category (a custom template counts as
+  `event`, or pass `emailCategory`). Old `?u=&t=` links keep working.
 - **Daily limit:** bulk sends and "retry all" refuse to go over
   `EMAIL_DAILY_LIMIT` emails per rolling 24 h (default 500, the personal Gmail
   limit; `0` turns the check off) unless the request has
@@ -140,11 +154,39 @@ Optional environment variables:
 | `EMAIL_RETRY_INTERVAL_MS` | `30000` | How often the retry worker looks for due emails |
 | `EMAIL_LOG_RETENTION_DAYS`| `90`    | How long outbox rows are kept                 |
 
+### Communications page
+
+`/dashboard/staff/communications` (moderators and admins; API under
+`/api/staff/communications`) sends announcements to email (through the
+outbox, announcements category) and to two Discord channels by webhook,
+`DISCORD_ANNOUNCEMENTS_WEBHOOK_URL` and `DISCORD_WORKSHOPS_WEBHOOK_URL`
+(Technical settings, write-only). Posts are embeds within Discord's limits,
+retried after a 429. An announcement has separate email text and Discord text;
+in Discord the writer types `@everyone`, `@here` or `@label`, where labels are
+saved role tags (`CommunicationSettings.discordTags`, `{ label, roleId }`).
+`@label` becomes `<@&roleId>` and `allowed_mentions` lists exactly the roles
+used, so nothing else pings.
+Announcements can be scheduled; history shows counts per channel, "Send
+again" and "Cancel scheduled". Workshop automations (singleton
+`CommunicationSettings`, admins edit): an announcement of each published
+workshop to all accepted participants (Discord workshops post plus an `event`
+email, default 2 hours before, workshops starting together combined), reminder
+emails to the people signed up (default 45 and 5 minutes before; the last says
+"starting now in <room>"; an optional Discord post at the same times), all
+offsets editable lists, an optional role mention in automated posts, a
+daily sign-up post at 09:00 event time listing the next 24 hours of workshops
+with spots, an optional daily email digest (off by default), and a post when
+a workshop is published or moves. Each automated send is claimed first with a
+unique `AutomationLog` key (workshop, start time, offset, person), so it happens once
+even with two processes or a restart, and a moved workshop gets new
+reminders.
+
 ### Background workers
 
-`server.js` starts two timers once it is listening: the outbox worker above
-(sends and retries emails) and domain auto-accept (accepts applications). Set
-`DISABLE_BACKGROUND_WORKERS=true` (or `1`) to keep both off; the server logs
+`server.js` starts three timers once it is listening: the outbox worker above
+(sends and retries emails), domain auto-accept (accepts applications) and the
+communications scheduler (every minute, `COMMUNICATIONS_INTERVAL_MS`). Set
+`DISABLE_BACKGROUND_WORKERS=true` (or `1`) to keep all of them off; the server logs
 "Background workers disabled." Use it for a local instance pointed at a real
 database (with no SMTP settings, so requests can't send email either). Leave it
 unset in production. It is deliberately not editable from Technical settings.
@@ -162,6 +204,24 @@ to the old address. Each change is appended to the application's `edits`
 (staff only). After an accepted applicant's email is fixed, the Review drawer
 offers to resend the acceptance email through
 `POST /api/staff/attendee/resend-qr`.
+
+Duplicates (moderators and admins). `POST /api/admin/applications/:id/remove`
+(`{ reason, duplicateOf? }`) marks an application removed (`removedAt`,
+`removedBy`, `removedReason`, `duplicateOf`) without deleting anything;
+`POST .../restore` undoes it; both are recorded in `edits` (`kind`). Every
+query that counts or acts on applications merges `utils/activeApplications`
+(`{ removedAt: null }`) so a removed one is skipped (stats, exports, user
+groups, email segments and audiences, auto-accept, decisions, check-in and
+meal eligibility, workshops, hardware, team builder). The review list hides
+removed ones unless `?removed=true`. `GET .../:id/compare?otherId=` shows both
+applications with what hangs off each account; `POST .../:id/merge`
+(`{ otherId, keep: "this"|"other", fields: { <field>: "this"|"other" } }`)
+updates the kept one, removes the other ("Merged into ...") and audits both,
+moving nothing else. It refuses (409) when both are accepted and both checked
+in unless an admin sends `confirmBothCheckedIn`. `GET /api/admin/applications/duplicates`
+suggests groups (same phone, same normalized name, Gmail-equivalent email) and
+`POST .../duplicates/dismiss` (`{ ids }`) remembers "not a duplicate".
+`GET .../search?q=` finds the other application for a merge.
 
 `PATCH /api/admin/judges/:id` (admins, judging feature) takes
 `{ name?, email?, hardware? }`. A new email cancels a pending invite link (the
@@ -186,6 +246,54 @@ is optional and they combine with AND:
 
 Unknown parameters and non-string values are a 400. User input only ever
 reaches MongoDB as a value (an `$in` list, an equality or an escaped pattern).
+
+## Team builder
+
+`/dashboard/admin/team-builder` (admin; `controllers/teamBuilderController.js`,
+parsing and grouping in the pure `utils/teamProposals.js`) turns the
+application's "list your teammates" answers into teams. The questions are
+found by key (`teammates`, `has_team`, `research_study`, `team_pairing`,
+`team_formation_event`) or, failing that, by label, so other events' forms
+work too.
+
+- **Parsing:** every email in an answer (lowercased; Gmail dots, `+tags` and
+  googlemail.com fold to one match key), with the name written next to it.
+  Full names without an email are matched when exactly one applicant in the
+  round has that name; other names ("Didy, Jeffrey") are shown raw.
+- **Grouping:** in-scope applicants (default: accepted) are joined to what
+  they listed; connected components are candidate groups. Listed people with
+  no account or application are members too and get an invite.
+- **Consistency:** each lister A claims `T(A)`: A plus everyone A listed. A
+  member who listed nobody (blank, "N/A", or only names that match no one) is
+  silent and agrees by default. If every lister in the group has the same `T`
+  the group is `ready`: one team is created, named "<first name>'s team"
+  after the earliest lister (who leads; the last name or a number is added
+  when the name is taken), and one-sided listings are simply invited. If two
+  listers differ (A lists x, y and x lists y, z; or A lists x and x lists y),
+  or the group is larger than `teamMaxSize`, it is a `conflict` and the apply
+  endpoint refuses to create or merge anything for it. Proposal `status` is
+  `ready`, `conflict` or `done` (everyone is on a team or invited).
+- **Applying:** the server rebuilds the proposals and only acts on people in
+  one of them. A new team's leader is the earliest applicant who can lead;
+  members with an account on no team are added, everyone else is sent the
+  normal `team_invite` (inviter: the leader). Merging invites people to the
+  member's existing team. Nobody is moved off a team, locked teams and full
+  seats are skipped and reported, and re-running skips anyone already on a
+  team or invited. Each proposal is applied under the team lock
+  (`utils/judging/state`). Runs are kept in `teambuilderruns`, and each team
+  logs `builder_add` / `builder_invite` in `staffChanges`.
+- **Conflict emails:** `POST /api/admin/team-builder/notify-conflicts` sends
+  the built-in `team_conflict` email to each in-scope lister in a conflict who
+  is on no team ("Your teammate list doesn't match ...", with both lists and a
+  link to `/dashboard/team`). A `teamconflictnotices` row (user, round, hash
+  of the lists) makes it once per person: a re-run skips them until the lists
+  change. `dryRun` only counts.
+
+Account setup reminders (`utils/setupReminders.js`) issue each accepted
+person who still can't sign in a fresh 7-day link and send it with the
+`account_setup_reminder` template, one at a time through the mailer (logged
+redacted in the outbox). `User.setupReminderSentAt` is claimed atomically, so
+nobody is reminded twice within 24 hours; a failed send releases the claim.
 
 ## Technical settings
 
@@ -352,6 +460,14 @@ emailed on acceptance (or via "Forgot password").
 | GET    | `/api/admin/groups`             | admin     | Counts and breakdowns of one group, no names or emails (filters below) |
 | GET    | `/api/admin/groups/emails`      | admin     | The group's emails, for "Copy emails" (`no-store`) |
 | GET    | `/api/admin/groups/export.csv`  | admin     | The group as a formula-safe CSV: contact and event fields plus every form answer |
+| GET    | `/api/admin/team-builder/proposals` | admin | Proposed teams from the teammates question (`?round=&statuses=accepted,pending`), flags, unmatched answers, recent runs |
+| POST   | `/api/admin/team-builder/notify-conflicts` | admin | Email every lister in a conflicting group once (`{ round?, statuses?, dryRun?, allowOverLimit? }`) |
+| POST   | `/api/admin/team-builder/apply` | admin     | Create proposed teams / merge into existing ones (`{ proposals: [{ memberEmails, name?, leaderEmail?, mergeIntoTeamId? }], round?, statuses?, dryRun?, allowOverLimit? }`) |
+| POST   | `/api/admin/team-builder/suggest` | admin | Suggest teams (`{ teams: [{ emails }], dryRun?, allowOverLimit? }`): one TeamSuggestion per team and a `team_suggestion` email to each member. Nobody is put on a team; staff, judges, people on a team or already suggested are left out |
+| GET    | `/api/admin/team-builder/unteamed` | admin  | Accepted people on no team and with no invite, split by research-study answer |
+| GET    | `/api/admin/team-builder/unteamed.csv` | admin | The same as CSV (`?answer=<value>` or `__none__` for one group) |
+| GET    | `/api/admin/setup-reminders`    | admin     | Accepted people with no password or Google sign-in, and how many can be reminded now |
+| POST   | `/api/admin/setup-reminders`    | admin     | Send each a fresh setup link (`account_setup_reminder`), paced, once per 24 h, within the daily limit unless `allowOverLimit` |
 | GET    | `/api/admin/exports/applications.csv` | admin | Applications CSV, answers flattened (`?round=&status=`) |
 | GET    | `/api/admin/exports/checkins.csv` | admin   | Check-ins CSV (who, when, by whom, forced)  |
 | GET    | `/api/admin/exports/meals.csv`  | admin     | Meals CSV with served counts           |

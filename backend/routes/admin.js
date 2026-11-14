@@ -5,6 +5,7 @@ var rateLimit = require("express-rate-limit");
 var multer = require("multer");
 var adminController = require("../controllers/adminController");
 var applicationEditController = require("../controllers/applicationEditController");
+var applicationDuplicatesController = require("../controllers/applicationDuplicatesController");
 var outboxController = require("../controllers/outboxController");
 var resumeController = require("../controllers/resumeController");
 var teamController = require("../controllers/teamController");
@@ -13,6 +14,8 @@ var scheduleController = require("../controllers/scheduleController");
 var brandingController = require("../controllers/brandingController");
 var statsController = require("../controllers/statsController");
 var userGroupsController = require("../controllers/userGroupsController");
+var teamBuilderController = require("../controllers/teamBuilderController");
+var setupReminderController = require("../controllers/setupReminderController");
 var systemConfigController = require("../controllers/systemConfigController");
 var exportRoutes = require("./exports");
 var isAdmin = require("../utils/isAdmin");
@@ -67,7 +70,27 @@ function handleImageUploadError(err, _req, res, next) {
 // ---- Reviewer routes: moderators OR admins ---------------------------------
 // Moderators can review applications (approve/reject) and list them.
 router.get("/applications", isModerator, adminController.listApplications);
+// Duplicate handling. The fixed paths come before "/applications/:id".
+router.get("/applications/search", isModerator, applicationDuplicatesController.searchApplications);
+router.get("/applications/duplicates", isModerator, applicationDuplicatesController.listDuplicates);
+router.post("/applications/duplicates/dismiss", isModerator, applicationDuplicatesController.dismissDuplicates);
 router.get("/applications/:id", isModerator, adminController.getApplication);
+// Mark an application removed (soft delete, with a reason) / undo it, and
+// merge two duplicates into one. Moderators and admins; recorded in `edits`.
+router.post(
+  "/applications/:id/remove",
+  isModerator,
+  validateBody({ reason: { required: true, type: "string" } }),
+  applicationDuplicatesController.removeApplication
+);
+router.post("/applications/:id/restore", isModerator, applicationDuplicatesController.restoreApplication);
+router.get("/applications/:id/compare", isModerator, applicationDuplicatesController.compareApplications);
+router.post(
+  "/applications/:id/merge",
+  isModerator,
+  validateBody({ otherId: { required: true, type: "string" }, keep: { required: true, type: "string", enum: ["this", "other"] } }),
+  applicationDuplicatesController.mergeApplications
+);
 router.patch(
   "/applications/:id",
   isModerator,
@@ -194,6 +217,19 @@ router.get("/groups/options", isAdmin, userGroupsController.getOptions);
 router.get("/groups/emails", isAdmin, userGroupsController.getGroupEmails);
 router.get("/groups/export.csv", isAdmin, userGroupsController.exportGroup);
 router.get("/groups", isAdmin, userGroupsController.getGroup);
+
+// Team builder: propose teams from the teammates question, create them with
+// invites, and list accepted people left on no team.
+router.get("/team-builder/proposals", isAdmin, teamBuilderController.getProposals);
+router.post("/team-builder/apply", isAdmin, teamBuilderController.applyProposals);
+router.post("/team-builder/suggest", isAdmin, require("../controllers/teamSuggestionController").importSuggestions);
+router.post("/team-builder/notify-conflicts", isAdmin, teamBuilderController.notifyConflicts);
+router.get("/team-builder/unteamed", isAdmin, teamBuilderController.getUnteamed);
+router.get("/team-builder/unteamed.csv", isAdmin, teamBuilderController.exportUnteamed);
+
+// Remind accepted people who still have no password to set up their account.
+router.get("/setup-reminders", isAdmin, setupReminderController.getSummary);
+router.post("/setup-reminders", isAdmin, setupReminderController.sendReminders);
 
 // CSV / ZIP exports of applications, check-ins, meals and sponsor resumes.
 router.use("/exports", exportRoutes);

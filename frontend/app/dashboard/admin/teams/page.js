@@ -1,11 +1,12 @@
 "use client";
 
-import { Download, RefreshCw, UsersRound } from "lucide-react";
+import { Download, RefreshCw, Upload, UsersRound } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import ApplicationStatusBadge from "@/components/ApplicationStatusBadge";
 import DataTable from "@/components/DataTable";
 import EmptyState from "@/components/EmptyState";
+import ImportTeamsDialog from "@/components/ImportTeamsDialog";
 import PageHeader from "@/components/PageHeader";
 import SearchInput from "@/components/SearchInput";
 import { Alert, AlertDescription } from "@/components/ui/alert";
@@ -27,6 +28,8 @@ export default function StaffTeamsPage() {
   const [query, setQuery] = useState("");
   const [missingOnly, setMissingOnly] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [importOpen, setImportOpen] = useState(false);
+  const isAdmin = user.role === "admin";
 
   const load = useCallback(() => {
     setLoading(true);
@@ -224,7 +227,22 @@ export default function StaffTeamsPage() {
             ? `${teams.length} teams, ${withLink} with a Devpost link.`
             : undefined
         }
+        actions={
+          isAdmin
+            ? <Button variant="outline" onClick={() => setImportOpen(true)}>
+                <Upload aria-hidden="true" />
+                Import suggested teams
+              </Button>
+            : null
+        }
       />
+      {isAdmin
+        ? <ImportTeamsDialog
+            open={importOpen}
+            onOpenChange={setImportOpen}
+            onDone={load}
+          />
+        : null}
       <DataTable
         columns={columns}
         data={visible}

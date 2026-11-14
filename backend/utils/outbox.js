@@ -1,7 +1,11 @@
 "use strict";
 
 var EmailLog = require("../schemas/emailLog");
+var Application = require("../schemas/application");
+var activeApplications = require("./activeApplications");
 var User = require("../schemas/user");
+var emailCategories = require("./emailCategories");
+var linkReissue = require("./linkReissue");
 
 /**
  * The email outbox: a log row per email, plus retries.
@@ -203,6 +207,9 @@ function baseDoc(entry, redacted) {
   if (entry.segment) {
     doc.segment = entry.segment;
   }
+  if (entry.preferenceCategory) {
+    doc.preferenceCategory = entry.preferenceCategory;
+  }
   if (!redacted) {
     if (entry.values) {
       doc.values = entry.values;
@@ -241,18 +248,21 @@ function send(entry, deliver) {
   var now = Date.now();
   doc.status = "queued";
   doc.attempts = 1;
-  doc.maxAttempts = redacted || entry.retry === false ? 1 : DEFAULT_MAX_ATTEMPTS;
+  // A single-use link can't be stored, so it is only retried when a fresh
+  // link can be issued for the retry (see linkReissue).
+  var oneShot = (redacted && !linkReissue.canReissue(entry.templateKey)) || entry.retry === false;
+  doc.maxAttempts = oneShot ? 1 : DEFAULT_MAX_ATTEMPTS;
   doc.lastAttemptAt = new Date(now);
   // Claimed from the start, so the retry worker can't pick it up while this
   // first attempt is still running.
   doc.lockedUntil = new Date(now + LEASE_MS);
 
-  // Finding the recipient's account is only needed before the send when the
-  // category depends on it (announcements check their consent and carry an
-  // unsubscribe link built from the id). For everything else it happens
-  // alongside the send, so the log adds as little delay as possible.
+  // Finding the recipient's account is needed before the send whenever the
+  // email can be opted out of (their preferences are checked and the
+  // unsubscribe link is built from the id). Security email doesn't need it
+  // first, so the log adds as little delay as possible to a password link.
   var userPromise = entry.user ? Promise.resolve(entry.user) : lookupUserId(entry.to);
-  var userFirst = (entry.category || "transactional") !== "transactional";
+  var userFirst = emailCategories.forRow(entry) !== emailCategories.SECURITY;
 
   return (userFirst ? userPromise : Promise.resolve(entry.user))
     .then(function afterUser(userId) {
@@ -331,25 +341,63 @@ function recordUnsent(entry, message) {
 }
 
 /**
- * Whether an announcement may still go to its recipient. Other categories
- * always may. Checked at send time, not only when queued, so someone who
- * unsubscribes while a blast is draining stops getting it.
+ * Whether an email may still go to its recipient, given their email
+ * preferences (utils/emailCategories). Security email always may. Checked at
+ * send time, not only when queued, so someone who opts out while a blast is
+ * draining stops getting it.
+ * @param {object} row - EmailLog document.
+ * @returns {Promise<{allowed: boolean, reason: (string|undefined)}>}
+ */
+function preferencesAllow(row) {
+  var category = emailCategories.forRow(row);
+  if (!emailCategories.isOptional(category)) {
+    return Promise.resolve({ allowed: true });
+  }
+  if (!row.user) {
+    // Bulk announcements are opt-in, so nobody without an account gets one.
+    // Other email to an address with no account can't have been turned off.
+    return Promise.resolve(
+      row.category === "announcement"
+        ? { allowed: false, reason: "Not sent: the recipient has unsubscribed from announcements or hasn't opted in." }
+        : { allowed: true }
+    );
+  }
+  return User.findById(row.user)
+    .select("marketingEmailConsent emailPreferences")
+    .lean()
+    .then(function withAccepted(user) {
+      // Only announcements depend on having an accepted application.
+      if (category !== "announcements" || !user || emailCategories.announcementChoice(user) !== null) {
+        return [user, false];
+      }
+      return Application.exists(activeApplications.active({ applicant: user._id, status: "accepted" })).then(function found(hit) {
+        return [user, Boolean(hit)];
+      });
+    })
+    .then(function afterFind(loaded) {
+      var user = loaded[0];
+      if (emailCategories.allows(user, category, { accepted: loaded[1] })) {
+        return { allowed: true };
+      }
+      return {
+        allowed: false,
+        reason:
+          category === "announcements"
+            ? "Not sent: the recipient has unsubscribed from announcements or hasn't opted in."
+            : "Not sent: the recipient turned off " + emailCategories.NOUNS[category] + ".",
+      };
+    });
+}
+
+/**
+ * Whether an email may still go to its recipient (see preferencesAllow).
  * @param {object} row - EmailLog document.
  * @returns {Promise<boolean>}
  */
 function consentAllows(row) {
-  if (row.category !== "announcement") {
-    return Promise.resolve(true);
-  }
-  if (!row.user) {
-    return Promise.resolve(false);
-  }
-  return User.findById(row.user)
-    .select("marketingEmailConsent")
-    .lean()
-    .then(function afterFind(user) {
-      return Boolean(user && user.marketingEmailConsent);
-    });
+  return preferencesAllow(row).then(function pick(result) {
+    return result.allowed;
+  });
 }
 
 /**
@@ -362,11 +410,11 @@ function consentAllows(row) {
  * @returns {Promise<void>}
  */
 function runDelivery(row, deliver) {
-  return consentAllows(row).then(function afterConsent(allowed) {
-    if (!allowed) {
+  return preferencesAllow(row).then(function afterConsent(check) {
+    if (!check.allowed) {
       return finish(row, {
         status: "cancelled",
-        lastError: "Not sent: the recipient hasn't opted in to announcements (or unsubscribed).",
+        lastError: check.reason,
         lockedUntil: null,
         nextAttemptAt: null,
       });
@@ -510,7 +558,10 @@ function attemptStored(id) {
     if (!row) {
       return null;
     }
-    return runDelivery(row, deliverStored).then(
+    var attempt = row.redacted && linkReissue.canReissue(row.templateKey)
+      ? reissueAndDeliver(row)
+      : runDelivery(row, deliverStored);
+    return attempt.then(
       function ok() {
         return row;
       },
@@ -519,6 +570,33 @@ function attemptStored(id) {
       }
     );
   });
+}
+
+/**
+ * Retry a stored email whose single-use link wasn't kept: issue a fresh link
+ * (replacing the old one) and send that, or cancel the row when the person no
+ * longer needs it.
+ * @param {object} row - Claimed EmailLog document.
+ * @returns {Promise<void>} Rejects when the send fails (already recorded).
+ */
+function reissueAndDeliver(row) {
+  return linkReissue.freshValues(row).then(
+    function afterValues(fresh) {
+      if (fresh.skip) {
+        return finish(row, { status: "cancelled", lastError: fresh.skip, lockedUntil: null, nextAttemptAt: null });
+      }
+      return runDelivery(row, function deliverFresh(r) {
+        var plain = typeof r.toObject === "function" ? r.toObject() : Object.assign({}, r);
+        plain.values = fresh.values;
+        return deliverStored(plain);
+      });
+    },
+    function onError(err) {
+      return markFailed(row, err).then(function rethrow() {
+        throw err;
+      });
+    }
+  );
 }
 
 /**
@@ -599,8 +677,10 @@ function drainLoop(force) {
       return Promise.resolve(attempted);
     }
     return EmailLog.find({ status: "queued", nextAttemptAt: { $lte: new Date() }, lockedUntil: null })
-      .sort({ nextAttemptAt: 1 })
-      .limit(25)
+      // Highest priority first, then oldest. Small batches, so a reminder
+      // queued during a big blast waits a few seconds, not the whole blast.
+      .sort({ priority: -1, nextAttemptAt: 1 })
+      .limit(5)
       .select("_id")
       .lean()
       .then(function afterFind(rows) {
@@ -699,6 +779,8 @@ function enqueueMany(entries, meta) {
     doc.attempts = 0;
     doc.maxAttempts = DEFAULT_MAX_ATTEMPTS;
     doc.nextAttemptAt = now;
+    doc.priority =
+      typeof entry.priority === "number" ? entry.priority : emailCategories.queuePriority(entry.templateKey);
     return doc;
   });
   if (!docs.length) {
@@ -722,7 +804,7 @@ function sendNow(id) {
   return recoverInterrupted()
     .then(function requeue() {
       return EmailLog.updateOne(
-        { _id: id, status: "failed", redacted: { $ne: true } },
+        Object.assign({ _id: id, status: "failed" }, retryableContent()),
         {
           $set: {
             status: "queued",
@@ -745,9 +827,19 @@ function sendNow(id) {
 }
 
 /**
+ * Rows whose content can be sent again: stored content, or a single-use link
+ * that can be reissued.
+ * @returns {object} Query fragment.
+ */
+function retryableContent() {
+  return { $or: [{ redacted: { $ne: true } }, { templateKey: { $in: linkReissue.REISSUABLE_KEYS } }] };
+}
+
+/**
  * Failed rows the admin's "retry all failed" may requeue. Rows that were
  * interrupted mid-send (they may already have been delivered), can never
- * succeed, or held a single-use link are left alone.
+ * succeed, or held a single-use link are left alone (the admin route reissues
+ * setup links separately).
  *
  * @param {number} limit - Most rows to return.
  * @returns {Promise<Array<*>>} The _ids.
@@ -892,6 +984,8 @@ module.exports = {
   dailyLimit: dailyLimit,
   committedInLastDay: committedInLastDay,
   isPermanentError: isPermanentError,
+  consentAllows: consentAllows,
+  preferencesAllow: preferencesAllow,
   isSensitive: isSensitive,
   containsSecret: containsSecret,
   describeError: describeError,

@@ -6,10 +6,11 @@ import { CardSkeleton } from "@/components/skeletons";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { useAcceptedOnly } from "@/lib/acceptedOnly";
 import { apiFetch } from "@/lib/api";
 import { useUser } from "@/lib/userContext";
 
-export default function JudgingSheetPage() {
+function JudgingSheet() {
   const user = useUser();
   const [data, setData] = useState(null);
   const [error, setError] = useState("");
@@ -124,4 +125,10 @@ export default function JudgingSheetPage() {
       )}
     </div>
   );
+}
+
+// Only accepted participants (and staff) see this page; others go home.
+export default function JudgingSheetPage() {
+  const allowed = useAcceptedOnly();
+  return allowed ? <JudgingSheet /> : null;
 }

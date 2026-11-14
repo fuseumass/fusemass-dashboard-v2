@@ -129,13 +129,22 @@ test("judging assignments and scoring", async function (t) {
     assert.equal(await Score.countDocuments(), 0);
     assert.equal((await queue(regular)).body.current._id, a.id);
   });
-  await t.test("403 outside queue, 404 unknown, future scores and non-current skips rejected", async function () {
+  await t.test("403 outside queue, 404 unknown; any project can be scored or skipped in any order", async function () {
     await score(regular, h.id).expect(403);
     await score(hardware, a.id).expect(403);
     await score(regular, new mongoose.Types.ObjectId()).expect(404);
     await score(regular, "unknown").expect(404);
-    await score(regular, c.id).expect(409);
-    await post(regular, "/api/judging/skip", { projectId: b.id }).expect(409);
+    // Out of order: score the last project and skip the second, ahead of the first.
+    await score(regular, c.id).expect(200);
+    await post(regular, "/api/judging/skip", { projectId: b.id }).expect(200);
+    var body = (await queue(regular)).body;
+    assert.equal(body.current._id, a.id, "the suggested next stays the first unscored, unskipped project");
+    assert.equal(body.assignments[2].status, "done");
+    assert.equal(body.assignments[1].status, "skipped");
+    // Undo for the following steps, which start from a fresh queue.
+    await Score.deleteMany({ judge: regular.user._id });
+    await Assignment.updateMany({}, { $set: { "queues.$[].skipped": [] } });
+    assert.equal((await queue(regular)).body.current._id, a.id);
   });
   await t.test("skip, score skipped, rescore done never consume the current project", async function () {
     await post(regular, "/api/judging/skip", { projectId: a.id }).expect(200);

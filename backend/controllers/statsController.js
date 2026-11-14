@@ -1,6 +1,7 @@
 "use strict";
 
 var Application = require("../schemas/application");
+var activeApplications = require("../utils/activeApplications");
 var ApplicationRound = require("../schemas/applicationRound");
 var CheckIn = require("../schemas/checkin");
 var MealService = require("../schemas/mealService");
@@ -63,6 +64,7 @@ function countByText(match, field) {
  */
 function countByRoundAndStatus() {
   return Application.aggregate([
+    { $match: activeApplications.ACTIVE },
     { $group: { _id: { round: "$round", status: "$status" }, count: { $sum: 1 } } },
   ]).then(function toRows(groups) {
     return groups.map(function toRow(group) {
@@ -289,7 +291,7 @@ function perDaySeries(rows) {
 function eventDayStats() {
   return Promise.all([
     Application.aggregate([
-      { $match: { status: "accepted" } },
+      { $match: activeApplications.active({ status: "accepted" }) },
       { $group: { _id: "$applicant" } },
       { $group: { _id: null, count: { $sum: 1 } } },
     ]),

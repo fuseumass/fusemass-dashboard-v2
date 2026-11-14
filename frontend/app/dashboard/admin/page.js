@@ -1,23 +1,35 @@
 "use client";
 
 import {
+  ArrowLeft,
   Check,
   Clock,
+  Copy,
   Flag,
   FlagOff,
   Inbox,
   Mail,
+  Merge,
   MoreHorizontal,
   PanelRightOpen,
   Pencil,
   RefreshCw,
+  RotateCcw,
+  Trash2,
   X,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import ApplicationEditForm from "@/components/ApplicationEditForm";
 import { FlagBadge, FlagPanel } from "@/components/ApplicationFlags";
+import { MergeDialog } from "@/components/ApplicationMerge";
+import {
+  RemoveDialog,
+  RemovedBadge,
+  RemovedNotice,
+} from "@/components/ApplicationRemoval";
 import ApplicationStatusBadge from "@/components/ApplicationStatusBadge";
 import DataTable from "@/components/DataTable";
+import DuplicateSuggestions from "@/components/DuplicateSuggestions";
 import EmptyState from "@/components/EmptyState";
 import PageHeader from "@/components/PageHeader";
 import { plainText } from "@/components/RichText";
@@ -102,6 +114,11 @@ export default function AdminReviewPage() {
   const [status, setStatus] = useState("all");
   const [round, setRound] = useState("all");
   const [flaggedOnly, setFlaggedOnly] = useState(false);
+  const [showRemoved, setShowRemoved] = useState(false);
+  const [view, setView] = useState("applications");
+  const [reloadKey, setReloadKey] = useState(0);
+  const [mergeRequest, setMergeRequest] = useState(null);
+  const [removeTarget, setRemoveTarget] = useState(null);
   const [search, setSearch] = useState("");
   const [error, setError] = useState("");
   const [selectedId, setSelectedId] = useState(null);
@@ -111,7 +128,7 @@ export default function AdminReviewPage() {
     setRefreshing(true);
     setError("");
     try {
-      const data = await apiFetch("/api/admin/applications");
+      const data = await apiFetch("/api/admin/applications?removed=true");
       cache.list = data.applications;
       cache.fetchedAt = new Date();
       cache.details = new Map();
@@ -151,19 +168,25 @@ export default function AdminReviewPage() {
         (status === "all" || app.status === status) &&
         (round === "all" || app.round?._id === round) &&
         (!flaggedOnly || app.flagged) &&
+        (showRemoved || !app.removedAt) &&
         (!q ||
           `${app.applicant?.name || ""} ${app.applicant?.email || ""} ${app.university || ""}`
             .toLowerCase()
             .includes(q)),
     );
-  }, [applications, status, round, flaggedOnly, search]);
-  const flaggedCount = useMemo(
-    () => applications.filter((app) => app.flagged).length,
+  }, [applications, status, round, flaggedOnly, showRemoved, search]);
+  const activeApplications = useMemo(
+    () => applications.filter((app) => !app.removedAt),
     [applications],
   );
+  const flaggedCount = useMemo(
+    () => activeApplications.filter((app) => app.flagged).length,
+    [activeApplications],
+  );
+  const removedCount = applications.length - activeApplications.length;
   const pendingCount = useMemo(
-    () => applications.filter((app) => app.status === "pending").length,
-    [applications],
+    () => activeApplications.filter((app) => app.status === "pending").length,
+    [activeApplications],
   );
 
   // A flag was set or cleared in the drawer: keep the table row and the
@@ -206,6 +229,35 @@ export default function AdminReviewPage() {
       return next;
     });
     cache.details.set(updated._id, updated);
+  }
+
+  // An application was removed or restored (from the drawer or the row menu):
+  // keep the table row and the cached detail in step with the server.
+  function removalChanged(updated) {
+    setApplications((prev) => {
+      const next = prev.map((app) =>
+        app._id === updated._id
+          ? {
+              ...app,
+              removedAt: updated.removedAt,
+              updatedAt: updated.updatedAt,
+            }
+          : app,
+      );
+      cache.list = next;
+      return next;
+    });
+    cache.details.set(updated._id, updated);
+    setReloadKey((key) => key + 1);
+  }
+
+  // Two applications were merged: the removed one changed and the kept one's
+  // fields did, so take a fresh list.
+  async function merged(data) {
+    cache.details = new Map();
+    cache.details.set(data.application._id, data.application);
+    await refresh();
+    setReloadKey((key) => key + 1);
   }
 
   async function clearFlag(id) {
@@ -264,6 +316,7 @@ export default function AdminReviewPage() {
                 {app.applicant ? app.applicant.name : "Unknown"}
               </span>
               {app.flagged ? <FlagBadge /> : null}
+              {app.removedAt ? <RemovedBadge /> : null}
             </div>
             <div className="truncate text-xs text-muted-foreground md:hidden">
               {app.applicant?.email}
@@ -325,7 +378,11 @@ export default function AdminReviewPage() {
               {DECISIONS.map(([decision, label, Icon]) => (
                 <DropdownMenuItem
                   key={decision}
-                  disabled={deciding === app._id || app.status === decision}
+                  disabled={
+                    deciding === app._id ||
+                    app.status === decision ||
+                    Boolean(app.removedAt)
+                  }
                   onSelect={() => decide(app._id, decision)}
                 >
                   <Icon aria-hidden="true" />
@@ -346,6 +403,17 @@ export default function AdminReviewPage() {
                 <PanelRightOpen aria-hidden="true" />
                 Open
               </DropdownMenuItem>
+              {app.removedAt
+                ? <DropdownMenuItem onSelect={() => setSelectedId(app._id)}>
+                    <RotateCcw aria-hidden="true" />
+                    Restore in the panel
+                  </DropdownMenuItem>
+                : <DropdownMenuItem
+                    onSelect={() => setRemoveTarget({ _id: app._id, name })}
+                  >
+                    <Trash2 aria-hidden="true" />
+                    Remove
+                  </DropdownMenuItem>}
             </DropdownMenuContent>
           </DropdownMenu>
         );
@@ -403,11 +471,25 @@ export default function AdminReviewPage() {
           </span>
         </Label>
       </div>
+      <div className="flex items-center gap-2 px-1">
+        <Switch
+          id="show-removed"
+          size="sm"
+          checked={showRemoved}
+          onCheckedChange={setShowRemoved}
+        />
+        <Label htmlFor="show-removed" className="text-sm font-normal">
+          Show removed
+          <span className="ml-1.5 tabular-nums text-muted-foreground">
+            {removedCount}
+          </span>
+        </Label>
+      </div>
       <div className="ml-auto flex items-center gap-2">
         <span className="text-xs text-muted-foreground tabular-nums">
           {loading
             ? ""
-            : `${visible.length} of ${applications.length}` +
+            : `${visible.length} of ${showRemoved ? applications.length : activeApplications.length}` +
               (fetchedAt
                 ? `, updated ${fetchedAt.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}`
                 : "")}
@@ -432,11 +514,32 @@ export default function AdminReviewPage() {
   return (
     <div>
       <PageHeader
-        title="Applications"
+        title={view === "duplicates" ? "Possible duplicates" : "Applications"}
         description={
           loading
             ? undefined
-            : `${applications.length} applications, ${pendingCount} waiting for a decision.`
+            : view === "duplicates"
+              ? "Applications that share a phone number, a full name or a Gmail address."
+              : `${activeApplications.length} applications, ${pendingCount} waiting for a decision.`
+        }
+        actions={
+          view === "duplicates"
+            ? <Button
+                type="button"
+                variant="outline"
+                onClick={() => setView("applications")}
+              >
+                <ArrowLeft aria-hidden="true" />
+                Back to applications
+              </Button>
+            : <Button
+                type="button"
+                variant="outline"
+                onClick={() => setView("duplicates")}
+              >
+                <Copy aria-hidden="true" />
+                Possible duplicates
+              </Button>
         }
       />
 
@@ -446,28 +549,56 @@ export default function AdminReviewPage() {
           </Alert>
         : null}
 
-      <DataTable
-        columns={columns}
-        data={visible}
-        loading={loading}
-        dense
-        getRowId={(app) => app._id}
-        onRowClick={(app) => setSelectedId(app._id)}
-        toolbar={toolbar}
-        emptyState={
-          <EmptyState
-            icon={Inbox}
-            title={
-              applications.length ? "No applications match" : "No applications"
-            }
-            description={
-              applications.length
-                ? "Change the filters or the search."
-                : "Submitted applications show up here."
-            }
+      {view === "duplicates"
+        ? <DuplicateSuggestions
+            round={round}
+            reloadKey={reloadKey}
+            onOpen={setSelectedId}
+            onCompare={(id, otherId) => setMergeRequest({ id, otherId })}
           />
-        }
-      />
+        : <DataTable
+            columns={columns}
+            data={visible}
+            loading={loading}
+            dense
+            getRowId={(app) => app._id}
+            onRowClick={(app) => setSelectedId(app._id)}
+            toolbar={toolbar}
+            emptyState={
+              <EmptyState
+                icon={Inbox}
+                title={
+                  applications.length
+                    ? "No applications match"
+                    : "No applications"
+                }
+                description={
+                  applications.length
+                    ? "Change the filters or the search."
+                    : "Submitted applications show up here."
+                }
+              />
+            }
+          />}
+
+      {mergeRequest
+        ? <MergeDialog
+            appId={mergeRequest.id}
+            initialOtherId={mergeRequest.otherId}
+            open
+            onOpenChange={(open) => (open ? null : setMergeRequest(null))}
+            onMerged={merged}
+          />
+        : null}
+      {removeTarget
+        ? <RemoveDialog
+            app={removeTarget}
+            name={removeTarget.name}
+            open
+            onOpenChange={(open) => (open ? null : setRemoveTarget(null))}
+            onRemoved={removalChanged}
+          />
+        : null}
 
       {selected
         ? <ApplicationDrawer
@@ -476,6 +607,9 @@ export default function AdminReviewPage() {
             onClose={() => setSelectedId(null)}
             onFlagChanged={flagChanged}
             onDetailsChanged={detailsChanged}
+            onRemovalChanged={removalChanged}
+            onMerged={merged}
+            onOpenOther={setSelectedId}
             onDecide={decide}
             deciding={deciding === selected._id}
           />
@@ -494,6 +628,9 @@ function ApplicationDrawer({
   onClose,
   onFlagChanged,
   onDetailsChanged,
+  onRemovalChanged,
+  onMerged,
+  onOpenOther,
   onDecide,
   deciding,
 }) {
@@ -504,6 +641,8 @@ function ApplicationDrawer({
   // can be sent their acceptance email again at the corrected address.
   const [newEmail, setNewEmail] = useState("");
   const [resending, setResending] = useState(false);
+  const [removing, setRemoving] = useState(false);
+  const [merging, setMerging] = useState(false);
   const bodyRef = useRef(null);
 
   // Switching between reading and editing starts at the top, where the
@@ -521,6 +660,11 @@ function ApplicationDrawer({
     notifySuccess(
       data.changed?.length ? "Application updated" : "Nothing changed",
     );
+  }
+
+  function removalDone(updated) {
+    setApp(updated);
+    onRemovalChanged(updated);
   }
 
   async function resendAcceptance() {
@@ -594,6 +738,7 @@ function ApplicationDrawer({
           <SheetDescription className="flex flex-wrap items-center gap-x-3 gap-y-1">
             <span className="break-all">{summary.applicant?.email}</span>
             <ApplicationStatusBadge status={summary.status} />
+            {summary.removedAt || app?.removedAt ? <RemovedBadge /> : null}
           </SheetDescription>
           {app?.edits?.length ? <EditHistory edits={app.edits} /> : null}
         </SheetHeader>
@@ -619,6 +764,13 @@ function ApplicationDrawer({
                     }}
                   />
                 : <>
+                    {app.removedAt
+                      ? <RemovedNotice
+                          app={app}
+                          onRestored={removalDone}
+                          onOpenOther={onOpenOther}
+                        />
+                      : null}
                     {newEmail && app.status === "accepted"
                       ? <Alert variant="info" aria-live="polite">
                           <Mail aria-hidden="true" />
@@ -652,6 +804,38 @@ function ApplicationDrawer({
                       }}
                     />
                     <ApplicationDetails app={app} />
+                    <div className="space-y-2 rounded-lg border p-3 text-sm">
+                      <p className="font-medium">Duplicates</p>
+                      <div className="flex flex-wrap gap-2">
+                        {app.removedAt
+                          ? null
+                          : <>
+                              <Button
+                                type="button"
+                                variant="outline"
+                                size="sm"
+                                onClick={() => setMerging(true)}
+                              >
+                                <Merge aria-hidden="true" />
+                                Merge with another application
+                              </Button>
+                              <Button
+                                type="button"
+                                variant="outline"
+                                size="sm"
+                                onClick={() => setRemoving(true)}
+                              >
+                                <Trash2 aria-hidden="true" />
+                                Remove application
+                              </Button>
+                            </>}
+                      </div>
+                      {app.removedAt
+                        ? <p className="text-muted-foreground">
+                            Restore this application to merge it or decide it.
+                          </p>
+                        : null}
+                    </div>
                   </>}
         </div>
         <SheetFooter
@@ -665,7 +849,11 @@ function ApplicationDrawer({
               key={decision}
               type="button"
               variant={decision === "accepted" ? "default" : "outline"}
-              disabled={deciding || summary.status === decision}
+              disabled={
+                deciding ||
+                summary.status === decision ||
+                Boolean(summary.removedAt || app?.removedAt)
+              }
               onClick={() => onDecide(summary._id, decision)}
             >
               <Icon aria-hidden="true" />
@@ -674,6 +862,23 @@ function ApplicationDrawer({
           ))}
         </SheetFooter>
       </SheetContent>
+      {app
+        ? <>
+            <RemoveDialog
+              app={app}
+              name={app.name || summary.applicant?.name || "This"}
+              open={removing}
+              onOpenChange={setRemoving}
+              onRemoved={removalDone}
+            />
+            <MergeDialog
+              appId={app._id}
+              open={merging}
+              onOpenChange={setMerging}
+              onMerged={onMerged}
+            />
+          </>
+        : null}
     </Sheet>
   );
 }
@@ -686,15 +891,14 @@ function EditHistory({ edits }) {
   return (
     <details className="text-xs text-muted-foreground">
       <summary className="cursor-pointer">
-        Edited by {who(latest)} on {formatDateTime(latest.at)}
-        {edits.length > 1 ? ` (${edits.length} edits)` : ""}
+        History: {who(latest)} on {formatDateTime(latest.at)}
+        {edits.length > 1 ? ` (${edits.length} entries)` : ""}
       </summary>
       <ul className="mt-1 space-y-1">
         {[...edits].reverse().map((edit, index) => (
           // biome-ignore lint/suspicious/noArrayIndexKey: edits never reorder
           <li key={index}>
-            {formatDateTime(edit.at)}, {who(edit)}:{" "}
-            {(edit.fields || []).map(fieldLabel).join(", ")}
+            {formatDateTime(edit.at)}, {who(edit)}: {describeEdit(edit)}
           </li>
         ))}
       </ul>
@@ -712,10 +916,24 @@ const FIELD_LABELS = {
   otherSkills: "other skills",
 };
 
+// One line per audit entry: edits list the fields, the rest say what happened.
+function describeEdit(edit) {
+  if (edit.kind === "remove")
+    return `removed the application. ${edit.note || ""}`;
+  if (edit.kind === "restore") return "restored the application";
+  if (edit.kind === "merge") {
+    const fields = (edit.fields || []).map(fieldLabel).join(", ");
+    return `${edit.note || "merged"}${fields ? ` Took from the other: ${fields}.` : ""}`;
+  }
+  return (edit.fields || []).map(fieldLabel).join(", ");
+}
+
 function fieldLabel(name) {
   if (FIELD_LABELS[name]) return FIELD_LABELS[name];
   if (name.startsWith("answers.")) return name.slice("answers.".length);
-  return name.replace(/^(socials|experience)\./, "");
+  return name
+    .replace(/ \(from the other application\)$/, "")
+    .replace(/^(socials|experience)\./, "");
 }
 
 function ApplicationDetails({ app }) {

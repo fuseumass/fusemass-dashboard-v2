@@ -8,11 +8,12 @@ import EmptyState from "@/components/EmptyState";
 import PageHeader from "@/components/PageHeader";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
+import { useAcceptedOnly } from "@/lib/acceptedOnly";
 import { apiFetch } from "@/lib/api";
 import { formatRange } from "@/lib/datetime";
 import { notifySuccess } from "@/lib/notify";
 
-export default function WorkshopsPage() {
+function WorkshopsList() {
   const [items, setItems] = useState([]);
   const [mine, setMine] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -64,6 +65,8 @@ export default function WorkshopsPage() {
     {
       accessorKey: "title",
       header: "Workshop",
+      // Long titles and rooms wrap instead of pushing Sign up off screen.
+      meta: { className: "min-w-48 whitespace-normal" },
       cell: ({ row }) => (
         <div className="max-w-sm space-y-1">
           <Link
@@ -72,18 +75,37 @@ export default function WorkshopsPage() {
           >
             {row.original.title}
           </Link>
-          <p className="text-muted-foreground">{row.original.description}</p>
+          {row.original.description
+            ? <p className="line-clamp-3 text-muted-foreground">
+                {row.original.description}
+              </p>
+            : null}
         </div>
       ),
     },
-    { accessorKey: "host", header: "Host" },
+    {
+      accessorKey: "host",
+      header: "Host",
+      meta: {
+        className:
+          "min-w-28 max-w-48 whitespace-normal [overflow-wrap:anywhere]",
+      },
+    },
     {
       accessorKey: "startsAt",
       header: "Time",
+      meta: { className: "min-w-32 max-w-44 whitespace-normal" },
       cell: ({ row }) =>
         formatRange(row.original.startsAt, row.original.endsAt),
     },
-    { accessorKey: "location", header: "Place" },
+    {
+      accessorKey: "location",
+      header: "Place",
+      meta: {
+        className:
+          "min-w-28 max-w-48 whitespace-normal [overflow-wrap:anywhere]",
+      },
+    },
     {
       id: "spots",
       header: "Spots left",
@@ -115,7 +137,10 @@ export default function WorkshopsPage() {
   ];
   return (
     <div className="space-y-6">
-      <PageHeader title="Workshops" />
+      <PageHeader
+        title="Workshops"
+        description="Sign up to save your spot. At the workshop, open it here and enter the code on screen to record your attendance and join its raffle."
+      />
       {denied
         ? <p className="text-sm text-muted-foreground">
             Workshops are available once your application is accepted.
@@ -181,4 +206,10 @@ export default function WorkshopsPage() {
           </>}
     </div>
   );
+}
+
+// Only accepted participants (and staff) see this page; others go home.
+export default function WorkshopsPage() {
+  const allowed = useAcceptedOnly();
+  return allowed ? <WorkshopsList /> : null;
 }

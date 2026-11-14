@@ -1,6 +1,7 @@
 "use client";
 
-import { LogOut, Monitor, Moon, Sun } from "lucide-react";
+import { LogOut, Mail, Monitor, Moon, Sun } from "lucide-react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useTheme } from "next-themes";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
@@ -31,7 +32,8 @@ function initials(name) {
   return (first + last).toUpperCase();
 }
 
-// Account menu in the top bar: who you are, the colour theme, and log out.
+// Account menu in the top bar: who you are, email preferences, the colour
+// theme, and log out.
 export default function UserMenu({ user }) {
   const router = useRouter();
   const { theme, setTheme } = useTheme();
@@ -69,6 +71,13 @@ export default function UserMenu({ user }) {
             {user.role}
           </div>
         </DropdownMenuLabel>
+        <DropdownMenuSeparator />
+        <DropdownMenuItem asChild>
+          <Link href="/dashboard/account">
+            <Mail aria-hidden="true" />
+            Email preferences
+          </Link>
+        </DropdownMenuItem>
         <DropdownMenuSeparator />
         <DropdownMenuLabel className="text-xs font-normal text-muted-foreground">
           Theme

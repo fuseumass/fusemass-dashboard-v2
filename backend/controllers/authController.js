@@ -5,6 +5,8 @@ var validator = require("validator");
 var mongoose = require("mongoose");
 var User = require("../schemas/user");
 var Workshop = require("../schemas/workshop");
+var Application = require("../schemas/application");
+var activeApplications = require("../utils/activeApplications");
 var orgSettingsCache = require("../utils/orgSettingsCache");
 var features = require("../utils/features");
 var signToken = require("../utils/signToken");
@@ -182,12 +184,16 @@ function me(req, res) {
       if (user.role === "judge") {
         return require("../schemas/judgeProfile").findOne({ user: user._id }).lean().then(function afterProfile(profile) {
           var safeUser = user.toJSON();
+          safeUser.accepted = false;
           safeUser.organizesWorkshops = false;
           safeUser.judgeProfile = profile ? { hardware: profile.hardware, calibrationDone: profile.calibrationDone, active: profile.active } : null;
           res.status(200).json({ user: safeUser });
         });
       }
       var safeUser = user.toJSON();
+      // Participant pages (workshops, hardware, judging sheet) stay hidden
+      // until the person has an accepted application.
+      safeUser.accepted = Boolean(await Application.exists(activeApplications.active({ applicant: user._id, status: "accepted" })));
       // Shows "Organize workshops" in the nav for people assigned to one.
       var settings = await orgSettingsCache.get();
       safeUser.organizesWorkshops = features.isEnabled(settings, "workshops")
@@ -216,7 +222,12 @@ function me(req, res) {
 function updateMe(req, res) {
   return User.findByIdAndUpdate(
     req.user.id,
-    { $set: { marketingEmailConsent: req.body.marketingEmailConsent === true } },
+    {
+      $set: {
+        marketingEmailConsent: req.body.marketingEmailConsent === true,
+        "emailPreferences.announcements": req.body.marketingEmailConsent === true,
+      },
+    },
     { new: true }
   )
     .then(function afterUpdate(user) {
@@ -253,7 +264,7 @@ function unsubscribe(req, res) {
     return Promise.resolve();
   }
 
-  return User.updateOne({ _id: userId }, { $set: { marketingEmailConsent: false } })
+  return User.updateOne({ _id: userId }, { $set: { marketingEmailConsent: false, "emailPreferences.announcements": false } })
     .then(function afterUpdate() {
       res.status(200).json({ ok: true });
     })

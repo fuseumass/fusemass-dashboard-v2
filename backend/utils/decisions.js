@@ -1,6 +1,7 @@
 "use strict";
 
 var Application = require("../schemas/application");
+var activeApplications = require("./activeApplications");
 var User = require("../schemas/user");
 var mailer = require("./mailer");
 var passwordToken = require("./passwordToken");
@@ -32,7 +33,8 @@ var DECISION_TEMPLATE_KEYS = {
  */
 function decide(applicationId, decision, reviewerId, options) {
   var opts = options || {};
-  var filter = Object.assign({ _id: applicationId }, opts.where || {});
+  // A removed application can't be decided (restore it first).
+  var filter = activeApplications.active(Object.assign({ _id: applicationId }, opts.where || {}));
   if (filter.status === undefined) {
     filter.status = { $ne: decision };
   }

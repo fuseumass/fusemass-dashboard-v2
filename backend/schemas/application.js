@@ -36,6 +36,10 @@ var Schema = mongoose.Schema;
  * @property {string} status - Review status (utils/applicationStatus).
  * @property {boolean} flagged - Staff "look closer" marker.
  * @property {Array<ApplicationEdit>} edits - Staff corrections, oldest first.
+ * @property {Date|null} removedAt - When staff removed it (null: active).
+ * @property {object} removedBy - User who removed it.
+ * @property {string} removedReason - Why it was removed.
+ * @property {object} duplicateOf - Application it duplicates / was merged into.
  */
 
 /**
@@ -45,13 +49,20 @@ var Schema = mongoose.Schema;
  * @property {object} by - User (moderator or admin) who made the edit.
  * @property {Date} at - When.
  * @property {Array<string>} fields - What changed, e.g. "name",
- *   "socials.github", "answers.<key>", "user.email".
+ *   "socials.github", "answers.<key>", "user.email". For a merge: which
+ *   fields came from the other application, e.g. "name <- other".
+ * @property {string} [kind] - "edit" (default), "remove", "restore", "merge".
+ * @property {string} [note] - Reason (remove) or the other application (merge).
+ * @property {object} [other] - The other Application of a merge.
  */
 var editSchema = new Schema(
   {
     by: { type: Schema.Types.ObjectId, ref: "User" },
     at: { type: Date, default: Date.now },
     fields: [{ type: String }],
+    kind: { type: String, enum: ["edit", "remove", "restore", "merge"], default: "edit" },
+    note: { type: String },
+    other: { type: Schema.Types.ObjectId, ref: "Application" },
   },
   { _id: false }
 );
@@ -180,6 +191,17 @@ var applicationSchema = new Schema(
     phoneKey: { type: String, index: true, sparse: true },
     resumeHash: { type: String, index: true, sparse: true },
 
+    // ---- Removal (soft delete) ----------------------------------------------
+    // Staff mark an application as removed (a duplicate, a test entry) instead
+    // of deleting it. The document and the applicant's account stay; every
+    // count, list and eligibility check skips it (utils/activeApplications).
+    // Restoring clears these four fields. Staff-only except `removedAt`, which
+    // lets the applicant's own dashboard say the organizers withdrew it.
+    removedAt: { type: Date, default: null, index: true },
+    removedBy: { type: Schema.Types.ObjectId, ref: "User" },
+    removedReason: { type: String, trim: true },
+    duplicateOf: { type: Schema.Types.ObjectId, ref: "Application" },
+
     // ---- Staff corrections ---------------------------------------------------
     // Audit trail of staff edits to the submitted answers (typo fixes).
     // Staff-only, like the flags.
@@ -215,6 +237,10 @@ applicationSchema.set("toJSON", {
       delete ret.flaggedAt;
       delete ret.autoAccepted;
       delete ret.edits;
+      // Applicants see that the organizers withdrew the application, not why.
+      delete ret.removedBy;
+      delete ret.removedReason;
+      delete ret.duplicateOf;
     }
     return ret;
   },

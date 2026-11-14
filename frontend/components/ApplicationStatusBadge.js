@@ -8,6 +8,7 @@ const STATUS_TONES = {
   accepted: "success",
   rejected: "danger",
   waitlisted: "warning",
+  removed: "neutral",
 };
 
 const STATUS_WORDS = {
@@ -16,10 +17,11 @@ const STATUS_WORDS = {
   accepted: "Accepted",
   rejected: "Rejected",
   waitlisted: "Waitlisted",
+  removed: "Withdrawn",
 };
 
 /**
- * @param {object} props - { status: draft|pending|accepted|rejected|waitlisted,
+ * @param {object} props - { status: draft|pending|accepted|rejected|waitlisted|removed,
  *   label: optional text, defaults to the status word }.
  * @returns {JSX.Element}
  */

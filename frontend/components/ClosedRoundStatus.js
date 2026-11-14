@@ -9,6 +9,8 @@ const STATUS_LINES = {
   rejected: "We could not offer you a spot this time.",
   waitlisted:
     "You are on the waitlist. If a spot opens, we will email you. You do not need to do anything.",
+  removed:
+    "The organizers withdrew this application. Contact them if you think this is a mistake.",
 };
 
 // The home page's application card when there's nothing to apply to: no

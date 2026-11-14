@@ -122,3 +122,59 @@ export function formatRange(start, end) {
     ? `${formatDate(from)}, ${formatTime(from, { zone: "never" })} - ${formatTime(to)}`
     : `${formatDateTime(from, { zone: "never" })} - ${formatDateTime(to)}`;
 }
+
+// Wall-clock parts of a moment in a zone ("" = the viewer's own).
+function partsIn(date, zone) {
+  const parts = new Intl.DateTimeFormat("en-US", {
+    ...(zone ? { timeZone: zone } : {}),
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    hourCycle: "h23",
+  }).formatToParts(date);
+  const out = {};
+  for (const part of parts) {
+    if (part.type !== "literal") out[part.type] = Number(part.value);
+  }
+  return out;
+}
+
+/**
+ * A moment as the "YYYY-MM-DDTHH:mm" value a datetime-local input wants,
+ * written in the event zone (so staff anywhere schedule in event time).
+ * @param {Date|string|number} value - Anything `new Date()` accepts.
+ * @returns {string} Empty for invalid input.
+ */
+export function toEventInput(value) {
+  const date = toDate(value);
+  if (!date) return "";
+  const p = partsIn(date, eventTimeZone);
+  const pad = (n) => String(n).padStart(2, "0");
+  return `${p.year}-${pad(p.month)}-${pad(p.day)}T${pad(p.hour)}:${pad(p.minute)}`;
+}
+
+/**
+ * The moment a datetime-local value means, read as event-zone wall time.
+ * @param {string} value - "YYYY-MM-DDTHH:mm".
+ * @returns {Date|null} Null for an empty or malformed value.
+ */
+export function fromEventInput(value) {
+  const match = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})$/.exec(
+    String(value || ""),
+  );
+  if (!match) return null;
+  const [year, month, day, hour, minute] = match.slice(1).map(Number);
+  if (!eventTimeZone) {
+    return new Date(year, month - 1, day, hour, minute);
+  }
+  const wanted = Date.UTC(year, month - 1, day, hour, minute);
+  let guess = wanted;
+  // Two passes settle the zone offset, including across a DST change.
+  for (let i = 0; i < 2; i += 1) {
+    const p = partsIn(new Date(guess), eventTimeZone);
+    guess += wanted - Date.UTC(p.year, p.month - 1, p.day, p.hour, p.minute);
+  }
+  return new Date(guess);
+}

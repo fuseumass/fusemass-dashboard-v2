@@ -3,6 +3,7 @@
 var validator = require("validator");
 
 var Application = require("../schemas/application");
+var activeApplications = require("../utils/activeApplications");
 var ApplicationRound = require("../schemas/applicationRound");
 var OrgSettings = require("../schemas/orgSettings");
 var User = require("../schemas/user");
@@ -74,7 +75,7 @@ function submissionStatus(round) {
   if (!waitlist.hasLimit(round.waitlistAfterAccepted)) {
     return Promise.resolve("pending");
   }
-  return Application.countDocuments({ round: round._id, status: "accepted" }).then(function afterCount(accepted) {
+  return Application.countDocuments(activeApplications.active({ round: round._id, status: "accepted" })).then(function afterCount(accepted) {
     return waitlist.shouldWaitlist(round.waitlistAfterAccepted, accepted) ? "waitlisted" : "pending";
   });
 }
@@ -167,6 +168,54 @@ function buildProfile(body) {
 }
 
 /**
+ * The application form's "Email me announcements and reminders" checkbox.
+ * Multipart forms send it as a string. Missing means the form didn't ask.
+ * @param {object} body - Request body.
+ * @returns {boolean|null} The answer, or null when absent.
+ */
+function emailOptIn(body) {
+  var value = body && body.marketingEmailConsent;
+  if (value === true || value === "true") {
+    return true;
+  }
+  if (value === false || value === "false") {
+    return false;
+  }
+  return null;
+}
+
+/**
+ * Save the checkbox on the applicant's account: it sets their announcement
+ * and event-email preferences. Never fails the application.
+ * @param {*} userId - User _id.
+ * @param {boolean|null} optIn - From emailOptIn.
+ * @returns {Promise<void>}
+ */
+function saveEmailOptIn(userId, optIn) {
+  if (optIn === null) {
+    return Promise.resolve();
+  }
+  return User.updateOne(
+    { _id: userId },
+    {
+      $set: {
+        marketingEmailConsent: optIn,
+        "emailPreferences.announcements": optIn,
+        "emailPreferences.event": optIn,
+        emailPreferencesUpdatedAt: new Date(),
+      },
+    }
+  ).then(
+    function done() {
+      return undefined;
+    },
+    function onError(err) {
+      console.error("Could not save the email opt-in:", err);
+    }
+  );
+}
+
+/**
  * POST /api/applications
  * Create or update the current applicant's application for the open round.
  * Accepts multipart/form-data so a resume file can be uploaded alongside the
@@ -191,8 +240,14 @@ function apply(req, res) {
       }
       // A required resume question is satisfied by a resume uploaded earlier.
       return Application.findOne({ applicant: claims.id, round: openRound._id })
-        .select("resumeBlobName resumeHash status")
+        .select("resumeBlobName resumeHash status removedAt")
         .then(function afterExisting(existing) {
+          if (existing && existing.removedAt) {
+            res.status(403).json({
+              error: "The organizers withdrew your application, so it can't be changed. Contact them if this is a mistake.",
+            });
+            return null;
+          }
           return {
             round: openRound,
             hadResume: Boolean(existing && existing.resumeBlobName),
@@ -294,9 +349,11 @@ function apply(req, res) {
             // The pre-image is not what the client should get back, so reload
             // the saved document. The write has already landed, so this read
             // is not part of the decision and cannot race it.
-            return Application.findOne({ applicant: claims.id, round: round._id }).then(function afterReload(
-              application
-            ) {
+            return Promise.all([
+              Application.findOne({ applicant: claims.id, round: round._id }),
+              saveEmailOptIn(claims.id, emailOptIn(req.body)),
+            ]).then(function afterReload(reloaded) {
+              var application = reloaded[0];
               res.status(200).json({ application: application.toJSON() });
 
               if (status === "pending" && !alreadySubmitted) {
@@ -367,8 +424,19 @@ function getMine(req, res) {
   return Promise.all([
     findOpenRound(),
     Application.find({ applicant: claims.id, status: { $ne: "draft" } })
-      .select("status name round createdAt updatedAt")
-      .populate("round", "name"),
+      .select("status name round createdAt updatedAt removedAt")
+      .populate("round", "name")
+      .then(function markRemoved(applications) {
+        // A removed application reads as "removed" (withdrawn by the
+        // organizers), and never outranks one that still counts.
+        return applications.map(function toSummary(application) {
+          var plain = application.toObject();
+          if (plain.removedAt) {
+            plain.status = "removed";
+          }
+          return plain;
+        });
+      }),
     User.findById(claims.id).select("checkedIn checkedInAt").lean(),
   ])
     .then(function afterLoad(loaded) {
@@ -412,7 +480,7 @@ function getMyQr(req, res) {
     return Promise.resolve();
   }
 
-  return Application.exists({ applicant: claims.id, status: "accepted" })
+  return Application.exists(activeApplications.active({ applicant: claims.id, status: "accepted" }))
     .then(function afterLookup(accepted) {
       if (!accepted) {
         res.status(404).json({ error: "Your check-in QR code is available once your application is accepted." });
@@ -447,7 +515,7 @@ function announceApplication(application, round, withoutAccount) {
   if (!process.env.DISCORD_APPLICATIONS_WEBHOOK_URL) {
     return;
   }
-  Application.countDocuments({ round: round._id, status: { $ne: "draft" } })
+  Application.countDocuments(activeApplications.active({ round: round._id, status: { $ne: "draft" } }))
     .then(function afterCount(total) {
       return discord.notifyApplication(application, {
         roundName: round.name,
@@ -564,15 +632,20 @@ function applyPublic(req, res) {
         // Unverified until they set a password through an emailed link, which
         // is what proves the address is theirs (see authController.resetPassword).
         // The form is multipart, so the opt-in checkbox arrives as a string.
-        var wantsAnnouncements = body.marketingEmailConsent === true || body.marketingEmailConsent === "true";
+        var optIn = emailOptIn(body);
+        var wantsAnnouncements = optIn === true;
         var userStep = existing
-          ? Promise.resolve(existing)
+          ? saveEmailOptIn(existing._id, optIn).then(function keep() {
+              return existing;
+            })
           : User.create({
               name: name,
               email: email,
               role: "applicant",
               emailVerified: false,
               marketingEmailConsent: wantsAnnouncements,
+              emailPreferences: optIn === null ? { event: true } : { event: optIn, announcements: optIn },
+              emailPreferencesUpdatedAt: optIn === null ? null : new Date(),
             });
 
         return userStep.then(function afterUserReady(user) {

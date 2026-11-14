@@ -39,7 +39,7 @@ were presumably tracked in spreadsheets, so B33–B37 are a new design.
 | Admin role management (`pages#permissions`) | ✅ Users page | — |
 | "Redeem code" to upgrade your own role | ✖ security hole (let anyone become admin) | B17 |
 | Slack: join gate, DMs, account re-association | ✖ replaced by Discord link + email | B26 |
-| Marketing-email consent (`non_transactional_email_consent`) | 🟡 backend done (off by default, sign-up/profile field, unsubscribe link, enforced for announcements); sign-up checkbox + profile toggle are UI follow-ups | B26 |
+| Marketing-email consent (`non_transactional_email_consent`) | ✅ email preferences per category (decisions, account, event, announcements; security always sent), unsubscribe link + one-click `List-Unsubscribe` on every optional email, `/unsubscribe` page, Account page switches, opt-in checkbox on the application form | B26 |
 | Failed-email page (`/check-failed-emails` in the judging app) | ➕ ✅ email outbox: log, backoff retries, resend, `/dashboard/admin/outbox` | B26 |
 
 ## Registration & review
@@ -57,12 +57,13 @@ were presumably tracked in spreadsheets, so B33–B37 are a new design.
 | Accepted status still visible after applications close | ✅ `latest` on `GET /api/applications/me`, shown on the home page | B27, F22 |
 | Application search | 🟡 status/round filters only | F14 |
 | Staff edit a submitted application (typos, wrong email) | ✅ edit mode on Review: every profile field, custom answers (form rules, consent boxes not re-ticked), account name and email (409 on duplicates, old links cancelled), audit trail, resend acceptance after an email fix | — |
+| Remove duplicate applications and merge two into one | ✅ soft delete with a reason (restore, audit trail, excluded from stats, exports, lists, auto-accept, check-in, workshops, hardware, team builder), merge with per-field choices, "possible duplicates" view (phone, name, Gmail alias, dismiss) | — |
 | Resume auto-check + flag suspicious applications, flag/unflag | 🟡 flag/unflag, list filter + count, optional auto-checks (short resume, name missing, duplicate phone/resume). Resume text is read for Word files and plain-text PDFs only; other PDFs skip the text rules | B42 |
 | Admin statistics (counts by school, gender, status, …) | 🟡 built; workshop attendance + hardware out wait on B21/B22 | B43, F26 |
 | CSV export of applications | ✅ admin only, answers flattened, formula-safe | B29 |
 | RSVP + custom RSVP questions + un-RSVP | ⏸ | B32 |
 | Mass email to lists (not applied / accepted / waitlisted / undecided / test to self) | 🟡 API done (`POST /api/admin/outbox/bulk`, consent-aware); compose UI pending. Workshop-signup and hardware-holder lists wait for B18 / hardware checkout | B26 |
-| Reminder emails | 🟡 send by hand as a bulk email to a segment; no scheduled reminders yet | B26 |
+| Reminder emails | ✅ Communications page: announcements to email + Discord (now or scheduled), automatic workshop reminders (email + Discord), daily sign-up digest | B26 |
 
 ## Event day
 
@@ -95,7 +96,7 @@ were presumably tracked in spreadsheets, so B33–B37 are a new design.
 | ----------- | ------ | ---- |
 | Inventory CRUD (name, category, location, link, count) | ✅ | B22, F20 |
 | Search by item id / name | ✅ | B23, F20 |
-| Checkout / return, per-item history log | ✅ staff-only, atomic stock, checkout team snapshots and retained history; phone-friendly desk flow (attendee card with one-tap returns, type-ahead item search, back-to-back checkouts) | B22, F20 |
+| Checkout / return, per-item history log | ✅ staff-only, atomic stock, checkout team snapshots and retained history; phone-friendly desk flow (attendee card with one-tap returns, type-ahead item search, back-to-back checkouts); staff edit a loan's item, due time and notes; per-attendee limits can change while items are out | B22, F20 |
 | "All checked out" list | ✅ snapshot/current teams and changed-team badges | B22, F20 |
 | Barcode label CSV | ✅ printable item QR labels | B22 |
 | Slack reminders to return hardware | ✅ background email reminders, event return deadline and one-time team-change notices | B22, B26 |
@@ -123,6 +124,8 @@ Individual unit tracking and the optional reserve/request queue are deferred.
 | Printed judging forms (`paper_judging`) | ✅ printable table signs with persistent random QR tokens | B24c |
 | Judging results + CSV | ✅ weighted raw/adjusted totals, overall/category competition ranks, flags, three formula-safe CSV exports; integration verification pending | B24g |
 | **2025 judging:** two-step desk → table check-in | ✅ desk station, participant table scan, table email, admin fallback, team membership locks, audited undo/unlock and staff team management | B24c |
+| Teams from the application's teammates question | ➕ ✅ admin team builder: parses messy answers, proposes teams (graph of listed emails), creates them with invites or merges into existing teams, audited; "not on a team" pool by research-study answer with CSV | |
+| Remind accepted applicants to set up their account | ➕ ✅ User groups page, fresh link per person, paced, once per 24 h | |
 | Participant judging sheet | ✅ anonymous stable version labels, current room/table counts, separate software/hardware sections, own-team progress and polling; integration verification pending | B24c, B24g |
 | **2025 judging:** calibration rounds + judge bias | ✅ ordered calibration flow, editable projects/rubric, completion status and stored bias over completed judges; results apply stored bias (B24g) | B24d, B47 |
 | **2025 judging:** time-slotted assignments + verifier | ✅ versioned generation with verifier, explicit activation, late changes and optional timer | B24a, B24e |

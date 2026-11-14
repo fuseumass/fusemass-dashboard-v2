@@ -164,6 +164,7 @@ var MATRIX = [
   row("GET", "/api/staff/hardware/checkouts", "moderator"),
   row("POST", "/api/staff/hardware/checkouts", "moderator"),
   row("POST", "/api/staff/hardware/checkouts/:id/return", "moderator"),
+  row("PATCH", "/api/staff/hardware/checkouts/:id", "moderator"),
   row("GET", "/api/staff/hardware/export.csv", "moderator"),
   row("POST", "/api/staff/hardware/reminders", "moderator"),
   row("GET", "/api/admin/hardware", "admin"),
@@ -194,6 +195,9 @@ var MATRIX = [
   row("POST", "/api/auth/reset-password", "public"),
   row("POST", "/api/auth/verify-email", "public"),
   row("POST", "/api/auth/unsubscribe", "public"),
+  row("POST", "/api/auth/unsubscribe/one-click", "public"),
+  row("POST", "/api/auth/email-preferences/lookup", "public"),
+  row("POST", "/api/auth/email-preferences/update", "public"),
   row("POST", "/api/auth/setup-admin", "public"),
   row("GET", "/api/auth/google", "public"),
   row("GET", "/api/auth/google/callback", "public"),
@@ -201,6 +205,8 @@ var MATRIX = [
   // ---- Any logged-in user --------------------------------------------------
   row("GET", "/api/auth/me", "authenticated"),
   row("PATCH", "/api/auth/me", "authenticated"),
+  row("GET", "/api/auth/me/email-preferences", "authenticated"),
+  row("PUT", "/api/auth/me/email-preferences", "authenticated"),
   row("GET", "/api/meta/links", "authenticated"),
   row("POST", "/api/auth/resend-verification", "authenticated"),
   row("POST", "/api/applications", "participant", { body: { name: "Sneaky" } }),
@@ -216,6 +222,8 @@ var MATRIX = [
   row("DELETE", "/api/teams/me/invites/:email", "authenticated"),
   row("POST", "/api/teams/invites/:teamId/accept", "authenticated", { use: { teamId: "team" } }),
   row("POST", "/api/teams/invites/:teamId/decline", "authenticated", { use: { teamId: "team" } }),
+  row("POST", "/api/teams/suggestions/:id/accept", "authenticated"),
+  row("POST", "/api/teams/suggestions/:id/decline", "authenticated"),
 
   // ---- Moderators and admins: reviewing and event-day staff ---------------
   row("GET", "/api/admin/applications", "moderator"),
@@ -234,6 +242,25 @@ var MATRIX = [
     use: { id: "application" },
     body: { fields: { name: "Matrix Edit" }, user: { email: "matrix-edit@example.com" } },
   }),
+  row("GET", "/api/admin/applications/search", "moderator"),
+  row("GET", "/api/admin/applications/duplicates", "moderator"),
+  row("POST", "/api/admin/applications/duplicates/dismiss", "moderator", {
+    body: function body(ids) {
+      return { ids: [ids.application, ids.attendeeApplication] };
+    },
+  }),
+  row("POST", "/api/admin/applications/:id/remove", "moderator", {
+    use: { id: "application" },
+    body: { reason: "Matrix check" },
+  }),
+  row("POST", "/api/admin/applications/:id/restore", "moderator", { use: { id: "application" } }),
+  row("GET", "/api/admin/applications/:id/compare", "moderator", { use: { id: "application" } }),
+  row("POST", "/api/admin/applications/:id/merge", "moderator", {
+    use: { id: "application" },
+    body: function body(ids) {
+      return { otherId: ids.attendeeApplication, keep: "this" };
+    },
+  }),
   row("GET", "/api/admin/teams", "moderator"),
   row("GET", "/api/staff/attendees", "moderator"),
   row("GET", "/api/staff/attendee", "moderator"),
@@ -247,6 +274,17 @@ var MATRIX = [
       return { email: ids.attendeeEmail };
     },
   }),
+  row("GET", "/api/staff/communications", "moderator"),
+  row("GET", "/api/staff/communications/announcements", "moderator"),
+  row("POST", "/api/staff/communications/preview", "moderator", {
+    body: { title: "Hi", message: "Hello", channels: ["email"], audience: { segment: "accepted" } },
+  }),
+  row("POST", "/api/staff/communications/announcements", "moderator", {
+    body: { title: "Sneaky", message: "Hello", channels: ["email"], audience: { segment: "accepted" } },
+  }),
+  row("POST", "/api/staff/communications/announcements/:id/cancel", "moderator"),
+  row("POST", "/api/staff/communications/announcements/:id/send-again", "moderator"),
+  row("PATCH", "/api/staff/communications/settings", "admin", { body: { digestEmail: { enabled: true } } }),
   row("GET", "/api/staff/checkin/stats", "moderator"),
   row("GET", "/api/staff/checkin/:userId", "moderator", { use: { userId: "attendee" } }),
   row("POST", "/api/staff/checkin", "moderator", {
@@ -270,6 +308,26 @@ var MATRIX = [
   row("GET", "/api/admin/groups/options", "admin"),
   row("GET", "/api/admin/groups/emails", "admin"),
   row("GET", "/api/admin/groups/export.csv", "admin"),
+  row("GET", "/api/admin/team-builder/proposals", "admin"),
+  row("POST", "/api/admin/team-builder/apply", "admin", {
+    body: function body(ids) {
+      return { proposals: [{ memberEmails: [ids.attendeeEmail, "sneaky@example.com"], name: "Sneaky team" }] };
+    },
+  }),
+  row("POST", "/api/admin/team-builder/suggest", "admin", {
+    body: function body(ids) {
+      return { teams: [{ emails: [ids.attendeeEmail, "sneaky@example.com"] }], dryRun: true };
+    },
+  }),
+  row("POST", "/api/admin/team-builder/notify-conflicts", "admin", {
+    body: function body() {
+      return { statuses: ["accepted", "pending"] };
+    },
+  }),
+  row("GET", "/api/admin/team-builder/unteamed", "admin"),
+  row("GET", "/api/admin/team-builder/unteamed.csv", "admin"),
+  row("GET", "/api/admin/setup-reminders", "admin"),
+  row("POST", "/api/admin/setup-reminders", "admin"),
   row("GET", "/api/admin/exports/applications.csv", "admin"),
   row("GET", "/api/admin/exports/checkins.csv", "admin"),
   row("GET", "/api/admin/exports/meals.csv", "admin"),
@@ -344,7 +402,7 @@ async function seed() {
     name: "Pending Applicant",
     status: "pending",
   });
-  await Application.create({
+  var attendeeApplication = await Application.create({
     applicant: attendee.user._id,
     round: round._id,
     name: "Accepted Attendee",
@@ -378,6 +436,7 @@ async function seed() {
       attendee: String(attendee.user._id),
       attendeeEmail: attendee.user.email,
       application: String(application._id),
+      attendeeApplication: String(attendeeApplication._id),
       round: String(round._id),
       template: String(template._id),
       meal: String(meal._id),

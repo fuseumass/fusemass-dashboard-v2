@@ -28,6 +28,23 @@ const STATUS_WORDS = {
 // Attendee help (moderators + admins): look someone up by email, then resend
 // their QR code email, send them an account setup / password reset link, or
 // force-check them in.
+// "Gets everything" or "Turned off: event updates, announcements", so staff
+// can tell why an email didn't arrive. Read-only: people change it themselves.
+const EMAIL_CATEGORY_WORDS = {
+  decisions: "application decisions",
+  account: "account setup",
+  event: "event updates",
+  announcements: "announcements",
+};
+
+function emailPreferencesSummary(preferences) {
+  const off = Object.keys(EMAIL_CATEGORY_WORDS).filter(
+    (key) => preferences[key] === false,
+  );
+  if (off.length === 0) return "Gets every email";
+  return `Turned off: ${off.map((key) => EMAIL_CATEGORY_WORDS[key]).join(", ")}`;
+}
+
 export default function AttendeeHelpPage() {
   const user = useUser();
   const router = useRouter();
@@ -187,6 +204,14 @@ export default function AttendeeHelpPage() {
                       ? "Can sign in"
                       : "No password yet (applied without an account)"}
                   </dd>
+                  {attendee.emailPreferences
+                    ? <>
+                        <dt className="text-muted-foreground">Email</dt>
+                        <dd>
+                          {emailPreferencesSummary(attendee.emailPreferences)}
+                        </dd>
+                      </>
+                    : null}
                 </dl>
 
                 <div className="flex flex-wrap gap-2">
