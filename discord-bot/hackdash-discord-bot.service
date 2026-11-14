@@ -1,0 +1,19 @@
+# systemd unit for the Discord bot. Install on the server:
+#   sudo cp hackdash-discord-bot.service /etc/systemd/system/
+#   sudo systemctl daemon-reload && sudo systemctl enable --now hackdash-discord-bot
+[Unit]
+Description=Hackathon dashboard Discord bot
+After=network-online.target mongod.service
+Wants=network-online.target
+
+[Service]
+User=hum
+WorkingDirectory=/opt/hackdash/discord-bot
+Environment=ENV_FILE=/opt/hackdash/backend/.env
+ExecStart=/opt/hackdash/discord-bot/.venv/bin/python main.py
+Restart=on-failure
+RestartSec=10
+NoNewPrivileges=true
+
+[Install]
+WantedBy=multi-user.target

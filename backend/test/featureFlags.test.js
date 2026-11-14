@@ -40,6 +40,7 @@ test("B25: feature flags per module", async function featureFlags(t) {
       workshops: true,
       judging: true,
       raffle: false,
+      discord: true,
     });
   });
 
@@ -63,6 +64,7 @@ test("B25: feature flags per module", async function featureFlags(t) {
       workshops: true,
       judging: true,
       raffle: true,
+      discord: true,
     });
   });
 
@@ -157,7 +159,7 @@ test("B25: feature flags per module", async function featureFlags(t) {
       res.body.featureOptions.map(function (o) {
         return o.key;
       }),
-      ["meals", "hardware", "workshops", "judging", "raffle"]
+      ["meals", "hardware", "workshops", "judging", "raffle", "discord"]
     );
     assert.equal(res.body.featureOptions[0].label, "Meals");
   });

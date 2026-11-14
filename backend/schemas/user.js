@@ -41,6 +41,16 @@ var userSchema = new Schema(
       index: true,
       sparse: true,
     },
+    // Set when the account is linked to Discord (Discord module). One Discord
+    // account can be linked to only one dashboard account.
+    discordId: {
+      type: String,
+      index: { unique: true, sparse: true },
+    },
+    // Discord username at link time, shown on the dashboard.
+    discordUsername: {
+      type: String,
+    },
     // URL of the user's Google profile photo, if any.
     avatarUrl: {
       type: String,

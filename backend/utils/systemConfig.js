@@ -379,6 +379,28 @@ var REGISTRY = [
     type: "url",
   }),
 
+  def("DISCORD_APP_CLIENT_ID", "Discord app client ID", "Discord", "The OAuth2 client ID of your Discord application (Discord Developer Portal > OAuth2). Attendees link their Discord account with it.", {
+    validate: text(100),
+    allowEmpty: true,
+  }),
+  def("DISCORD_APP_CLIENT_SECRET", "Discord app client secret", "Discord", "The OAuth2 client secret of the same Discord application.", {
+    validate: text(200),
+    secret: true,
+  }),
+  def("DISCORD_REDIRECT_URI", "Discord redirect address", "Discord", "Where Discord sends people back after linking. Leave empty for the frontend address + /dashboard/discord. It must be listed under Redirects in the Discord Developer Portal exactly.", {
+    validate: url(false),
+    type: "url",
+    allowEmpty: true,
+  }),
+  def("DISCORD_BOT_TOKEN", "Discord bot token", "Discord", "The bot token (Developer Portal > Bot) used by the Discord bot service for /inventory and /checkedout. Restart the bot service after changing it.", {
+    validate: text(200),
+    secret: true,
+  }),
+  def("DISCORD_GUILD_ID", "Discord server ID", "Discord", "Your Discord server's ID, so the bot's commands appear there right away. Restart the bot service after changing it.", {
+    validate: text(30),
+    allowEmpty: true,
+  }),
+
   // File storage (Azure)
   def("AZURE_STORAGE_CONNECTION_STRING", "Storage connection string", "File storage (Azure)", "The Azure storage account connection string. Resume and logo uploads are off without it.", {
     validate: azureConnectionString,

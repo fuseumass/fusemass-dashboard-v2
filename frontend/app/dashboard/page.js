@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import ApplicationStatusBadge from "@/components/ApplicationStatusBadge";
 import ClosedRoundStatus from "@/components/ClosedRoundStatus";
+import DiscordLinkCard from "@/components/DiscordLinkCard";
 import PageHeader from "@/components/PageHeader";
 import { CardSkeleton } from "@/components/skeletons";
 import { Button } from "@/components/ui/button";
@@ -220,6 +221,7 @@ export default function DashboardHome() {
               </CardContent>
             </Card>
           : null}
+        {user.role === "judge" ? null : <DiscordLinkCard />}
       </div>
     </div>
   );
