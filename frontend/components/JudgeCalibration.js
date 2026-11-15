@@ -93,7 +93,6 @@ function RoundForm({ data, round, onSaved }) {
                 {/* Buttons, as in real judging: only in-range scores can be picked. */}
                 <div
                   className="flex flex-wrap gap-2"
-                  role="group"
                   aria-describedby={`help-${c.key}`}
                 >
                   {Array.from(
