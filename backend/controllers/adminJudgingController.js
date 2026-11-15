@@ -626,7 +626,85 @@ async function confirmImport(req, res) {
     });
   }
 }
+/**
+ * Everything imported or assigned for each project as a CSV, sorted by table
+ * (projects without a table last). Admin only; emails included for follow-up.
+ * @param {object} req - Request. @param {object} res - Response. @returns {Promise<void>}
+ */
+async function exportProjects(req, res) {
+  try {
+    var csv = require("../utils/csv");
+    var projects = await Project.find({})
+      .populate("room", "name")
+      .populate("members", "name email")
+      .populate({ path: "team", select: "name leader", populate: { path: "leader", select: "name" } })
+      .lean();
+    projects.sort(function order(a, b) {
+      return (a.tableNumber || Infinity) - (b.tableNumber || Infinity) || String(a.name).localeCompare(String(b.name));
+    });
+    var header = ["Project", "Devpost URL", "Table", "Room", "Hardware", "Category", "Opt-in prizes", "MLH tracks",
+      "Needs power", "Dashboard team", "Team leader", "Members", "Member emails", "Submitter email",
+      "Unmatched people", "Desk check-in", "Table check-in", "Withdrawn"];
+    var rows = projects.map(function row(p) {
+      var members = p.members || [];
+      return [
+        p.name, p.devpostUrl, p.tableNumber || "", p.room ? p.room.name : "", Boolean(p.hardware), p.category || "",
+        (p.optInPrizes || []).join("; "), (p.mlhTracks || []).join("; "), Boolean(p.needsPower),
+        p.team ? p.team.name : "", p.team && p.team.leader ? p.team.leader.name : "",
+        members.map(function name(m) { return m.name; }).join("; "),
+        members.map(function email(m) { return m.email; }).join("; "),
+        p.submitterEmail || "",
+        (p.unmatchedMembers || []).map(function person(m) { return [m.name, m.email ? "<" + m.email + ">" : ""].filter(Boolean).join(" "); }).join("; "),
+        p.deskCheckedInAt || "", p.tableCheckedInAt || "", Boolean(p.withdrawn),
+      ];
+    });
+    var offset = 0;
+    await csv.sendCsv(res, { filename: csv.datedFilename("judging-projects", "csv"), header: header,
+      nextRows: async function nextRows() { var batch = rows.slice(offset, offset + 250); offset += batch.length; return batch; } });
+  } catch (err) {
+    fail(res, err);
+  }
+}
+/**
+ * Delete every imported project, e.g. to start over with a clean Devpost
+ * export. Refused once any judge has scored or while judging is open. Draft
+ * assignment versions (they only point at these projects) and pending import
+ * previews go too; teams locked by a desk check-in are unlocked. Rooms and
+ * table signs are kept. Body: { confirm: true, count } with the current count.
+ * @param {object} req - Request. @param {object} res - Response. @returns {Promise<void>}
+ */
+async function deleteAllProjects(req, res) {
+  var control = require("../utils/judging/state");
+  var Score = require("../schemas/judgingScore");
+  var Assignment = require("../schemas/judgingAssignment");
+  var State = require("../schemas/judgingState");
+  try {
+    var result = await control.locked(async function wipe(state) {
+      var count = await Project.countDocuments({});
+      var body = req.body || {};
+      if (body.confirm !== true || body.count !== count) {
+        throw Object.assign(control.problem(409, "Confirm deleting all " + count + " projects."), { count: count });
+      }
+      if (state.judgingOpen) throw control.problem(409, "Close judging before deleting projects.");
+      if (await Score.exists({})) throw control.problem(409, "Judges have already scored projects. Projects can't be deleted after scoring starts.");
+      var teams = await Project.distinct("team", { team: { $ne: null }, deskCheckedInAt: { $ne: null } });
+      var deleted = await Project.deleteMany({});
+      await Assignment.deleteMany({});
+      await State.updateOne({ _id: "judging" }, { $set: { activeVersion: null } });
+      await ProjectImport.deleteMany({});
+      if (teams.length) await Team.updateMany({ _id: { $in: teams } }, { $unset: { lockedAt: 1, lockedBy: 1 } });
+      console.log("Judging: admin " + req.user.id + " deleted all " + deleted.deletedCount + " projects.");
+      return { deleted: deleted.deletedCount };
+    });
+    res.json(result);
+  } catch (err) {
+    if (err.count !== undefined) return res.status(409).json({ error: err.message, count: err.count });
+    fail(res, err);
+  }
+}
 module.exports = {
+  exportProjects: exportProjects,
+  deleteAllProjects: deleteAllProjects,
   listRooms: listRooms,
   saveRoom: saveRoom,
   deleteRoom: deleteRoom,

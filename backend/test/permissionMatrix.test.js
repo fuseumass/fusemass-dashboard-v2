@@ -132,6 +132,8 @@ var MATRIX = [
   row("PATCH", "/api/admin/judging/rooms/:id", "admin"),
   row("DELETE", "/api/admin/judging/rooms/:id", "admin"),
   row("GET", "/api/admin/judging/projects", "admin"),
+  row("GET", "/api/admin/judging/projects.csv", "admin"),
+  row("POST", "/api/admin/judging/projects/delete-all", "admin"),
   row("PATCH", "/api/admin/judging/projects/:id", "admin"),
   row("POST", "/api/admin/judging/import", "admin"),
   row("POST", "/api/admin/judging/import/:id/confirm", "admin"),

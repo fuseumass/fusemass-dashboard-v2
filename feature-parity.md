@@ -115,7 +115,7 @@ Individual unit tracking and the optional reserve/request queue are deferred.
 
 | Old feature | Status | Task |
 | ----------- | ------ | ---- |
-| Project submission with team members | ✅ dashboard teams (B15), Devpost CSV preview/confirm (export Submission Url, judging-category and hardware questions, [MLH] opt-in prizes), team URL → email → unique-name matching, duplicate-team errors, cross-team warnings, preserved unique team links and admin overrides | B24b |
+| Project submission with team members | ✅ dashboard teams (B15), Devpost CSV preview/confirm, delete-all (refused after scoring) (export Submission Url, judging-category and hardware questions, [MLH] opt-in prizes), team URL → email → unique-name matching, duplicate-team errors, cross-team warnings, preserved unique team links and admin overrides | B24b |
 | Judging rooms and capacities | ✅ admin CRUD with table-number ranges per room (no overlaps; walking order separate from numbering), hardware rooms, deletion protection | B24b |
 | Public project gallery | ✖ Devpost hosts it | — |
 | Power-outlet needs per project | ✅ admin override preserved on import | B24b |
@@ -154,6 +154,6 @@ Technical settings is a new platform feature under review on `feature/tech-setti
 | Feature flags per module | 🟡 backend ✅ (`OrgSettings.features`, `requireFeature`, gates meals; each new module must mount it); nav hides meals items; full nav config is F13 | B25, F13 |
 | Per-hackathon config repo (names, texts, branding) | 🟡 backend ✅ runtime branding API (`GET /api/meta/branding`, admin settings, logo upload) + admin card; the site still needs to apply it (colour flags fix) | B28, F12 |
 | Applicant segments (filter by domain, status, diet, form answers; export / copy emails) | ➕ ✅ admin User groups page | F28 |
-| CSV exports (applications, events, judging, projects) | 🟡 applications, check-ins, meals done; hardware done; workshops, judging, projects pending | B29 |
+| CSV exports (applications, events, judging, projects) | 🟡 applications, check-ins, meals done; hardware done; judging projects (all imported fields, tables, check-ins) done; workshops pending | B29 |
 | Resume bulk download (`download_resumes.py`) | ✅ ZIP of consenting accepted applicants | B29 |
 | Error reporting (Sentry/Raven) | 📋 | B46 |
