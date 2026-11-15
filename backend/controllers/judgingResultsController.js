@@ -85,4 +85,76 @@ async function exportCsv(req, res) {
       nextRows: async function nextRows() { var batch = rows.slice(offset, offset + 250); offset += batch.length; return batch; } });
   } catch (err) { fail(res, err); }
 }
-module.exports = { progress: progress, results: results, exportCsv: exportCsv };
+/**
+ * One project in full for the results page: what was imported, its table,
+ * every judge's raw criterion scores and comments, their calibration bias and
+ * the bias-adjusted totals that feed the ranking, plus who is still to judge.
+ * @param {object} req - Request (params.id). @param {object} res - Response. @returns {Promise<void>}
+ */
+async function projectDetail(req, res) {
+  try {
+    var mongoose = require("mongoose");
+    if (!mongoose.isValidObjectId(req.params.id)) return res.status(404).json({ error: "Project not found." });
+    var project = await Project.findById(req.params.id)
+      .populate("room", "name")
+      .populate("members", "name")
+      .populate({ path: "team", select: "name leader", populate: { path: "leader", select: "name" } })
+      .lean();
+    if (!project) return res.status(404).json({ error: "Project not found." });
+    var data = await load();
+    var summary = resultsData(data).find(function same(r) { return r._id === String(project._id); }) || null;
+    var weights = { general: 0, category: 0 };
+    data.criteria.forEach(function weigh(c) { weights[c.kind === "general" ? "general" : "category"] += c.weight; });
+    function userOf(id) { return data.users.find(function same(u) { return String(u._id) === String(id); }); }
+    var hardwareJudges = new Set((await Profile.find({ hardware: true }).select("user").lean()).map(function id(p) { return String(p.user); }));
+    var scores = data.scores.filter(function mine(s) { return String(s.project) === String(project._id); }).map(function row(s) {
+      var general = 0;
+      var category = 0;
+      data.criteria.forEach(function add(c) {
+        var value = s.scores[c.key];
+        if (c.kind === "general") general += value * c.weight;
+        else category += value * c.weight;
+      });
+      var profile = data.profiles.find(function same(p) { return String(p.user) === String(s.judge); });
+      var bias = profile && profile.bias && Number.isFinite(profile.bias.general) && Number.isFinite(profile.bias.category) ? profile.bias : null;
+      var judge = userOf(s.judge);
+      return {
+        judgeId: String(s.judge), judge: judge ? judge.name : "Removed judge", hardwareJudge: hardwareJudges.has(String(s.judge)),
+        scores: s.scores, comments: s.comments || "", updatedAt: s.updatedAt,
+        rawGeneral: general, rawCategory: category,
+        bias: bias ? { general: bias.general, category: bias.category } : null,
+        adjustedGeneral: general - (bias ? bias.general * weights.general : 0),
+        adjustedCategory: category - (bias ? bias.category * weights.category : 0),
+      };
+    }).sort(function when(a, b) { return new Date(a.updatedAt) - new Date(b.updatedAt); });
+    var scoredBy = new Set(scores.map(function id(s) { return s.judgeId; }));
+    var assigned = (data.assignment ? data.assignment.queues : []).filter(function has(q) {
+      return q.projects.some(function same(p) { return String(p) === String(project._id); });
+    }).map(function judge(q) {
+      var user = userOf(q.judge);
+      var id = String(q.judge);
+      var status = scoredBy.has(id) ? "scored" : (q.skipped || []).some(function same(p) { return String(p) === String(project._id); }) ? "skipped" : "pending";
+      var position = q.projects.findIndex(function same(p) { return String(p) === String(project._id); }) + 1;
+      return { judgeId: id, judge: user ? user.name : "Removed judge", hardwareJudge: hardwareJudges.has(id), status: status, position: position, queueLength: q.projects.length };
+    });
+    res.set("Cache-Control", "no-store").json({
+      project: {
+        _id: String(project._id), name: project.name, devpostUrl: project.devpostUrl, category: project.category || "",
+        optInPrizes: project.optInPrizes || [], mlhTracks: project.mlhTracks || [], hardware: Boolean(project.hardware),
+        needsPower: Boolean(project.needsPower), withdrawn: Boolean(project.withdrawn),
+        tableNumber: project.tableNumber || null, room: project.room ? project.room.name : null,
+        team: project.team ? project.team.name : null, leader: project.team && project.team.leader ? project.team.leader.name : null,
+        members: (project.members || []).map(function name(m) { return m.name; }),
+        unmatchedMembers: project.unmatchedMembers || [],
+        deskCheckedInAt: project.deskCheckedInAt || null, tableCheckedInAt: project.tableCheckedInAt || null,
+      },
+      criteria: data.criteria.map(function c(x) { return { key: x.key, label: x.label, kind: x.kind, min: x.min, max: x.max, weight: x.weight }; }),
+      weights: weights,
+      summary: summary,
+      judgingsPerProject: data.assignment ? data.assignment.params.judgingsPerProject : null,
+      scores: scores,
+      assigned: assigned,
+    });
+  } catch (err) { fail(res, err); }
+}
+module.exports = { progress: progress, results: results, exportCsv: exportCsv, projectDetail: projectDetail };

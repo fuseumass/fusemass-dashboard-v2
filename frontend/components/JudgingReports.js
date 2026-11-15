@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import DataTable from "@/components/DataTable";
 import EmptyState from "@/components/EmptyState";
+import JudgingResultDetail from "@/components/JudgingResultDetail";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -54,6 +55,7 @@ export default function JudgingReports({ results = false }) {
   const [downloading, setDownloading] = useState("");
   const [category, setCategory] = useState("all");
   const [mode, setMode] = useState("adjusted");
+  const [openProject, setOpenProject] = useState(null);
   const load = useCallback(async () => {
     setLoading(true);
     try {
@@ -108,7 +110,19 @@ export default function JudgingReports({ results = false }) {
   });
   const resultColumns = [
     { accessorKey: "displayRank", header: "Rank" },
-    { accessorKey: "name", header: "Project" },
+    {
+      accessorKey: "name",
+      header: "Project",
+      cell: ({ row }) => (
+        <Button
+          variant="link"
+          className="h-auto p-0 text-left whitespace-normal"
+          onClick={() => setOpenProject(row.original._id)}
+        >
+          {row.original.name}
+        </Button>
+      ),
+    },
     { accessorKey: "category", header: "Category" },
     { accessorKey: "scoreCount", header: "Scores" },
     ...["General", "Category"].map((kind) => ({
@@ -164,7 +178,8 @@ export default function JudgingReports({ results = false }) {
               Overall ranks use general totals. Category ranks use category
               totals. Ties share a rank. Withdrawn projects are unranked. Bias
               is subtracted once from each judge's weighted total before
-              averaging.
+              averaging. Click a project to see every judge's raw and adjusted
+              scores.
             </p>
             <div className="flex flex-wrap gap-4">
               <div className="space-y-2">
@@ -201,6 +216,10 @@ export default function JudgingReports({ results = false }) {
               data={ranked}
               loading={loading}
               emptyState={empty()}
+            />
+            <JudgingResultDetail
+              projectId={openProject}
+              onClose={() => setOpenProject(null)}
             />
           </>
         : <>

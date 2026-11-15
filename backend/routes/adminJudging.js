@@ -13,6 +13,7 @@ var reports = require("../controllers/judgingResultsController");
 var isModerator = require("../utils/isModerator");
 router.get("/progress", isModerator, reports.progress);
 router.get("/results", isAdmin, reports.results);
+router.get("/results/projects/:id", isAdmin, reports.projectDetail);
 router.get("/progress.csv", isModerator, reports.exportCsv);
 router.get("/results.csv", isAdmin, reports.exportCsv);
 router.get("/scores.csv", isAdmin, reports.exportCsv);
