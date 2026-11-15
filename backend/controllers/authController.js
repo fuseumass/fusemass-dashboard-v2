@@ -149,6 +149,19 @@ function login(req, res) {
           role: user.role,
         });
 
+        // A judge invited onto an account that already had a password (e.g.
+        // they applied first) accepts the invite by logging in, as Google
+        // sign-in already does; otherwise they stay "pending" and are left
+        // out of judging assignments.
+        if (user.role === "judge" && user.judgeInvitePending) {
+          return User.updateOne(
+            { _id: user._id, judgeInvitePending: true },
+            { $set: { judgeInvitePending: false }, $unset: { resetPasswordToken: "", resetPasswordExpires: "" } }
+          ).then(function accepted() {
+            user.judgeInvitePending = false;
+            res.status(200).json({ token: token, user: user.toJSON() });
+          });
+        }
         res.status(200).json({ token: token, user: user.toJSON() });
       });
     })

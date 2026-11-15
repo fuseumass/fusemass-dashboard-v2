@@ -521,4 +521,16 @@ test("judge role, credentials and administration", async function suite(t) {
       );
     },
   );
+  await t.test("a judge invited onto an account with a password accepts by logging in", async function () {
+    var User = require("../schemas/user");
+    var existing = await fixtures.createUser({ role: "judge", email: "had-password@example.com" });
+    await User.updateOne({ _id: existing.user._id }, { $set: { judgeInvitePending: true, resetPasswordToken: "x".repeat(64), resetPasswordExpires: new Date(Date.now() + 60000) } });
+    await request(app).post("/api/auth/login").send({ email: "had-password@example.com", password: "wrong-password" }).expect(401);
+    assert.equal((await User.findById(existing.user._id)).judgeInvitePending, true, "a failed login changes nothing");
+    var ok = await request(app).post("/api/auth/login").send({ email: "had-password@example.com", password: "test-password" }).expect(200);
+    assert.ok(ok.body.token);
+    var saved = await User.findById(existing.user._id);
+    assert.equal(saved.judgeInvitePending, false);
+    assert.equal(saved.resetPasswordToken, undefined, "the unused invite link stops working");
+  });
 });
