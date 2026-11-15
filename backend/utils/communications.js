@@ -1001,19 +1001,36 @@ function maxOffset(offsets) {
  */
 function postGroup(kind, group, scope, settings, color) {
   var won = [];
-  return group.workshops
-    .reduce(function chain(previous, workshop) {
-      return previous.then(function tryClaim() {
-        var key = reminderKey(kind, workshop, group.offset);
-        return claim({ key: key, kind: kind, workshop: workshop._id, scheduledFor: new Date(new Date(workshop.startsAt).getTime() - group.offset * MINUTE_MS) }).then(
-          function afterClaim(ok) {
-            if (ok) {
-              won.push({ workshop: workshop, key: key });
+  // Claim the whole group first. Claiming workshop by workshop alone lets two
+  // overlapping scheduler runs split one slot into two posts (one wins "A",
+  // the other "B"). A workshop added to the slot later forms a new group, and
+  // the per-workshop claims below then post only what hasn't been posted.
+  var ids = group.workshops
+    .map(function id(w) {
+      return String(w._id);
+    })
+    .sort()
+    .join(",");
+  var groupKey = kind + "_group:" + new Date(group.startsAt).toISOString() + ":" + group.offset + ":" + ids;
+  return claim({ key: groupKey, kind: kind + "_group", scheduledFor: new Date(new Date(group.startsAt).getTime() - group.offset * MINUTE_MS) })
+    .then(function wonGroup(ok) {
+      if (!ok) return [];
+      return group.workshops;
+    })
+    .then(function claimEach(workshops) {
+      return workshops.reduce(function chain(previous, workshop) {
+        return previous.then(function tryClaim() {
+          var key = reminderKey(kind, workshop, group.offset);
+          return claim({ key: key, kind: kind, workshop: workshop._id, scheduledFor: new Date(new Date(workshop.startsAt).getTime() - group.offset * MINUTE_MS) }).then(
+            function afterClaim(ok) {
+              if (ok) {
+                won.push({ workshop: workshop, key: key });
+              }
             }
-          }
-        );
-      });
-    }, Promise.resolve())
+          );
+        });
+      }, Promise.resolve());
+    })
     .then(function post() {
       if (!won.length) {
         return 0;
