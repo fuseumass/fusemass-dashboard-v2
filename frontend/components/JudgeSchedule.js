@@ -3,10 +3,29 @@
 import Link from "next/link";
 import DataTable from "@/components/DataTable";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import { formatDateTime } from "@/lib/datetime";
 
 export default function JudgeSchedule({ data, skippedOnly = false }) {
+  const statusLabel = {
+    done: "Judged",
+    skipped: "Skipped",
+    current: "Next",
+    upcoming: "Upcoming",
+  };
   const columns = [
+    {
+      id: "judged",
+      header: "Judged",
+      // Read-only tick so judges can see at a glance what they have scored.
+      cell: ({ row }) => (
+        <Checkbox
+          checked={row.original.status === "done"}
+          disabled
+          aria-label={`${row.original.name}: ${row.original.status === "done" ? "judged" : "not judged yet"}`}
+        />
+      ),
+    },
     { accessorKey: "slot", header: "Slot" },
     { accessorKey: "tableNumber", header: "Table" },
     { id: "room", header: "Room", cell: ({ row }) => row.original.room?.name },
@@ -15,7 +34,7 @@ export default function JudgeSchedule({ data, skippedOnly = false }) {
       accessorKey: "status",
       header: "Status",
       cell: ({ row }) => (
-        <span className="capitalize">{row.original.status}</span>
+        <span>{statusLabel[row.original.status] || row.original.status}</span>
       ),
     },
   ];
@@ -33,21 +52,20 @@ export default function JudgeSchedule({ data, skippedOnly = false }) {
   columns.push({
     id: "action",
     header: "",
-    // Judged projects show their status only; no button to judge them again.
-    cell: ({ row }) =>
-      row.original.status === "done"
-        ? null
-        : <Button
-            asChild
-            size="sm"
-            variant="outline"
-            className="pointer-coarse:h-10"
-          >
-            <Link href={`/dashboard/judging/score?project=${row.original._id}`}>
-              Judge now
-              <span className="sr-only"> {row.original.name}</span>
-            </Link>
-          </Button>,
+    // Judged projects can be opened again to change the saved scores.
+    cell: ({ row }) => (
+      <Button
+        asChild
+        size="sm"
+        variant={row.original.status === "done" ? "ghost" : "outline"}
+        className="pointer-coarse:h-10"
+      >
+        <Link href={`/dashboard/judging/score?project=${row.original._id}`}>
+          {row.original.status === "done" ? "Rejudge" : "Judge now"}
+          <span className="sr-only"> {row.original.name}</span>
+        </Link>
+      </Button>
+    ),
   });
   return (
     <DataTable
