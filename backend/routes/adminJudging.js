@@ -19,6 +19,7 @@ router.get("/scores.csv", isAdmin, reports.exportCsv);
 var assignments = require("../controllers/judgingAssignmentController");
 router.get("/assignments", isAdmin, assignments.list);
 router.post("/assignments", isAdmin, assignments.generate);
+router.delete("/assignments", isAdmin, assignments.deleteAll);
 router.post("/assignments/:version/activate", isAdmin, assignments.activate);
 router.post("/assignments/judges", isAdmin, assignments.addJudge);
 router.post("/assignments/move/plan", isAdmin, assignments.movePlan);

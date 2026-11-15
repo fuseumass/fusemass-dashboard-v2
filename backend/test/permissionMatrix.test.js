@@ -97,6 +97,7 @@ var MATRIX = [
   row("POST", "/api/judging/skip", "judge"),
   row("GET", "/api/admin/judging/assignments", "admin"),
   row("POST", "/api/admin/judging/assignments", "admin"),
+  row("DELETE", "/api/admin/judging/assignments", "admin"),
   row("POST", "/api/admin/judging/assignments/:version/activate", "admin"),
   row("POST", "/api/admin/judging/assignments/judges", "admin"),
   row("POST", "/api/admin/judging/assignments/move/plan", "admin"),

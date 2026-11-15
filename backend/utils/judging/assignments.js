@@ -16,6 +16,7 @@
  * @param {number[][]} [config.roomTables] Occupied tables per configured room (preserves vacancies).
  * @param {function} [config.rng=Math.random] Random source returning [0, 1).
  * @param {number} [config.maxAttempts=10] Maximum retry attempts
+ * @param {string} [config.strategy="sweep"] "sweep" (walking order, fallback to rotation) or "rotation".
  * @returns {Object} {success, assignments, issues, log}. Each judge has a compact
  * assignments queue (legacy behavior) and slots preserving -1 time-slot gaps.
  * Throws with the team name when repair cannot produce a valid schedule.
@@ -29,6 +30,7 @@ function generateJudgingAssignments({
   roomTables = null,
   maxAttempts = 10,
   rng = Math.random,
+  strategy = "sweep",
 }) {
   var log = [];
   if (!teams || !Array.isArray(teams) || teams.length === 0) {
@@ -89,6 +91,22 @@ function generateJudgingAssignments({
   var success = false
   var finalAssignments = null
   var finalIssues = []
+
+  // Preferred: a sweep along the walking order, so each judge visits a run of
+  // neighbouring tables and changes rooms as rarely as possible.
+  var sweep = strategy === "sweep" ? sweepAssignments(system) : null
+  if (sweep) {
+    var sweepCheck = new AssignmentVerifier(system, sweep).verifyAll()
+    if (sweepCheck.success) {
+      log.push("[v0] Walking sweep: verified")
+      success = true
+      finalAssignments = sweepCheck.assignments
+    } else {
+      log.push("[v0] Walking sweep failed verification (" + sweepCheck.issues.join("; ") + "); falling back to room rotation")
+    }
+  } else {
+    log.push("[v0] Walking sweep not possible for this pool; using room rotation")
+  }
 
   while (attempt <= maxAttempts && !success) {
     log.push(`\n[v0] Attempt ${attempt} of ${maxAttempts}`)
@@ -210,6 +228,72 @@ function shuffleArray(array, rng) {
     array[i] = array[j];
     array[j] = previous;
   }
+}
+
+// ============================================================================
+// Walking sweep
+// ============================================================================
+
+/**
+ * Lay every occupied table out in walking order (rooms in their configured
+ * order, tables ascending) and give each judge a run of consecutive tables.
+ * The runs go around that line `judgingsPerProject` times, so every project
+ * gets exactly that many different judges and no judge repeats a project
+ * (a run is never longer than the line). Judges walk table to table and
+ * change rooms only where their run crosses a room boundary.
+ *
+ * Every judge moves one table per slot. A judge starts as soon as their whole
+ * run is free of other judges at the same time; otherwise they wait a slot
+ * (with more judges than tables, the extra judges simply start later). Runs
+ * are rotated so as few judges as possible cross from the last room back to
+ * the first.
+ *
+ * @param {object} system - Rooms (walking order), judges and judging count.
+ * @returns {number[][]|null} Slots per judge (-1 = wait), or null when a
+ *   sweep can't work (more judgings per project than judges).
+ */
+function sweepAssignments(system) {
+  var line = []
+  system.rooms.forEach(function roomTables(room) {
+    room.projects.slice().sort(function asc(a, b) { return a - b }).forEach(function add(table) { line.push(table) })
+  })
+  var P = line.length
+  var J = system.numJudges
+  var k = system.judgingsPerProject
+  if (!P || J < k) return null
+  var total = P * k
+  var base = Math.floor(total / J)
+  var extra = total % J
+  var lengths = []
+  for (var j = 0; j < J; j++) lengths.push(base + (j < extra ? 1 : 0))
+  if (lengths[0] > P) return null
+  var starts = []
+  var at = 0
+  lengths.forEach(function start(len) { starts.push(at); at += len })
+  // Rotate so a run boundary lands on as many lap ends (last room -> first) as possible.
+  var bestOffset = 0
+  var bestAligned = -1
+  starts.forEach(function candidate(c) {
+    var offset = ((P - (c % P)) % P)
+    var aligned = starts.filter(function hits(x) { return (x + offset) % P === 0 }).length
+    if (aligned > bestAligned) { bestAligned = aligned; bestOffset = offset }
+  })
+  var busy = [] // busy[slot] = tables taken at that slot
+  return starts.map(function run(start, idx) {
+    var first = (start + bestOffset) % P
+    var tables = []
+    for (var t = 0; t < lengths[idx]; t++) tables.push(line[(first + t) % P])
+    var delay = 0
+    while (tables.some(function clash(table, t) { return busy[delay + t] && busy[delay + t].has(table) })) delay++
+    var slots = []
+    for (var d = 0; d < delay; d++) slots.push(-1)
+    tables.forEach(function take(table, t) {
+      busy[delay + t] = busy[delay + t] || new Set()
+      busy[delay + t].add(table)
+      slots.push(table)
+    })
+    return slots
+  })
 }
 
 // ============================================================================
@@ -597,5 +681,5 @@ class AssignmentVerifier {
   }
 }
 
-module.exports = { generateJudgingAssignments: generateJudgingAssignments,
+module.exports = { sweepAssignments: sweepAssignments, generateJudgingAssignments: generateJudgingAssignments,
   AssignmentGenerator: AssignmentGenerator, AssignmentVerifier: AssignmentVerifier };

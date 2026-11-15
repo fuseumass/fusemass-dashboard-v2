@@ -259,10 +259,26 @@ test("Devpost import, judge eligibility, moving tables and the team sheet", asyn
     assert.equal(Object.keys(list[0]).some(function k(key) { return /email|qr/i.test(key); }), false);
   });
   await t.test("rooms take table ranges: validation, overlaps, listing and desk assignment", async function () {
+    var rooms = adminRoot + "/rooms";
+    // Earlier subtests left an assignment version (and scores): rooms are locked.
+    assert.ok(await Assignment.exists({}));
+    var locked = await post(admin, rooms, { name: "X", order: 1, tableStart: 900, tableEnd: 901, hardware: false }).expect(409);
+    assert.match(locked.body.error, /locked once judge assignments exist/);
+    await post(admin, adminRoot + "/close").expect(200);
+    var withScores = await request(app).delete(adminRoot + "/assignments").set(auth(admin)).expect(409);
+    assert.match(withScores.body.error, /already scored/);
+    await Score.deleteMany({});
+    await post(admin, adminRoot + "/open").expect(200);
+    var open = await request(app).delete(adminRoot + "/assignments").set(auth(admin)).expect(409);
+    assert.match(open.body.error, /Close judging/);
+    await post(admin, adminRoot + "/close").expect(200);
+    var wiped = await request(app).delete(adminRoot + "/assignments").set(auth(admin)).expect(200);
+    assert.ok(wiped.body.deleted >= 1);
+    assert.equal(await Assignment.countDocuments({}), 0);
+    assert.equal((await State.findById("judging").lean()).activeVersion, null);
     await Project.deleteMany({});
     await require("../schemas/judgingTable").deleteMany({});
     await Room.deleteMany({});
-    var rooms = adminRoot + "/rooms";
     await post(admin, rooms, { name: "Bad", order: 1, tableStart: 5, tableEnd: 1, hardware: false }).expect(400);
     await post(admin, rooms, { name: "Bad", order: 1, tableStart: 0, tableEnd: 3, hardware: false }).expect(400);
     await post(admin, rooms, { name: "Half", order: 1, tableStart: 3, hardware: false }).expect(400);

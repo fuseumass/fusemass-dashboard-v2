@@ -345,4 +345,22 @@ async function moveApply(req, res) {
     res.json({ moved: moved });
   } catch (err) { fail(res, err); }
 }
-module.exports = { movePlan: movePlan, moveApply: moveApply, generate: generate, list: list, activate: activate, addJudge: addJudge, removeJudge: removeJudge, withdraw: withdraw, setOpen: setOpen };
+/**
+ * Delete every assignment version so they can be regenerated (e.g. after
+ * removing judges). Refused while judging is open or once any judge has
+ * scored; use "Remove from queue" or "Move tables" then. Unlocks rooms.
+ * @param {object} req - Request. @param {object} res - Response. @returns {Promise<void>}
+ */
+async function deleteAll(req, res) {
+  try {
+    var result = await control.locked(async function wipe(state) {
+      if (state.judgingOpen) throw control.problem(409, "Close judging before deleting assignments.");
+      if (await Score.exists({})) throw control.problem(409, "Judges have already scored. Remove judges from the queue or move their tables instead of deleting assignments.");
+      var deleted = await Assignment.deleteMany({});
+      await State.updateOne({ _id: "judging" }, { $set: { activeVersion: null } });
+      return { deleted: deleted.deletedCount };
+    });
+    res.json(result);
+  } catch (err) { fail(res, err); }
+}
+module.exports = { deleteAll: deleteAll, movePlan: movePlan, moveApply: moveApply, generate: generate, list: list, activate: activate, addJudge: addJudge, removeJudge: removeJudge, withdraw: withdraw, setOpen: setOpen };
