@@ -13,7 +13,6 @@ import {
   FormLabel,
   FormMessage,
 } from "@/components/ui/form";
-import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Textarea } from "@/components/ui/textarea";
 import { apiFetch } from "@/lib/api";
@@ -26,7 +25,7 @@ function RoundForm({ data, round, onSaved }) {
   const shape = Object.fromEntries(
     data.criteria.map((c) => [
       c.key,
-      z.coerce.number().int().min(c.min).max(c.max),
+      z.number({ message: "Pick a score." }).int().min(c.min).max(c.max),
     ]),
   );
   const form = useForm({
@@ -35,7 +34,7 @@ function RoundForm({ data, round, onSaved }) {
     ),
     defaultValues: {
       scores: Object.fromEntries(
-        data.criteria.map((c) => [c.key, saved?.scores[c.key] ?? c.min]),
+        data.criteria.map((c) => [c.key, saved?.scores[c.key]]),
       ),
       comments: saved?.comments || "",
     },
@@ -91,18 +90,29 @@ function RoundForm({ data, round, onSaved }) {
                 >
                   {c.help}
                 </p>
-                <FormControl>
-                  <Input
-                    {...field}
-                    aria-describedby={`help-${c.key}`}
-                    type="number"
-                    min={c.min}
-                    max={c.max}
-                    step={1}
-                    required
-                    className="max-w-32 pointer-coarse:h-11"
-                  />
-                </FormControl>
+                {/* Buttons, as in real judging: only in-range scores can be picked. */}
+                <div
+                  className="flex flex-wrap gap-2"
+                  aria-describedby={`help-${c.key}`}
+                >
+                  {Array.from(
+                    { length: c.max - c.min + 1 },
+                    (_, n) => n + c.min,
+                  ).map((n) => (
+                    <Button
+                      key={n}
+                      type="button"
+                      size="sm"
+                      className="min-w-8 tabular-nums pointer-coarse:size-11"
+                      variant={field.value === n ? "default" : "outline"}
+                      aria-label={`${c.label}: ${n}`}
+                      aria-pressed={field.value === n}
+                      onClick={() => field.onChange(n)}
+                    >
+                      {n}
+                    </Button>
+                  ))}
+                </div>
                 <FormMessage />
               </FormItem>
             )}
