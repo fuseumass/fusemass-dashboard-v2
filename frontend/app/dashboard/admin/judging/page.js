@@ -278,10 +278,43 @@ export default function JudgingAdminPage() {
       });
       setCheckinAction(null);
       setConfirmation("");
-      notifySuccess("Judging check-in updated");
+      notifySuccess(checkinAction.success || "Judging check-in updated");
       await load();
     } catch (err) {
       setError(err.message);
+    } finally {
+      setBusy(false);
+    }
+  }
+  async function exportProjects() {
+    setError("");
+    try {
+      await downloadFile(`${root}/projects.csv`, "judging-projects.csv");
+    } catch (err) {
+      setError(err.message);
+    }
+  }
+  async function prepareDeleteAll() {
+    setBusy(true);
+    setError("");
+    try {
+      await apiFetch(`${root}/projects/delete-all`, {
+        method: "POST",
+        body: "{}",
+      });
+    } catch (err) {
+      if (err.data?.count !== undefined) {
+        setConfirmation("");
+        setCheckinAction({
+          path: `${root}/projects/delete-all`,
+          body: { confirm: true, count: err.data.count },
+          count: err.data.count,
+          destructive: true,
+          title: "Delete all projects",
+          success: "All projects deleted",
+          description: `Delete all ${err.data.count} imported projects, their table assignments and check-ins, and any generated judge assignments. Rooms and table signs stay. This can't be undone; export a CSV first if you need a copy. Type ${err.data.count} to confirm.`,
+        });
+      } else setError(err.message);
     } finally {
       setBusy(false);
     }
@@ -520,6 +553,7 @@ export default function JudgingAdminPage() {
           <AlertDialogFooter>
             <AlertDialogCancel disabled={busy}>Cancel</AlertDialogCancel>
             <Button
+              variant={checkinAction?.destructive ? "destructive" : "default"}
               loading={busy}
               disabled={
                 checkinAction?.count !== undefined &&
@@ -586,6 +620,19 @@ export default function JudgingAdminPage() {
           />
         </TabsContent>
         <TabsContent value="projects" className="space-y-4">
+          <div className="flex flex-wrap gap-2">
+            <Button variant="outline" onClick={exportProjects}>
+              Export CSV
+            </Button>
+            <Button
+              variant="destructive"
+              loading={busy}
+              disabled={!projects.length}
+              onClick={prepareDeleteAll}
+            >
+              Delete all projects
+            </Button>
+          </div>
           <div className="flex flex-wrap gap-4">
             <Filter
               label="Room"

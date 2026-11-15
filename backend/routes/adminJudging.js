@@ -40,6 +40,8 @@ router.get("/rooms", isAdmin, controller.listRooms);
 router.post("/rooms", isAdmin, controller.saveRoom);
 router.patch("/rooms/:id", isAdmin, controller.saveRoom);
 router.delete("/rooms/:id", isAdmin, controller.deleteRoom);
+router.get("/projects.csv", isAdmin, controller.exportProjects);
+router.post("/projects/delete-all", isAdmin, controller.deleteAllProjects);
 router.get("/projects", isAdmin, controller.listProjects);
 router.patch("/projects/:id", isAdmin, controller.updateProject);
 router.post(
