@@ -1,4 +1,5 @@
 "use strict";
+var crypto = require("crypto");
 var mongoose = require("mongoose");
 var Room = require("../../schemas/judgingRoom");
 var Project = require("../../schemas/project");
@@ -71,4 +72,12 @@ async function assignLocked(id, both, actor) {
 function assign(id, both, actor) {
   return require("./state").locked(function allocateLocked() { return assignLocked(id, both, actor); });
 }
-module.exports = { layout: layout, assign: assign };
+/**
+ * Table QR payload: sha256 hex of the table number, so signs can be printed from the number alone.
+ * @param {number} number - Table number.
+ * @returns {string} 64-char hex token.
+ */
+function tableToken(number) {
+  return crypto.createHash("sha256").update(String(number)).digest("hex");
+}
+module.exports = { layout: layout, assign: assign, tableToken: tableToken };

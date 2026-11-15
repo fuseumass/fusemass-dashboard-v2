@@ -1,6 +1,7 @@
 "use strict";
 var test = require("node:test");
 var assert = require("node:assert/strict");
+var crypto = require("crypto");
 var request = require("supertest");
 var db = require("./helpers/db");
 var fixtures = require("./helpers/fixtures");
@@ -113,23 +114,28 @@ test("judging check-in integration", async function (t) {
     await post(moderator, desk, { userId: people[0].user.id, projectId: people[0].project.id }).expect(200);
     await second.deleteOne();
   });
-  await t.test("sign tokens persist, wrong table is exact, desk required, table scans idempotent", async function () {
-    await request(app).get(adminRoot + "/table-signs").set(auth(admin)).expect(200);
-    var tokens = await Table.find({}).select("+token").sort({ number: 1 });
-    await request(app).get(adminRoot + "/table-signs").set(auth(admin)).expect(200);
-    assert.equal((await Table.findOne({ number: 1 }).select("+token")).token, tokens[0].token);
+  await t.test("table QR is sha256 of the number, works without printed signs, wrong table is exact, desk required, idempotent", async function () {
+    function sha(n) { return crypto.createHash("sha256").update(String(n)).digest("hex"); }
+    assert.equal(allocator.tableToken(7), sha(7));
+    assert.equal(await Table.countDocuments({}), 0);
     var p = await Project.findById(people[0].project._id).populate("room");
-    var wrong = tokens.find(function other(t) { return t.number !== p.tableNumber; });
-    var bad = await post(people[0], "/api/judging/table-checkin", { token: wrong.token }).expect(409);
-    assert.equal(bad.body.error, "Wrong table: you're at table " + wrong.number + ", go to table " + p.tableNumber + " in " + p.room.name);
-    var correct = tokens.find(function own(t) { return t.number === p.tableNumber; });
-    var first = await post(people[0], "/api/judging/table-checkin", { token: correct.token }).expect(200);
-    var repeat = await post(people[0], "/api/judging/table-checkin", { token: correct.token }).expect(200);
+    var other = p.tableNumber === 1 ? 2 : 1;
+    var bad = await post(people[0], "/api/judging/table-checkin", { token: sha(other) }).expect(409);
+    assert.equal(bad.body.error, "Wrong table: you're at table " + other + ", go to table " + p.tableNumber + " in " + p.room.name);
+    await post(people[0], "/api/judging/table-checkin", { token: "a".repeat(64) }).expect(400);
+    await post(people[0], "/api/judging/table-checkin", { token: sha(99999) }).expect(400);
+    var first = await post(people[0], "/api/judging/table-checkin", { token: sha(p.tableNumber) }).expect(200);
+    var repeat = await post(people[0], "/api/judging/table-checkin", { token: sha(p.tableNumber) }).expect(200);
     assert.equal(first.body.project.tableCheckedInAt, repeat.body.project.tableCheckedInAt);
     var fresh = await member();
-    var before = await post(fresh, "/api/judging/table-checkin", { token: correct.token }).expect(409);
+    var before = await post(fresh, "/api/judging/table-checkin", { token: sha(p.tableNumber) }).expect(409);
     assert.match(before.body.error, /desk first/);
     await fresh.project.deleteOne();
+    var signs = await request(app).get(adminRoot + "/table-signs").set(auth(admin)).expect(200);
+    assert.match(signs.body.signs[0].qr, /^data:image\/png;base64,/);
+    var stored = await Table.find({}).select("+token").sort({ number: 1 });
+    assert.ok(stored.length >= 2);
+    stored.forEach(function hashed(t) { assert.equal(t.token, sha(t.number)); });
   });
   await t.test("undo records actor and time, frees number, bulk confirmation and both steps", async function () {
     var previous = await Project.findById(people[0].project._id);
