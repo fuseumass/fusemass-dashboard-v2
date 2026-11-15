@@ -114,7 +114,21 @@ test("judging reports API: active queues, retained scores, permissions and safe 
   await get("results/projects/not-an-id", admin).expect(404);
   await get("results/projects/" + admin.user.id, admin).expect(404);
   assert.ok(!JSON.stringify(detail).includes("passwordHash"));
-  var paths = ["progress", "results", "progress.csv", "results.csv", "scores.csv"];
+  // Ranking CSVs: overall, one category, every category grouped.
+  var overall = (await get("rankings.csv", admin).expect("Content-Type", /text\/csv/).expect(200)).text.trim().split(/\r?\n/);
+  assert.match(overall[0], /Ranking,Rank,Project,Table,Room,Category,Devpost URL,Team,Hardware,Scores,Adjusted general/);
+  assert.equal(overall.length, 4);
+  assert.match(overall[1], /^Overall,1,Pending,,,Uncategorized,https:\/\/devpost\.com\/software\/results-b,,false,1,40,40,/);
+  assert.match(overall[2], /^Overall,2,'=Project,1,,'@Track,https:\/\/devpost\.com\/software\/results-a,,false,1,37\.5,40,11,10,/, "bias-adjusted, formula-safe");
+  assert.match(overall[3], /^Overall,,Withdrawn,.*,true$/, "withdrawn projects come last, unranked");
+  var one = (await get("rankings.csv?category=" + encodeURIComponent("@Track"), admin).expect(200)).text.trim().split(/\r?\n/);
+  assert.equal(one.length, 2);
+  assert.match(one[1], /^'@Track,1,'=Project,/);
+  var grouped = (await get("rankings.csv?category=all", admin).expect(200)).text.trim().split(/\r?\n/);
+  assert.ok(grouped.some(function cat(l) { return /^Uncategorized,/.test(l); }));
+  assert.ok(grouped.some(function cat(l) { return /^'@Track,1,/.test(l); }));
+  await get("rankings.csv?category=Nope", admin).expect(404);
+  var paths = ["progress", "results", "progress.csv", "results.csv", "scores.csv", "rankings.csv"];
   for (var path of paths) {
     await get(path).expect(401);
     await get(path, judge).expect(403); await get(path, applicant).expect(403);
