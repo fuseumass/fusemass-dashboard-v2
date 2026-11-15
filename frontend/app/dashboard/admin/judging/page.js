@@ -11,6 +11,7 @@ import EmptyState from "@/components/EmptyState";
 import JudgingAssignments from "@/components/JudgingAssignments";
 import JudgingReports from "@/components/JudgingReports";
 import PageHeader from "@/components/PageHeader";
+import { downloadFile } from "@/components/StatsParts";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import {
   AlertDialog,
