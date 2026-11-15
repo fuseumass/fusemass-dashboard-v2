@@ -321,7 +321,13 @@ class AssignmentGenerator {
           var availableTeams = this._getAvailableTeams(roomTeams, currentSlotAssignments, judgedTables)
 
           if (availableTeams.length === 0) {
-            for (var otherRoom of this.system.rooms) {
+            // Nearest rooms in the configured walking sequence first.
+            var here = currentRoom
+            var nearby = this.system.rooms.map(function index(room, i) { return i; })
+              .filter(function other(i) { return i !== here; })
+              .sort(function distance(a, b) { return Math.abs(a - here) - Math.abs(b - here) || a - b; })
+            for (var otherIdx of nearby) {
+              var otherRoom = this.system.rooms[otherIdx]
               if (JSON.stringify(otherRoom.projects) !== JSON.stringify(roomTeams)) {
                 availableTeams = this._getAvailableTeams(otherRoom.projects, currentSlotAssignments, judgedTables)
                 if (availableTeams.length > 0) {
@@ -332,7 +338,13 @@ class AssignmentGenerator {
           }
 
           if (availableTeams.length > 0) {
-            var team = availableTeams.reduce(function least(min, t) { return this.projectCounts[t] < this.projectCounts[min] ? t : min; }.bind(this))
+            // Fewest judgings first; among equals, the table closest to the judge's last one.
+            var last = judgeAssignments.filter(function real(t) { return t !== -1; }).pop()
+            var team = availableTeams.reduce(function least(min, t) {
+              if (this.projectCounts[t] !== this.projectCounts[min]) return this.projectCounts[t] < this.projectCounts[min] ? t : min
+              if (last === undefined) return min
+              return Math.abs(t - last) < Math.abs(min - last) ? t : min
+            }.bind(this))
 
             judgeAssignments.push(team)
             judgedTables.add(team)

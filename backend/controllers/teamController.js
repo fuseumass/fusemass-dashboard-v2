@@ -21,15 +21,18 @@ var DUPLICATE_KEY = 11000;
 
 /**
  * "https://devpost.com/software/my-app/" (any case, www., http, query, hash)
- * -> "https://devpost.com/software/my-app". Only Devpost project pages count:
+ * -> "https://devpost.com/software/my-app". A Devpost submission link
+ * (<hackathon>.devpost.com/submissions/123-my-app) maps to the same project. Only Devpost project pages count:
  * a hackathon's own page or any other site is refused.
  * @param {string} raw - What the team pasted.
  * @returns {string|null} The normalized URL, or null if it isn't one.
  */
 function normalizeDevpostUrl(raw) {
-  var match = /^(?:https?:\/\/)?(?:www\.)?devpost\.com\/software\/([a-z0-9][a-z0-9_-]*)\/?(?:[?#].*)?$/i.exec(
-    String(raw || "").trim()
-  );
+  var value = String(raw || "").trim();
+  var match = /^(?:https?:\/\/)?(?:www\.)?devpost\.com\/software\/([a-z0-9][a-z0-9_-]*)\/?(?:[?#].*)?$/i.exec(value) ||
+    // A hackathon's submission link (<hackathon>.devpost.com/submissions/<id>-<slug>),
+    // as in the Devpost export, names the same project slug.
+    /^(?:https?:\/\/)?[a-z0-9-]+\.devpost\.com\/submissions\/\d+-([a-z0-9][a-z0-9_-]*)\/?(?:[?#].*)?$/i.exec(value);
   return match ? "https://devpost.com/software/" + match[1].toLowerCase() : null;
 }
 

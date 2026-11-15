@@ -58,13 +58,24 @@ export default function JudgingTableCard() {
         {projects.map((p) => (
           <div key={p._id}>
             <p className="font-medium">{p.name}</p>
-            <p>
-              {p.tableNumber
-                ? `Your table: ${p.tableNumber} in ${p.room?.name}`
-                : "Check in at the judging desk to get your table."}
-            </p>
+            {p.tableNumber
+              ? <p className="text-lg font-semibold">
+                  Table {p.tableNumber} in {p.room?.name}
+                </p>
+              : <p>
+                  Step 1: one team member shows their check-in QR at the judging
+                  desk to get your table.
+                </p>}
+            {p.tableNumber && !p.tableCheckedInAt && (
+              <p className="text-sm text-muted-foreground">
+                Step 2: go to your table and have one team member tap Scan table
+                QR and scan the sign on the table.
+              </p>
+            )}
             {p.tableCheckedInAt && (
-              <p className="text-sm text-success">Table check-in complete</p>
+              <p className="text-sm text-success">
+                Table check-in complete. Stay at your table for judging.
+              </p>
             )}
           </div>
         ))}

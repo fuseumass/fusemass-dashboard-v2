@@ -229,7 +229,16 @@ function column(header) {
     if (aliases[key].includes(name)) return key;
   var member =
     /^(?:teammem\d+|team member \d+ )(first|last|email)(?: name)?$/.exec(name);
-  return member ? "member:" + member[1] : null;
+  if (member) return "member:" + member[1];
+  // Devpost custom questions keep the organizer's wording, e.g. "Choose a
+  // <hackathon> judging category:" or "Do you wish to be judged by hardware judges?".
+  if (/judging category/.test(name)) return "category";
+  if (/hardware judg/.test(name)) return "hardware";
+  return null;
+}
+/** @param {string} value - Person name. @returns {string} Lowercase, single-spaced name for matching. */
+function nameKey(value) {
+  return String(value || "").trim().toLowerCase().replace(/\s+/g, " ");
 }
 function split(value) {
   return String(value || "")
@@ -293,10 +302,16 @@ async function previewImport(req, res) {
     return;
   }
   try {
-    var users = await User.find({}).select("_id email").lean();
+    var users = await User.find({}).select("_id email name role").lean();
     var byEmail = Object.create(null);
+    // Name fallback for people who used another email on Devpost. Only names
+    // that belong to exactly one participant account are used.
+    var byName = Object.create(null);
     users.forEach(function index(user) {
       byEmail[user.email.toLowerCase()] = String(user._id);
+      if (user.role === "judge") return;
+      var key = nameKey(user.name);
+      if (key) byName[key] = byName[key] === undefined ? String(user._id) : null;
     });
     var preview = {
       counts: { new: 0, updated: 0, unchanged: 0, errors: 0 },
@@ -335,7 +350,7 @@ async function previewImport(req, res) {
           reason: !data.name
             ? "Project name is required."
             : !url
-              ? "Use an https devpost.com/software project URL."
+              ? "Use an https devpost.com/software project URL or a Devpost submission URL."
               : "Duplicate project URL in this CSV.",
         });
         preview.counts.errors++;
@@ -351,13 +366,23 @@ async function previewImport(req, res) {
       var members = [];
       var unmatched = [];
       var emails = Object.create(null);
+      var byNameMatches = [];
       people.forEach(function match(p) {
         var email = String(p.email || "").trim().toLowerCase();
-        if (!email || emails[email]) return;
-        emails[email] = true;
-        if (byEmail[email]) {
-          if (!members.includes(byEmail[email])) members.push(byEmail[email]);
-        } else unmatched.push({ name: [p.first, p.last].filter(Boolean).join(" "), email: email });
+        var fullName = [p.first, p.last].filter(Boolean).join(" ");
+        if (!email && !fullName) return;
+        if (email) {
+          if (emails[email]) return;
+          emails[email] = true;
+        }
+        var id = (email && byEmail[email]) || null;
+        if (!id && byName[nameKey(fullName)]) {
+          id = byName[nameKey(fullName)];
+          byNameMatches.push(fullName);
+        }
+        if (id) {
+          if (!members.includes(id)) members.push(id);
+        } else unmatched.push({ name: fullName, email: email });
       });
       var emailTeams = teams.filter(function contains(t) {
         return t.members.some(function member(id) { return members.includes(String(id)); });
@@ -365,7 +390,8 @@ async function previewImport(req, res) {
       var team = teams.find(function linked(t) { return t.devpostUrl === url; }) || members.map(function memberTeam(id) { return emailTeams.find(function includes(t) { return t.members.map(String).includes(id); }); }).find(Boolean);
       if (existing && existing.team) team = teams.find(function linked(t) { return String(t._id) === String(existing.team); });
       if (existing && (existing.overriddenFields || []).includes("team") && !existing.team) team = null;
-      var warnings = emailTeams.length > 1 ? ["Member emails belong to multiple teams: " + emailTeams.map(function name(t) { return t.name; }).join(", ")] : [];
+      var warnings = emailTeams.length > 1 ? ["Members belong to multiple teams: " + emailTeams.map(function name(t) { return t.name; }).join(", ")] : [];
+      if (byNameMatches.length) warnings.push("Matched by name (email not found): " + byNameMatches.join(", "));
       var matchedUsers = members.slice();
       if (team) members = Array.from(new Set(team.members.map(String).concat(members)));
       var values = {
@@ -376,7 +402,8 @@ async function previewImport(req, res) {
         unmatchedMembers: unmatched,
         category: data.category || "",
         optInPrizes: split(data.optInPrizes),
-        mlhTracks: split(data.mlhTracks),
+        // Devpost lists MLH prizes among the opt-in prizes as "[MLH] ...".
+        mlhTracks: Array.from(new Set(split(data.mlhTracks).concat(split(data.optInPrizes).filter(function mlh(prize) { return /^\[mlh\]/i.test(prize); })))),
         hardware: bool(data.hardware),
         needsPower: bool(data.needsPower),
       };

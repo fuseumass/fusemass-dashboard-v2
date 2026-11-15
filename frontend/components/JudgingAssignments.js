@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import DataTable from "@/components/DataTable";
+import JudgingMoveTables from "@/components/JudgingMoveTables";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import {
   AlertDialog,
@@ -332,6 +333,14 @@ export default function JudgingAssignments({ projects, onChange }) {
           >
             Add judge to active version
           </Button>
+          <JudgingMoveTables
+            active={active}
+            judges={judges}
+            onDone={async () => {
+              await load();
+              if (onChange) await onChange();
+            }}
+          />
           <DataTable
             data={active.queues}
             emptyState="No judge queues"

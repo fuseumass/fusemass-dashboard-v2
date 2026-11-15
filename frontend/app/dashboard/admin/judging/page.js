@@ -157,6 +157,12 @@ function Filter({ label, value, onChange, options }) {
     </div>
   );
 }
+// Where a project is in the two judging check-ins.
+function checkinStage(project) {
+  if (project.tableCheckedInAt) return "atTable";
+  if (project.deskCheckedInAt && project.tableNumber) return "notAtTable";
+  return "notAtDesk";
+}
 function unmatched(project) {
   return (
     (project.unmatchedMembers || []).map((member) => member.email).join(", ") ||
@@ -184,6 +190,7 @@ export default function JudgingAdminPage() {
     hardware: "all",
     category: "",
     unmatchedMembers: "all",
+    checkin: "all",
   });
   const form = useForm({
     resolver: zodResolver(
@@ -328,7 +335,15 @@ export default function JudgingAdminPage() {
       (!filters.category ||
         p.category.toLowerCase().includes(filters.category.toLowerCase())) &&
       (filters.unmatchedMembers === "all" ||
-        String(p.unmatchedMembers.length > 0) === filters.unmatchedMembers),
+        String(p.unmatchedMembers.length > 0) === filters.unmatchedMembers) &&
+      (filters.checkin === "all" || checkinStage(p) === filters.checkin),
+  );
+  const stageCounts = projects.reduce(
+    (counts, p) => {
+      if (!p.withdrawn) counts[checkinStage(p)]++;
+      return counts;
+    },
+    { notAtDesk: 0, notAtTable: 0, atTable: 0 },
   );
   const roomColumns = [
     { accessorKey: "name", header: "Name" },
@@ -585,7 +600,29 @@ export default function JudgingAdminPage() {
                 ["false", "All matched"],
               ]}
             />
+            <Filter
+              label="Check-in"
+              value={filters.checkin}
+              onChange={(checkin) => setFilters({ ...filters, checkin })}
+              options={[
+                ["all", "All projects"],
+                ["notAtDesk", "Not at the desk yet"],
+                ["notAtTable", "Has a table, not scanned in"],
+                ["atTable", "Scanned in at table"],
+              ]}
+            />
           </div>
+          <p className="text-sm text-muted-foreground" aria-live="polite">
+            {stageCounts.notAtDesk} not at the desk yet ·{" "}
+            <Button
+              variant="link"
+              className="h-auto p-0"
+              onClick={() => setFilters({ ...filters, checkin: "notAtTable" })}
+            >
+              {stageCounts.notAtTable} have a table but haven't scanned in
+            </Button>{" "}
+            · {stageCounts.atTable} at their table
+          </p>
           <DataTable
             columns={projectColumns}
             data={filtered}

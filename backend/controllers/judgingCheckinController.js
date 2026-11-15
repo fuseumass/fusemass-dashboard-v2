@@ -92,6 +92,22 @@ async function tableSigns(req, res) {
     res.json({ signs: signs });
   } catch (err) { fail(res, err); }
 }
+/**
+ * Projects with a table from the judging desk that nobody has scanned in at
+ * the table yet, so staff can go find them.
+ * @param {object} req - Request. @param {object} res - Response. @returns {Promise<void>}
+ */
+async function awaitingTable(req, res) {
+  try {
+    var projects = await Project.find({ withdrawn: false, deskCheckedInAt: { $ne: null }, tableNumber: { $gt: 0 }, tableCheckedInAt: null })
+      .select("name tableNumber room deskCheckedInAt members").sort({ tableNumber: 1 })
+      .populate("room", "name").populate("members", "name").lean();
+    res.json({ projects: projects.map(function summary(p) {
+      return { _id: p._id, name: p.name, tableNumber: p.tableNumber, room: p.room ? p.room.name : "", deskCheckedInAt: p.deskCheckedInAt,
+        members: (p.members || []).map(function name(m) { return m.name; }) };
+    }) });
+  } catch (err) { fail(res, err); }
+}
 /** @param {object} req - Request. @param {object} res - Response. @returns {Promise<void>} */
 async function bulkAssign(req, res) {
   try {
@@ -119,4 +135,4 @@ async function undo(req, res) {
     });
   } catch (err) { fail(res, err); }
 }
-module.exports = { deskCheckin: deskCheckin, myProjects: myProjects, tableCheckin: tableCheckin, tableSigns: tableSigns, bulkAssign: bulkAssign, undo: undo };
+module.exports = { awaitingTable: awaitingTable, deskCheckin: deskCheckin, myProjects: myProjects, tableCheckin: tableCheckin, tableSigns: tableSigns, bulkAssign: bulkAssign, undo: undo };
