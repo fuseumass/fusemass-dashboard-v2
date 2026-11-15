@@ -289,7 +289,21 @@ test("Devpost import, judge eligibility, moving tables and the team sheet", asyn
     assert.equal(hw.tableNumber, 100);
     assert.equal(hw.room.name, "Lab");
     assert.equal((await arrive(false)).tableNumber, 2);
-    // Locked once tables are handed out.
-    await post(admin, rooms, { name: "Late", order: 4, tableStart: 200, tableEnd: 201, hardware: false }).expect(409);
+    // Rooms stay editable during check-ins as long as no assigned table moves.
+    var late = (await post(admin, rooms, { name: "Late", order: 4, tableStart: 200, tableEnd: 201, hardware: false }).expect(201)).body.room;
+    await post(admin, rooms, { name: "Rangeless", order: 5, capacity: 3, hardware: false }).expect(409);
+    var lab = listed.find(function same(r) { return r.name === "Lab"; });
+    var grown = (await request(app).patch(rooms + "/" + lab._id).set(auth(admin)).send({ tableStart: 100, tableEnd: 110 }).expect(200)).body.room;
+    assert.equal(grown.capacity, 11);
+    var shrink = await request(app).patch(rooms + "/" + a._id).set(auth(admin)).send({ tableStart: 2, tableEnd: 5 }).expect(409);
+    assert.match(shrink.body.error, /Table 1 already belongs to/);
+    var flip = await request(app).patch(rooms + "/" + lab._id).set(auth(admin)).send({ hardware: false }).expect(409);
+    assert.match(flip.body.error, /can't switch between hardware and software/);
+    await request(app).patch(rooms + "/" + b._id).set(auth(admin)).send({ order: 9 }).expect(200);
+    await request(app).delete(rooms + "/" + a._id).set(auth(admin)).expect(409);
+    await request(app).delete(rooms + "/" + late._id).set(auth(admin)).expect(200);
+    // New tables are used by the next arrivals, and earlier tables never move.
+    assert.equal((await arrive(false)).tableNumber, 3);
+    assert.equal((await Project.findOne({ tableNumber: 100 })).hardware, true);
   });
 });

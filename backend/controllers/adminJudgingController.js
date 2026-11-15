@@ -3,7 +3,6 @@ var mongoose = require("mongoose");
 var parse = require("csv-parse/sync").parse;
 var Room = require("../schemas/judgingRoom");
 var Project = require("../schemas/project");
-var JudgingTable = require("../schemas/judgingTable");
 var ProjectImport = require("../schemas/projectImport");
 var Team = require("../schemas/team");
 var User = require("../schemas/user");
@@ -90,9 +89,6 @@ async function saveRoom(req, res) {
     values.tableEnd = null;
   }
   try {
-    if (await JudgingTable.exists({}) || await Project.exists({ tableNumber: { $type: "number" } })) {
-      return res.status(409).json({ error: "Room layout is locked after table signs or assignments are created." });
-    }
     // No table number may belong to two rooms.
     var others = await Room.find(req.params.id ? { _id: { $ne: req.params.id } } : {}).lean();
     var current = req.params.id ? await Room.findById(req.params.id).lean() : {};
@@ -117,6 +113,16 @@ async function saveRoom(req, res) {
       res.status(409).json({ error: "Table " + number + " is already in " + (clash ? clash.name : "another room") + ". Choose table numbers that don't overlap." });
       return;
     }
+    if (req.params.id && values.hardware !== undefined && Boolean(values.hardware) !== Boolean(current.hardware) &&
+        await Project.exists({ room: req.params.id, tableNumber: { $type: "number" } })) {
+      res.status(409).json({ error: "Teams already have tables in this room, so it can't switch between hardware and software." });
+      return;
+    }
+    var refused = await keepsAssignedTables(all);
+    if (refused) {
+      res.status(409).json({ error: refused });
+      return;
+    }
     var room = req.params.id
       ? await Room.findByIdAndUpdate(
           req.params.id,
@@ -133,11 +139,30 @@ async function saveRoom(req, res) {
     fail(res, err);
   }
 }
+/**
+ * Rooms stay editable while teams hold tables, as long as nothing already
+ * handed out moves: every room needs a table range (so numbers can't shift),
+ * and every project at a table must still find that number in its room.
+ * @param {object[]} rooms - The room list after the change, any order.
+ * @returns {Promise<string|null>} Why the change is refused, or null.
+ */
+async function keepsAssignedTables(rooms) {
+  var assigned = await Project.find({ tableNumber: { $type: "number" } }).select("name tableNumber room").lean();
+  if (!assigned.length) return null;
+  if (rooms.some(function rangeless(r) { return !Number.isInteger(r.tableStart) || !Number.isInteger(r.tableEnd); })) {
+    return "Teams already have tables, so every room needs a first and last table number.";
+  }
+  var ordered = rooms.slice().sort(function order(a, b) {
+    return (a.order || 0) - (b.order || 0) || String(a.name).localeCompare(String(b.name)) || String(a._id).localeCompare(String(b._id));
+  });
+  var owner = new Map(tables.layout(ordered).map(function slot(t) { return [t.number, String(t.room)]; }));
+  var moved = assigned.find(function lost(p) { return owner.get(p.tableNumber) !== String(p.room); });
+  return moved ? "Table " + moved.tableNumber + " already belongs to " + moved.name + " in its current room. Keep it in that room's range (undo that table first to move it)." : null;
+}
 /** @param {object} req - Request. @param {object} res - Response. @returns {Promise<void>} */
 async function deleteRoom(req, res) {
   if (!validId(req, res)) return;
   try {
-    if (await JudgingTable.exists({}) || await Project.exists({ tableNumber: { $type: "number" } })) return res.status(409).json({ error: "Room layout is locked after table signs or assignments are created." });
     if (
       await Project.exists({
         room: req.params.id,
@@ -145,6 +170,11 @@ async function deleteRoom(req, res) {
       })
     ) {
       res.status(409).json({ error: "This room has projects at tables." });
+      return;
+    }
+    var refusedDelete = await keepsAssignedTables(await Room.find({ _id: { $ne: req.params.id } }).lean());
+    if (refusedDelete) {
+      res.status(409).json({ error: refusedDelete });
       return;
     }
     var room = await Room.findByIdAndDelete(req.params.id);
