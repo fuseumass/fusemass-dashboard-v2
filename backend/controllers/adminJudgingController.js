@@ -236,6 +236,29 @@ function column(header) {
   if (/hardware judg/.test(name)) return "hardware";
   return null;
 }
+/**
+ * The team whose pasted Devpost link names this project. Devpost adds a random
+ * suffix to project pages ("centsible-c2v0rz") that the export's submission
+ * link lacks ("centsible"), so a suffix on either side still matches, but only
+ * when exactly one team fits.
+ * @param {object[]} teams - Teams with devpostUrl.
+ * @param {string} url - Canonical https://devpost.com/software/<slug>.
+ * @returns {object|null} The team, or null.
+ */
+function linkedTeam(teams, url) {
+  var exact = teams.find(function same(t) { return t.devpostUrl === url; });
+  if (exact) return exact;
+  var slug = url.split("/").pop();
+  var close = teams.filter(function suffixed(t) {
+    var other = t.devpostUrl ? t.devpostUrl.split("/").pop() : "";
+    return suffixOf(other, slug) || suffixOf(slug, other);
+  });
+  return close.length === 1 ? close[0] : null;
+}
+/** @param {string} longer - Slug that may carry a suffix. @param {string} base - Plain slug. @returns {boolean} longer is base plus "-xxxxxx". */
+function suffixOf(longer, base) {
+  return Boolean(base) && longer.length === base.length + 7 && longer.indexOf(base + "-") === 0 && /^[a-z0-9]{6}$/.test(longer.slice(-6));
+}
 /** @param {string} value - Person name. @returns {string} Lowercase, single-spaced name for matching. */
 function nameKey(value) {
   return String(value || "").trim().toLowerCase().replace(/\s+/g, " ");
@@ -387,7 +410,7 @@ async function previewImport(req, res) {
       var emailTeams = teams.filter(function contains(t) {
         return t.members.some(function member(id) { return members.includes(String(id)); });
       });
-      var team = teams.find(function linked(t) { return t.devpostUrl === url; }) || members.map(function memberTeam(id) { return emailTeams.find(function includes(t) { return t.members.map(String).includes(id); }); }).find(Boolean);
+      var team = linkedTeam(teams, url) || members.map(function memberTeam(id) { return emailTeams.find(function includes(t) { return t.members.map(String).includes(id); }); }).find(Boolean);
       if (existing && existing.team) team = teams.find(function linked(t) { return String(t._id) === String(existing.team); });
       if (existing && (existing.overriddenFields || []).includes("team") && !existing.team) team = null;
       var warnings = emailTeams.length > 1 ? ["Members belong to multiple teams: " + emailTeams.map(function name(t) { return t.name; }).join(", ")] : [];

@@ -208,9 +208,11 @@ export default function JudgesPage() {
       accessorKey: "inviteStatus",
       header: "Invite status",
       cell: ({ row }) =>
-        ({ accepted: "Accepted", pending: "Pending", expired: "Expired" })[
-          row.original.inviteStatus
-        ],
+        row.original.role === "admin"
+          ? "Admin (no invite needed)"
+          : { accepted: "Accepted", pending: "Pending", expired: "Expired" }[
+              row.original.inviteStatus
+            ],
     },
     {
       accessorKey: "calibrationDone",
@@ -223,25 +225,29 @@ export default function JudgesPage() {
       header: "Actions",
       cell: ({ row }) => (
         <div className="flex gap-2">
-          <Button
-            variant="outline"
-            size="sm"
-            disabled={busy}
-            onClick={() => setEditing(row.original)}
-          >
-            Edit
-          </Button>
-          <Button
-            variant="outline"
-            size="sm"
-            disabled={busy}
-            onClick={async () => {
-              if (await action(`/${row.original._id}/resend`, "POST"))
-                notifySuccess("Invite resent");
-            }}
-          >
-            Resend invite
-          </Button>
+          {row.original.role === "admin"
+            ? null
+            : <>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={busy}
+                  onClick={() => setEditing(row.original)}
+                >
+                  Edit
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={busy}
+                  onClick={async () => {
+                    if (await action(`/${row.original._id}/resend`, "POST"))
+                      notifySuccess("Invite resent");
+                  }}
+                >
+                  Resend invite
+                </Button>
+              </>}
           <Button
             variant="outline"
             size="sm"
@@ -258,7 +264,7 @@ export default function JudgesPage() {
     <div className="space-y-6">
       <PageHeader
         title="Judges"
-        description="Invite judges and track their setup status."
+        description="Invite judges and track their setup status. To judge as an admin, invite your own email: you keep admin access and get no invite."
         actions={<Button onClick={() => setOpen(true)}>Invite judge</Button>}
       />
       {error
@@ -433,8 +439,9 @@ export default function JudgesPage() {
           <AlertDialogHeader>
             <AlertDialogTitle>Remove judge?</AlertDialogTitle>
             <AlertDialogDescription>
-              {removing?.name} will become an applicant and lose judging access
-              immediately. Their profile is kept.
+              {removing?.role === "admin"
+                ? `${removing?.name} stops judging but stays an admin.`
+                : `${removing?.name} will become an applicant and lose judging access immediately. Their profile is kept.`}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

@@ -68,8 +68,12 @@ async function generate(req, res) {
         var judges = profiles.filter(function match(p) { return p.hardware === hardware; });
         var poolRooms = rooms.filter(function match(r) { return r.hardware === hardware && r.capacity > 0; });
         var report;
+        // A pool with fewer judges than requested (e.g. few hardware judges
+        // showed up) gets one judging per judge instead of failing.
+        var poolCount = Math.min(count, judges.length);
+        var warnings = poolCount < count ? ["Only " + judges.length + " eligible judge" + (judges.length === 1 ? "" : "s") + " in this pool, so each project gets " + poolCount + " judging" + (poolCount === 1 ? "" : "s") + " instead of " + count + "."] : [];
         try {
-          if (judges.length < count) throw new Error("Not enough eligible judges for this pool.");
+          if (!judges.length) throw new Error("No eligible judges for this pool (judges must have accepted their invite).");
           if (!poolRooms.length) throw new Error("No rooms configured for this pool.");
           if (pool.some(function wrongRoom(p) { return !poolRooms.some(function same(r) { return String(r._id) === String(p.room); }); })) throw new Error("A project is outside its room pool.");
           var byTable = new Map(pool.map(function entry(p) { return [p.tableNumber, p]; }));
@@ -80,7 +84,7 @@ async function generate(req, res) {
           report = algorithm.generateJudgingAssignments({
             teams: pool.map(function team(p) { return { name: p.name, tableNumber: p.tableNumber }; }),
             judges: judges.map(function judge(p) { return { name: String(p.user._id) }; }),
-            judgingsPerProject: count, numRooms: poolRooms.length,
+            judgingsPerProject: poolCount, numRooms: poolRooms.length,
             roomCapacities: poolRooms.map(function capacity(r) { return r.capacity; }), roomTables: roomTables,
           });
           if (report.success) {
@@ -91,7 +95,7 @@ async function generate(req, res) {
             });
           }
         } catch (err) { report = { success: false, issues: [err.message], log: [] }; }
-        reports.push({ pool: hardware ? "hardware" : "regular", success: report.success, issues: report.issues, log: report.log,
+        reports.push({ pool: hardware ? "hardware" : "regular", success: report.success, issues: report.issues, warnings: warnings, judgingsPerProject: poolCount, log: report.log,
           rooms: poolRooms.map(function room(r) { return { id: r._id, capacity: r.capacity }; }) });
       }
       if (!projects.length) reports.push({ pool: "all", success: false, issues: ["No projects have completed both check-ins."], log: [] });

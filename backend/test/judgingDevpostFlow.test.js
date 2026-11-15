@@ -51,18 +51,24 @@ test("Devpost import, judge eligibility, moving tables and the team sheet", asyn
     var nameMate = await fixtures.createUser({ email: "mate@example.com", name: "Mate Named" });
     await fixtures.createUser({ email: "twin1@example.com", name: "Sam Same" });
     await fixtures.createUser({ email: "twin2@example.com", name: "Sam Same" });
-    var linkTeam = await Team.create({ name: "Link team", nameKey: "link team", leader: linkLead.user._id, members: [linkLead.user._id], devpostUrl: "https://devpost.com/software/linked-app" });
+    // Devpost project pages carry a random suffix the submission link lacks.
+    var linkTeam = await Team.create({ name: "Link team", nameKey: "link team", leader: linkLead.user._id, members: [linkLead.user._id], devpostUrl: "https://devpost.com/software/linked-app-c2v0rz" });
+    var twinA = await fixtures.createUser({ email: "twin-a@example.com" });
+    var twinB = await fixtures.createUser({ email: "twin-b@example.com" });
+    await Team.create({ name: "Twin A", nameKey: "twin a", leader: twinA.user._id, members: [twinA.user._id], devpostUrl: "https://devpost.com/software/twin-app-aaaaaa" });
+    await Team.create({ name: "Twin B", nameKey: "twin b", leader: twinB.user._id, members: [twinB.user._id], devpostUrl: "https://devpost.com/software/twin-app-bbbbbb" });
     var emailTeam = await Team.create({ name: "Email team", nameKey: "email team", leader: emailLead.user._id, members: [emailLead.user._id] });
     var nameTeam = await Team.create({ name: "Name team", nameKey: "name team", leader: nameLead.user._id, members: [nameLead.user._id, nameMate.user._id] });
     var csv = [HEADER,
       csvRow(["Linked App", "https://demo-hack.devpost.com/submissions/111-linked-app", "Submitted (Gallery/Visible)", "[MLH] Best Use of Gemini API, Sponsor Prize", "Someone", "Else", "not-registered@example.com", "[DEMO] [SOFTWARE] Best Beginner Hack", "No", "", "", ""]),
       csvRow(["Email App", "https://demo-hack.devpost.com/submissions/222-email-app", "Submitted (Gallery/Visible)", "Sponsor Prize", "Email", "Lead", "EMAIL@example.com", "[DEMO] [HARDWARE] Best Hardware Hack", "Yes", "", "", ""]),
+      csvRow(["Twin App", "https://demo-hack.devpost.com/submissions/444-twin-app", "Submitted (Gallery/Visible)", "", "Nobody", "Known", "nobody@example.com", "", "", "", "", ""]),
       csvRow(["Name App", "https://demo-hack.devpost.com/submissions/333-name-app", "Submitted (Gallery/Visible)", "", "nina", "named", "other-address@example.com", "Best Design", "", "Sam", "Same", "twin-other@example.com"]),
     ].join("\n");
     var response = await upload(admin, csv);
     assert.equal(response.status, 200, JSON.stringify(response.body));
     var preview = response.body.preview;
-    assert.deepEqual(preview.counts, { new: 3, updated: 0, unchanged: 0, errors: 0 });
+    assert.deepEqual(preview.counts, { new: 4, updated: 0, unchanged: 0, errors: 0 });
     assert.deepEqual(preview.unrecognizedColumns, ["Project Status"]);
     var byName = Object.fromEntries(preview.rows.map(function row(r) { return [r.project.name, r]; }));
     var linked = byName["Linked App"];
@@ -71,6 +77,7 @@ test("Devpost import, judge eligibility, moving tables and the team sheet", asyn
     assert.deepEqual(linked.project.mlhTracks, ["[MLH] Best Use of Gemini API"]);
     assert.equal(linked.project.category, "[DEMO] [SOFTWARE] Best Beginner Hack");
     assert.equal(linked.project.hardware, false);
+    assert.equal(byName["Twin App"].matchedTeam, null, "two suffixed teams fit: never guess");
     var email = byName["Email App"];
     assert.equal(String(email.matchedTeam.id), String(emailTeam._id));
     assert.equal(email.project.hardware, true);
@@ -85,6 +92,33 @@ test("Devpost import, judge eligibility, moving tables and the team sheet", asyn
     var saved = await Project.findOne({ name: "Linked App" }).lean();
     assert.equal(String(saved.team), String(linkTeam._id));
     assert.ok(ids(saved.members).includes(String(linkLead.user._id)));
+  });
+
+  await t.test("admins become judges from the judges tab without losing their role or getting an invite", async function () {
+    var EmailLog = require("../schemas/emailLog");
+    var boss = await fixtures.createUser({ role: "admin", name: "Boss Admin", email: "boss@example.com" });
+    var mod = await fixtures.createUser({ role: "moderator", email: "mod@example.com" });
+    var before = await EmailLog.countDocuments({});
+    await post(admin, "/api/admin/judges", { name: "Boss Admin", email: "BOSS@example.com", hardware: true }).expect(201);
+    assert.equal((await User.findById(boss.user._id)).role, "admin");
+    var profile = await Profile.findOne({ user: boss.user._id });
+    assert.equal(profile.active, true);
+    assert.equal(profile.hardware, true);
+    assert.equal(await EmailLog.countDocuments({}), before, "no invite email for an admin");
+    await post(admin, "/api/admin/judges", { name: "Mod", email: "mod@example.com", hardware: false }).expect(409);
+    assert.equal((await User.findById(mod.user._id)).role, "moderator");
+    var list = (await request(app).get("/api/admin/judges").set(auth(admin)).expect(200)).body.judges;
+    var listed = list.find(function same(j) { return j._id === boss.user.id; });
+    assert.ok(listed, "admin judge is listed");
+    assert.equal(listed.inviteStatus, "accepted");
+    await request(app).patch("/api/admin/judges/" + boss.user.id).set(auth(admin)).send({ hardware: false }).expect(200);
+    await request(app).patch("/api/admin/judges/" + boss.user.id).set(auth(admin)).send({ name: "Renamed" }).expect(400);
+    await request(app).delete("/api/admin/judges/" + boss.user.id).set(auth(admin)).expect(200);
+    assert.equal((await User.findById(boss.user._id)).role, "admin");
+    assert.equal((await Profile.findOne({ user: boss.user._id })).active, false);
+    list = (await request(app).get("/api/admin/judges").set(auth(admin)).expect(200)).body.judges;
+    assert.ok(!list.some(function same(j) { return j._id === boss.user.id; }));
+    await Profile.deleteMany({});
   });
 
   await t.test("judges who have not accepted their invite are left out; admins on the judges tab count", async function () {
@@ -105,6 +139,12 @@ test("Devpost import, judge eligibility, moving tables and the team sheet", asyn
     await post(admin, adminRoot + "/assignments/" + result.body.assignment.version + "/activate").expect(200);
     var late = await post(admin, adminRoot + "/assignments/judges", { judgeId: pending.user.id, projectIds: [String(lateProject)] }).expect(404);
     assert.match(late.body.error, /accepted their invite/);
+    // Fewer judges than requested: one judging per judge, with a warning, not a failure.
+    var short = await post(admin, adminRoot + "/assignments", { judgingsPerProject: 3 }).expect(201);
+    var regular = short.body.verifierReport.find(function pool(r) { return r.pool === "regular"; });
+    assert.equal(regular.judgingsPerProject, 2);
+    assert.match(regular.warnings[0], /Only 2 eligible judges .* 2 judgings instead of 3/);
+    short.body.assignment.queues.forEach(function full(q) { assert.equal(q.projects.length, 4); });
     await Profile.deleteMany({});
     await Assignment.deleteMany({});
     await State.updateOne({ _id: "judging" }, { $set: { activeVersion: null } });

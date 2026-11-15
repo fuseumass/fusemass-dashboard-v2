@@ -78,10 +78,19 @@ async function sendInvite(user, requestedBy, retry) {
 async function saveJudge(row) {
   var email = row.email.trim().toLowerCase();
   var user = await User.findOne({ email: email });
-  // Inviting must not silently demote an organizer or administrator.
-  if (user && ["admin", "moderator"].indexOf(user.role) !== -1)
+  // Admins can judge too: they keep their role and login and just get an
+  // active judge profile (no invite). Moderators must not be silently changed.
+  if (user && user.role === "admin") {
+    await JudgeProfile.findOneAndUpdate(
+      { user: user._id },
+      { $set: { hardware: row.hardware, active: true } },
+      { upsert: true, new: true },
+    );
+    return user;
+  }
+  if (user && user.role === "moderator")
     throw new Error(
-      "Change this staff account's role on the Users page first.",
+      "Change this moderator's role on the Users page first.",
     );
   if (!user) user = new User({ name: row.name.trim(), email: email });
   user.role = "judge";
@@ -102,7 +111,7 @@ async function saveJudge(row) {
  */
 async function inviteOne(row, requestedBy) {
   var user = await saveJudge(row);
-  await sendInvite(user, requestedBy);
+  if (user.role !== "admin") await sendInvite(user, requestedBy);
   return user;
 }
 
@@ -117,6 +126,7 @@ async function inviteOne(row, requestedBy) {
  */
 async function sendInvitesInBackground(users, requestedBy) {
   for (var user of users) {
+    if (user.role === "admin") continue; // admins already have a login
     try {
       await sendInvite(user, requestedBy, true);
     } catch (err) {
@@ -140,13 +150,13 @@ async function invite(req, res, next) {
   try {
     var existing = await User.findOne({
       email: req.body.email.trim().toLowerCase(),
-      role: { $in: ["admin", "moderator"] },
+      role: "moderator",
     });
     if (existing) {
       res
         .status(409)
         .json({
-          error: "Change this staff account's role on the Users page first.",
+          error: "Change this moderator's role on the Users page first.",
         });
       return;
     }
@@ -165,7 +175,10 @@ async function invite(req, res, next) {
  */
 async function list(req, res, next) {
   try {
-    var users = await User.find({ role: "judge" }).sort({ name: 1 });
+    var adminJudges = await JudgeProfile.distinct("user", { active: true });
+    var users = await User.find({
+      $or: [{ role: "judge" }, { role: "admin", _id: { $in: adminJudges } }],
+    }).sort({ name: 1 });
     var profiles = await JudgeProfile.find({
       user: {
         $in: users.map(function id(user) {
@@ -262,9 +275,13 @@ async function update(req, res, next) {
   }
   var changes = cleaned.changes;
   try {
-    var user = await User.findOne({ _id: req.params.id, role: "judge" });
-    if (!user) {
+    var user = await User.findOne({ _id: req.params.id, role: { $in: ["judge", "admin"] } });
+    if (!user || (user.role === "admin" && !await JudgeProfile.exists({ user: user._id, active: true }))) {
       res.status(404).json({ error: "Judge not found." });
+      return;
+    }
+    if (user.role === "admin" && (changes.name !== undefined || changes.email !== undefined)) {
+      res.status(400).json({ error: "Edit an admin's name and email on the Users page." });
       return;
     }
     var emailChanged = changes.email !== undefined && changes.email !== user.email;
@@ -368,14 +385,14 @@ async function bulk(req, res, next) {
           return row.email;
         }),
       },
-      role: { $in: ["admin", "moderator"] },
+      role: "moderator",
     });
     if (staff) {
       res
         .status(409)
         .json({
           error:
-            "CSV contains staff accounts. Change their roles on the Users page first.",
+            "CSV contains moderator accounts. Change their roles on the Users page first.",
         });
       return;
     }
@@ -438,6 +455,18 @@ async function remove(req, res, next) {
     return;
   }
   try {
+    var adminJudge = await User.findOne({ _id: req.params.id, role: "admin" });
+    if (adminJudge) {
+      // An admin stops judging but stays an admin.
+      var off = await JudgeProfile.updateOne({ user: adminJudge._id, active: true }, { $set: { active: false } });
+      if (!off.matchedCount) {
+        res.status(404).json({ error: "Judge not found." });
+        return;
+      }
+      await require("../utils/judging/state").removeJudge(adminJudge._id);
+      res.json({ user: adminJudge.toJSON() });
+      return;
+    }
     var user = await User.findOneAndUpdate(
       { _id: req.params.id, role: "judge" },
       {

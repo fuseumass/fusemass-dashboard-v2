@@ -94,8 +94,15 @@ test("judging assignments and scoring", async function (t) {
     await post(admin, adminRoot + "/assignments", { judgingsPerProject: 1 }).expect(422);
     assert.equal(await Assignment.countDocuments(), before);
   });
-  await t.test("too few hardware judges rejects the entire generation", async function () {
-    await post(admin, adminRoot + "/assignments", { judgingsPerProject: 2 }).expect(422);
+  await t.test("too few hardware judges: hardware projects get one judging per hardware judge, with a warning", async function () {
+    var result = await post(admin, adminRoot + "/assignments", { judgingsPerProject: 2 }).expect(201);
+    var pools = Object.fromEntries(result.body.verifierReport.map(function pool(r) { return [r.pool, r]; }));
+    assert.equal(pools.regular.judgingsPerProject, 2);
+    assert.deepEqual(pools.regular.warnings, []);
+    assert.equal(pools.hardware.judgingsPerProject, 1);
+    assert.match(pools.hardware.warnings[0], /Only 1 eligible judge in this pool/);
+    // Keep version numbers stable for the explicit schedule below.
+    await Assignment.deleteOne({ version: result.body.assignment.version });
     assert.equal(await Assignment.countDocuments(), 1);
   });
 

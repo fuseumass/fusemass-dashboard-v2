@@ -178,13 +178,20 @@ export default function JudgingAssignments({ projects, onChange }) {
           {report.map((r) => (
             <details
               key={r.pool}
-              open={!r.success}
+              open={!r.success || Boolean(r.warnings?.length)}
               className="rounded-md border p-3 text-sm"
             >
               <summary>
                 {r.pool === "hardware" ? "Hardware" : "Regular"}:{" "}
                 {r.success ? "Verifier passed" : "Verifier failed"}
               </summary>
+              {r.warnings?.length
+                ? <ul className="text-warning">
+                    {r.warnings.map((warning) => (
+                      <li key={warning}>{warning}</li>
+                    ))}
+                  </ul>
+                : null}
               <ul>
                 {r.issues.map((issue) => (
                   <li key={issue}>{issue}</li>
