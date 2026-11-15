@@ -188,8 +188,9 @@ export default function JudgeCalibration() {
   return (
     <section className="max-w-2xl space-y-6">
       <p className="text-sm text-muted-foreground">
-        Everyone scores the same practice projects so we can correct for strict
-        and generous judges.
+        {data.track === "hardware"
+          ? "As a hardware judge, you score the hardware practice projects. Every hardware judge scores the same ones so we can correct for strict and generous judges."
+          : "Every judge scores the same practice projects so we can correct for strict and generous judges."}
       </p>
       {data.calibrationDone && (
         <Alert>

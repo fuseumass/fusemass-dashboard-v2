@@ -71,6 +71,22 @@ async function sendInvite(user, requestedBy, retry) {
 }
 
 /**
+ * Activate a judge profile and set its hardware flag. Hardware and general
+ * judges calibrate on different practice projects, so switching group clears
+ * the judge's calibration.
+ * @param {*} userId - User id. @param {boolean} hardware - Hardware judge.
+ * @returns {Promise<object>} The JudgeProfile.
+ */
+async function activateProfile(userId, hardware) {
+  var existing = await JudgeProfile.findOne({ user: userId }).select("hardware").lean();
+  var set = { hardware: Boolean(hardware), active: true };
+  if (existing && Boolean(existing.hardware) !== Boolean(hardware)) {
+    Object.assign(set, { calibrationScores: [], calibrationDone: false, bias: null });
+  }
+  return JudgeProfile.findOneAndUpdate({ user: userId }, { $set: set }, { upsert: true, new: true });
+}
+
+/**
  * Create or update the judge account and profile for one CSV row (no email).
  * @param {object} row - Parsed CSV row.
  * @returns {Promise<object>} The User document.
@@ -81,11 +97,7 @@ async function saveJudge(row) {
   // Admins can judge too: they keep their role and login and just get an
   // active judge profile (no invite). Moderators must not be silently changed.
   if (user && user.role === "admin") {
-    await JudgeProfile.findOneAndUpdate(
-      { user: user._id },
-      { $set: { hardware: row.hardware, active: true } },
-      { upsert: true, new: true },
-    );
+    await activateProfile(user._id, row.hardware);
     return user;
   }
   if (user && user.role === "moderator")
@@ -95,11 +107,7 @@ async function saveJudge(row) {
   if (!user) user = new User({ name: row.name.trim(), email: email });
   user.role = "judge";
   await user.save();
-  await JudgeProfile.findOneAndUpdate(
-    { user: user._id },
-    { $set: { hardware: row.hardware, active: true } },
-    { upsert: true, new: true },
-  );
+  await activateProfile(user._id, row.hardware);
   return user;
 }
 
@@ -311,9 +319,10 @@ async function update(req, res, next) {
       changes.hardware !== undefined &&
       Boolean(profile && profile.hardware) !== changes.hardware
     ) {
+      // Switching group means calibrating on the other practice projects.
       profile = await JudgeProfile.findOneAndUpdate(
         { user: user._id },
-        { $set: { hardware: changes.hardware } },
+        { $set: Object.assign({ hardware: changes.hardware }, profile ? { calibrationScores: [], calibrationDone: false, bias: null } : {}) },
         { upsert: true, new: true },
       );
       var state = await require("../schemas/judgingState")

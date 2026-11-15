@@ -72,16 +72,23 @@ function validCriteria(rows) {
  * @param {object} after - Settings after the edit.
  * @returns {boolean}
  */
-function scoringChanged(before, after) {
-  function shape(settings) {
-    return JSON.stringify({
-      rounds: (settings.calibrationProjects || []).length,
-      criteria: (settings.criteria || []).map(function core(c) {
-        return [c.key, c.min, c.max, c.kind];
-      }),
-    });
+/**
+ * Which judges' calibration a settings change invalidates: everyone when the
+ * criteria change, otherwise only the group whose round count changed.
+ * @param {object} before - Settings before. @param {object} after - Settings after.
+ * @returns {object|null} Profile filter to reset, or null.
+ */
+function resetFilter(before, after) {
+  function criteria(settings) {
+    return JSON.stringify((settings.criteria || []).map(function core(c) { return [c.key, c.min, c.max, c.kind]; }));
   }
-  return shape(before) !== shape(after);
+  if (criteria(before) !== criteria(after)) return {};
+  var general = (before.calibrationProjects || []).length !== (after.calibrationProjects || []).length;
+  var hardware = (before.hardwareCalibrationProjects || []).length !== (after.hardwareCalibrationProjects || []).length;
+  if (general && hardware) return {};
+  if (general) return { hardware: { $ne: true } };
+  if (hardware) return { hardware: true };
+  return null;
 }
 /** @param {object} req - Request. @param {object} res - Response. @returns {Promise<void>} */
 async function getSettings(req, res) {
@@ -96,11 +103,13 @@ async function patchSettings(req, res) {
   var body = req.body || {};
   if (
     Object.keys(body).some(function unknown(k) {
-      return !["criteria", "calibrationProjects", "judgingOpen"].includes(k);
+      return !["criteria", "calibrationProjects", "hardwareCalibrationProjects", "judgingOpen"].includes(k);
     }) ||
     (body.criteria !== undefined && !validCriteria(body.criteria)) ||
     (body.calibrationProjects !== undefined &&
       !validProjects(body.calibrationProjects)) ||
+    (body.hardwareCalibrationProjects !== undefined &&
+      !validProjects(body.hardwareCalibrationProjects)) ||
     (body.judgingOpen !== undefined && typeof body.judgingOpen !== "boolean")
   ) {
     res.status(400).json({
@@ -112,7 +121,7 @@ async function patchSettings(req, res) {
   try {
     var settings = await Settings.getSingleton();
     var configuration =
-      body.criteria !== undefined || body.calibrationProjects !== undefined;
+      body.criteria !== undefined || body.calibrationProjects !== undefined || body.hardwareCalibrationProjects !== undefined;
     if (configuration && (settings.judgingOpen || settings.criteriaLocked)) {
       res.status(409).json({
         error:
@@ -143,9 +152,10 @@ async function patchSettings(req, res) {
         .json({ error: "Settings changed. Reload and try again." });
       return;
     }
-    if (configuration && scoringChanged(before, settings))
+    var reset = configuration ? resetFilter(before, settings) : null;
+    if (reset)
       await Profile.updateMany(
-        {},
+        reset,
         {
           $set: { calibrationScores: [], calibrationDone: false, bias: null },
           $inc: { __v: 1 },
@@ -162,7 +172,8 @@ async function getCalibration(req, res) {
     var settings = await Settings.getSingleton();
     var profile = await Profile.findOne({ user: req.user.id });
     res.json({
-      rounds: settings.calibrationProjects,
+      track: profile && profile.hardware ? "hardware" : "general",
+      rounds: rubric.projectsFor(profile, settings),
       criteria: settings.criteria,
       scores: profile ? profile.calibrationScores : [],
       calibrationDone: profile
@@ -179,11 +190,12 @@ async function scoreRound(req, res) {
     var settings = await Settings.getSingleton();
     var round = Number(req.params.round);
     var body = req.body || {};
+    var profile = await Profile.findOne({ user: req.user.id });
     if (
       !/^\d+$/.test(req.params.round) ||
       !Number.isInteger(round) ||
       round < 1 ||
-      round > settings.calibrationProjects.length ||
+      round > rubric.projectsFor(profile, settings).length ||
       !rubric.validScores(body.scores, settings.criteria) ||
       (body.comments !== undefined && !text(body.comments, 5000))
     ) {
@@ -193,7 +205,6 @@ async function scoreRound(req, res) {
       });
       return;
     }
-    var profile = await Profile.findOne({ user: req.user.id });
     if (!profile || !profile.active) {
       res.status(403).json({ error: "An active judge profile is required." });
       return;
@@ -215,8 +226,8 @@ async function scoreRound(req, res) {
     profile.calibrationDone = rubric.calibrationDone(profile, settings);
     profile.bias = null;
     await profile.save();
-    // Every participant's bias depends on the entire calibration cohort.
-    await Profile.updateMany({}, { $set: { bias: null } });
+    // Every judge's bias depends on their whole calibration group.
+    await Profile.updateMany({ hardware: profile.hardware ? true : { $ne: true } }, { $set: { bias: null } });
     res.json({
       scores: profile.calibrationScores,
       calibrationDone: profile.calibrationDone,
@@ -231,31 +242,25 @@ async function scoreRound(req, res) {
     fail(res);
   }
 }
+/**
+ * Calibration status and bias per judge. Hardware and general judges calibrate
+ * on different practice projects, so bias is computed within each group.
+ * @param {boolean} compute - Recompute and store bias.
+ * @returns {Promise<object[]>} One row per active judge.
+ */
 async function biasRows(compute) {
   var settings = await Settings.getSingleton();
-  var users = await User.find({ role: "judge" }).select("_id name").lean();
-  var profiles = await Profile.find({
-    user: {
-      $in: users.map(function id(u) {
-        return u._id;
-      }),
-    },
-    active: true,
-  });
-  var scores = {};
-  profiles.forEach(function collect(p) {
-    if (rubric.calibrationDone(p, settings))
-      scores[String(p.user)] = p.calibrationScores
-        .slice()
-        .sort(function order(a, b) {
-          return a.round - b.round;
-        })
-        .map(function values(row) {
-          return row.scores;
-        });
+  var profiles = await Profile.find({ active: true });
+  // Judges on the judges tab, including admins who judge.
+  var users = await User.find({
+    _id: { $in: profiles.map(function id(p) { return p.user; }) },
+    role: { $in: ["judge", "admin"] },
+  }).select("_id name").sort({ name: 1 }).lean();
+  profiles = profiles.filter(function listed(p) {
+    return users.some(function same(u) { return String(u._id) === String(p.user); });
   });
   if (compute) {
-    var result = computeBias(scores, {
+    var weights = {
       general: settings.criteria
         .filter(function general(c) {
           return c.kind === "general";
@@ -266,6 +271,22 @@ async function biasRows(compute) {
       category: settings.criteria.find(function category(c) {
         return c.kind === "category";
       }).key,
+    };
+    var result = {};
+    [true, false].forEach(function group(hardware) {
+      var scores = {};
+      profiles.forEach(function collect(p) {
+        if (Boolean(p.hardware) === hardware && rubric.calibrationDone(p, settings))
+          scores[String(p.user)] = p.calibrationScores
+            .slice()
+            .sort(function order(a, b) {
+              return a.round - b.round;
+            })
+            .map(function values(row) {
+              return row.scores;
+            });
+      });
+      Object.assign(result, computeBias(scores, weights));
     });
     var now = new Date();
     await Profile.updateMany({}, { $set: { bias: null } });
@@ -284,6 +305,7 @@ async function biasRows(compute) {
     return {
       id: u._id,
       name: u.name,
+      hardware: Boolean(p && p.hardware),
       done: !!p && rubric.calibrationDone(p, settings),
       bias: p ? p.bias : null,
     };
