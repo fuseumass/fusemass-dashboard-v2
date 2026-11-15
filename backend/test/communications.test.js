@@ -883,6 +883,35 @@ test("communications: announcements, Discord and workshop automations", async fu
     });
   });
 
+  await t.test("overlapping scheduler runs still make one combined Discord post", async function (t2) {
+    await reset();
+    flaky.mockFlakyTransport(t2);
+    var discord = fakeDiscord(t2);
+    var startsAt = new Date(Date.now() + 100 * MINUTE);
+    var ends = new Date(startsAt.getTime() + 60 * MINUTE);
+    for (var title of ["A", "B", "C", "D"]) await workshopIn(100, [], { title: title, startsAt: startsAt, endsAt: ends });
+    // Discord only, and every claim slowed by a random few milliseconds so the
+    // parallel runs interleave the way they do on a busy machine (CI).
+    await CommunicationSettings.updateOne({ key: "default" }, { $set: { "reminderAll.email": false, "reminderSignedUp.offsets": [] } });
+    var realCreate = AutomationLog.create.bind(AutomationLog);
+    t2.mock.method(AutomationLog, "create", function slowCreate(doc) {
+      return new Promise(function (r) { setTimeout(r, Math.floor(Math.random() * 4)); }).then(function () { return realCreate(doc); });
+    });
+    await Promise.all([1, 2, 3, 4, 5, 6].map(function () { return communications.runWorkshopAutomations(); }));
+    await communications.runWorkshopAutomations();
+    await settle();
+    assert.equal(discord.posts.length, 1, "one combined post, never split between runs");
+    assert.match(discord.posts[0].body.embeds[0].title, /^Workshops starting at /);
+    ["A", "B", "C", "D"].forEach(function (name) { assert.match(discord.posts[0].body.embeds[0].description, new RegExp("\\*\\*" + name + "\\*\\*|^" + name + "|\\n" + name)); });
+
+    // A workshop added to the same slot later gets its own post, once.
+    await workshopIn(100, [], { title: "E", startsAt: startsAt, endsAt: ends });
+    await Promise.all([1, 2, 3].map(function () { return communications.runWorkshopAutomations(); }));
+    await settle();
+    assert.equal(discord.posts.length, 2);
+    assert.doesNotMatch(discord.posts[1].body.embeds[0].description, /\bA\b[\s\S]*\bB\b/);
+  });
+
   await t.test("checked-in only: workshop emails skip people who haven't checked in", async function (t2) {
     await reset();
     flaky.mockFlakyTransport(t2);
