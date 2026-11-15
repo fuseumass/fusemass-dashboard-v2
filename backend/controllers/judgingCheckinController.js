@@ -1,5 +1,4 @@
 "use strict";
-var crypto = require("crypto");
 var mongoose = require("mongoose");
 var Project = require("../schemas/project");
 var Room = require("../schemas/judgingRoom");
@@ -60,7 +59,9 @@ async function tableCheckin(req, res) {
     if (!await participant(req, res)) return;
     var token = req.body && req.body.token;
     if (typeof token !== "string" || !/^[a-f0-9]{64}$/.test(token)) return res.status(400).json({ error: "Invalid table QR code." });
-    var table = await Table.findOne({ token: token });
+    // The QR is sha256(table number); find which table in the current layout it names.
+    var rooms = await Room.find({}).sort({ order: 1, name: 1, _id: 1 }).lean();
+    var table = tables.layout(rooms).find(function scanned(slot) { return tables.tableToken(slot.number) === token; });
     if (!table) return res.status(400).json({ error: "Invalid table QR code." });
     var projects = await Project.find({ members: req.user.id, withdrawn: false }).populate("room", "name");
     var assigned = projects.filter(function ready(p) { return p.deskCheckedInAt && p.tableNumber; });
@@ -81,12 +82,12 @@ async function tableSigns(req, res) {
     for (var slot of tables.layout(rooms)) {
       var table;
       try {
-        table = await Table.findOneAndUpdate({ number: slot.number }, { $setOnInsert: { token: crypto.randomBytes(32).toString("hex") }, $set: { room: slot.room } }, { upsert: true, new: true }).select("+token");
+        table = await Table.findOneAndUpdate({ number: slot.number }, { $set: { room: slot.room, token: tables.tableToken(slot.number) } }, { upsert: true, new: true }).select("+token");
       } catch (err) {
         if (err.code !== 11000) throw err;
         table = await Table.findOne({ number: slot.number }).select("+token");
       }
-      signs.push({ tableNumber: slot.number, room: rooms.find(function match(r) { return String(r._id) === String(slot.room); }).name, qr: await qr.toDataUrl(table.token) });
+      signs.push({ tableNumber: slot.number, room: rooms.find(function match(r) { return String(r._id) === String(slot.room); }).name, qr: await qr.toDataUrl(tables.tableToken(slot.number)) });
     }
     res.json({ signs: signs });
   } catch (err) { fail(res, err); }
