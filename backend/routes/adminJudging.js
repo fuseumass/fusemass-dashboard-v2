@@ -16,6 +16,7 @@ router.get("/results", isAdmin, reports.results);
 router.get("/results/projects/:id", isAdmin, reports.projectDetail);
 router.get("/progress.csv", isModerator, reports.exportCsv);
 router.get("/results.csv", isAdmin, reports.exportCsv);
+router.get("/rankings.csv", isAdmin, reports.rankingCsv);
 router.get("/scores.csv", isAdmin, reports.exportCsv);
 var assignments = require("../controllers/judgingAssignmentController");
 router.get("/assignments", isAdmin, assignments.list);

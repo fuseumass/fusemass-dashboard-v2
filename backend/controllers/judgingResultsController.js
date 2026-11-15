@@ -11,7 +11,7 @@ var csv = require("../utils/csv");
 
 async function load() {
   var data = await Promise.all([
-    Project.find({}).select("name category tableNumber withdrawn").lean(),
+    Project.find({}).select("name category tableNumber withdrawn devpostUrl hardware team room").populate("team", "name").populate("room", "name").lean(),
     Score.find({}).lean(), Profile.find({}).select("user bias").lean(),
     User.find({}).select("name email").lean(), State.findById("judging").lean(), Settings.getSingleton(),
   ]);
@@ -157,4 +157,50 @@ async function projectDetail(req, res) {
     });
   } catch (err) { fail(res, err); }
 }
-module.exports = { progress: progress, results: results, exportCsv: exportCsv, projectDetail: projectDetail };
+/**
+ * Ranked results as CSV: overall (by adjusted general total), one category
+ * (?category=<name>, by adjusted category total) or every category grouped
+ * (?category=all). Unranked projects (no scores or withdrawn) come last.
+ * @param {object} req - Request. @param {object} res - Response. @returns {Promise<void>}
+ */
+async function rankingCsv(req, res) {
+  try {
+    var data = await load();
+    var byId = new Map(data.projects.map(function entry(p) { return [String(p._id), p]; }));
+    var rows = resultsData(data);
+    var wanted = req.query.category;
+    if (wanted !== undefined && typeof wanted !== "string") return res.status(400).json({ error: "Invalid category." });
+    var categories = Array.from(new Set(rows.map(function c(r) { return r.category; }))).sort();
+    if (wanted && wanted !== "all" && !categories.includes(wanted)) return res.status(404).json({ error: "No projects in that category." });
+    function ordered(list, rankKey) {
+      return list.slice().sort(function order(a, b) {
+        return (a[rankKey] || Infinity) - (b[rankKey] || Infinity) || String(a.name).localeCompare(String(b.name));
+      });
+    }
+    function line(ranking, rankKey, r) {
+      var p = byId.get(r._id) || {};
+      return [ranking, r[rankKey] || "", r.name, r.tableNumber || "", p.room ? p.room.name : "", r.category || "Uncategorized",
+        p.devpostUrl || "", p.team ? p.team.name : "", Boolean(p.hardware), r.scoreCount,
+        r.adjustedGeneral, r.rawGeneral, r.adjustedCategory, r.rawCategory,
+        r.flags.missingScores, r.flags.noCalibration, r.withdrawn];
+    }
+    var out = [];
+    var name;
+    if (!wanted) {
+      name = "overall";
+      ordered(rows, "overallRank").forEach(function add(r) { out.push(line("Overall", "overallRank", r)); });
+    } else {
+      name = wanted === "all" ? "by-category" : wanted.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 60) || "category";
+      (wanted === "all" ? categories : [wanted]).forEach(function each(category) {
+        ordered(rows.filter(function same(r) { return r.category === category; }), "categoryRank")
+          .forEach(function add(r) { out.push(line(category || "Uncategorized", "categoryRank", r)); });
+      });
+    }
+    var header = ["Ranking", "Rank", "Project", "Table", "Room", "Category", "Devpost URL", "Team", "Hardware", "Scores",
+      "Adjusted general", "Raw general", "Adjusted category", "Raw category", "Too few scores", "Uncalibrated judge", "Withdrawn"];
+    var offset = 0;
+    await csv.sendCsv(res, { filename: csv.datedFilename("judging-ranking-" + name, "csv"), header: header,
+      nextRows: async function nextRows() { var batch = out.slice(offset, offset + 250); offset += batch.length; return batch; } });
+  } catch (err) { fail(res, err); }
+}
+module.exports = { rankingCsv: rankingCsv, progress: progress, results: results, exportCsv: exportCsv, projectDetail: projectDetail };

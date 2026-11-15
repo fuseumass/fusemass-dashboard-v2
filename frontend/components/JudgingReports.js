@@ -73,10 +73,10 @@ export default function JudgingReports({ results = false }) {
     const timer = setInterval(load, 15000);
     return () => clearInterval(timer);
   }, [load, results]);
-  async function download(kind) {
-    setDownloading(kind);
+  async function download(kind, query = "") {
+    setDownloading(kind + query);
     try {
-      await apiDownload(`${root}/${kind}.csv`, `judging-${kind}.csv`);
+      await apiDownload(`${root}/${kind}.csv${query}`, `judging-${kind}.csv`);
     } catch (err) {
       setError(err.message);
     } finally {
@@ -181,6 +181,38 @@ export default function JudgingReports({ results = false }) {
               averaging. Click a project to see every judge's raw and adjusted
               scores.
             </p>
+            <div className="flex flex-wrap gap-2">
+              <Button
+                variant="outline"
+                disabled={!!downloading || !rows.length}
+                loading={
+                  downloading.startsWith("rankings?") &&
+                  downloading !== "rankings?category=all"
+                }
+                onClick={() =>
+                  download(
+                    "rankings",
+                    categoryName === null
+                      ? "?"
+                      : `?category=${encodeURIComponent(categoryName)}`,
+                  )
+                }
+              >
+                Download this ranking (
+                {categoryName === null
+                  ? "overall"
+                  : categoryName || "Uncategorized"}
+                )
+              </Button>
+              <Button
+                variant="outline"
+                disabled={!!downloading || !rows.length}
+                loading={downloading === "rankings?category=all"}
+                onClick={() => download("rankings", "?category=all")}
+              >
+                Download all categories
+              </Button>
+            </div>
             <div className="flex flex-wrap gap-4">
               <div className="space-y-2">
                 <Label htmlFor="ranking-category">Ranking</Label>
