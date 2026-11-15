@@ -116,7 +116,7 @@ Individual unit tracking and the optional reserve/request queue are deferred.
 | Old feature | Status | Task |
 | ----------- | ------ | ---- |
 | Project submission with team members | ✅ dashboard teams (B15), Devpost CSV preview/confirm (export Submission Url, judging-category and hardware questions, [MLH] opt-in prizes), team URL → email → unique-name matching, duplicate-team errors, cross-team warnings, preserved unique team links and admin overrides | B24b |
-| Judging rooms and capacities | ✅ admin CRUD, hardware rooms, deletion protection | B24b |
+| Judging rooms and capacities | ✅ admin CRUD with table-number ranges per room (no overlaps; walking order separate from numbering), hardware rooms, deletion protection | B24b |
 | Public project gallery | ✖ Devpost hosts it | — |
 | Power-outlet needs per project | ✅ admin override preserved on import | B24b |
 | Prizes / tracks, participants pick prizes, assign winners | 📋 | B24h |

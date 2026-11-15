@@ -30,6 +30,17 @@ var HEADER = "Project Title,Submission Url,Project Status,Opt-In Prizes,Submitte
   "Team Member 1 First Name,Team Member 1 Last Name,Team Member 1 Email";
 function csvRow(cells) { return cells.map(function quote(c) { return /[",]/.test(c) ? "\"" + c.replace(/"/g, "\"\"") + "\"" : c; }).join(","); }
 
+test("room table ranges set the numbering; room order sets the walk", function () {
+  var allocator = require("../utils/judging/tables");
+  var slots = allocator.layout([
+    { _id: "far", tableStart: 20, tableEnd: 22, capacity: 3 },
+    { _id: "near", tableStart: 1, tableEnd: 2, capacity: 2 },
+    { _id: "legacy", capacity: 2 },
+  ]);
+  assert.deepEqual(slots.map(function n(x) { return x.number; }), [20, 21, 22, 1, 2, 23, 24]);
+  assert.deepEqual(slots.map(function r(x) { return x.room; }), ["far", "far", "far", "near", "near", "legacy", "legacy"]);
+});
+
 test("Devpost submission links normalize to the project page", function () {
   assert.equal(normalize("https://demo-hack.devpost.com/submissions/1301786-Centsible"), "https://devpost.com/software/centsible");
   assert.equal(normalize("demo-hack.devpost.com/submissions/12-my-app/?ref=x"), "https://devpost.com/software/my-app");
@@ -246,5 +257,39 @@ test("Devpost import, judge eligibility, moving tables and the team sheet", asyn
     assert.equal(list[0].room, "Hall");
     assert.deepEqual(list[0].members, ["Waiting Person"]);
     assert.equal(Object.keys(list[0]).some(function k(key) { return /email|qr/i.test(key); }), false);
+  });
+  await t.test("rooms take table ranges: validation, overlaps, listing and desk assignment", async function () {
+    await Project.deleteMany({});
+    await require("../schemas/judgingTable").deleteMany({});
+    await Room.deleteMany({});
+    var rooms = adminRoot + "/rooms";
+    await post(admin, rooms, { name: "Bad", order: 1, tableStart: 5, tableEnd: 1, hardware: false }).expect(400);
+    await post(admin, rooms, { name: "Bad", order: 1, tableStart: 0, tableEnd: 3, hardware: false }).expect(400);
+    await post(admin, rooms, { name: "Half", order: 1, tableStart: 3, hardware: false }).expect(400);
+    var a = (await post(admin, rooms, { name: "Room A", order: 1, tableStart: 1, tableEnd: 5, hardware: false }).expect(201)).body.room;
+    assert.equal(a.capacity, 5);
+    var overlap = await post(admin, rooms, { name: "Room B", order: 2, tableStart: 5, tableEnd: 9, hardware: false }).expect(409);
+    assert.match(overlap.body.error, /Table 5 is already in Room A/);
+    var b = (await post(admin, rooms, { name: "Room B", order: 2, tableStart: 6, tableEnd: 9, hardware: false }).expect(201)).body.room;
+    await post(admin, rooms, { name: "Lab", order: 3, tableStart: 100, tableEnd: 102, hardware: true }).expect(201);
+    await request(app).patch(rooms + "/" + b._id).set(auth(admin)).send({ tableStart: 4, tableEnd: 9 }).expect(409);
+    var edited = (await request(app).patch(rooms + "/" + b._id).set(auth(admin)).send({ tableStart: 6, tableEnd: 12 }).expect(200)).body.room;
+    assert.equal(edited.capacity, 7);
+    var listed = (await request(app).get(rooms).set(auth(admin)).expect(200)).body.rooms;
+    assert.deepEqual(listed.map(function r(x) { return [x.name, x.tableStart, x.tableEnd]; }), [["Room A", 1, 5], ["Room B", 6, 12], ["Lab", 100, 102]]);
+    var moderator = await fixtures.createUser({ role: "moderator" });
+    async function arrive(hardware) {
+      var person = await fixtures.createUser();
+      await Application.create({ applicant: person.user._id, status: "accepted" });
+      await Project.create({ name: "R" + person.user.id, devpostUrl: "https://devpost.com/software/r" + person.user.id, members: [person.user._id], hardware: hardware });
+      return (await post(moderator, "/api/staff/judging/desk-checkin", { userId: person.user.id }).expect(200)).body.project;
+    }
+    assert.equal((await arrive(false)).tableNumber, 1);
+    var hw = await arrive(true);
+    assert.equal(hw.tableNumber, 100);
+    assert.equal(hw.room.name, "Lab");
+    assert.equal((await arrive(false)).tableNumber, 2);
+    // Locked once tables are handed out.
+    await post(admin, rooms, { name: "Late", order: 4, tableStart: 200, tableEnd: 201, hardware: false }).expect(409);
   });
 });
