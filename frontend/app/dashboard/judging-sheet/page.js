@@ -77,6 +77,17 @@ function JudgingSheet() {
             : <p className="text-sm text-muted-foreground">
                 Your team has no judging project.
               </p>}
+          {data.ownTeam?.mlh && (
+            <Alert variant="warning">
+              <AlertDescription>
+                You entered an MLH category. MLH judges will judge projects
+                separately for the MLH categories. Even after all your judges
+                above have visited, stay at your table until the end in case an
+                MLH judge comes by. MLH may post on Discord that their judging
+                is complete; after that you can leave.
+              </AlertDescription>
+            </Alert>
+          )}
           {[
             ["software", "Software"],
             ["hardware", "Hardware"],

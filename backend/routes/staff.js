@@ -86,6 +86,8 @@ router.post(
 
 router.post("/judging/desk-checkin", requireFeature("judging"), isAuthenticated, isModerator,
     require("../controllers/judgingCheckinController").deskCheckin);
+router.get("/judging/awaiting-table", requireFeature("judging"), isAuthenticated, isModerator,
+    require("../controllers/judgingCheckinController").awaitingTable);
 var teams = require("../controllers/staffTeamController");
 router.use("/teams", requireFeature("judging"), isAuthenticated, isModerator);
 router.post("/teams/lookup", teams.lookup);

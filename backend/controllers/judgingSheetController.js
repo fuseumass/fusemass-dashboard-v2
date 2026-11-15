@@ -20,7 +20,7 @@ async function sheet(req, res) {
     // lock that score writes use. Labels are assigned when queues change.
     var assignment = state.activeVersion ? await Assignment.findOne({ version: state.activeVersion }).lean() : null;
     var rooms = await Room.find({}).sort({ order: 1, name: 1, _id: 1 }).lean();
-    var projects = await Project.find({ withdrawn: false }).select("team members room tableNumber").lean();
+    var projects = await Project.find({ withdrawn: false }).select("team members room tableNumber mlhTracks").lean();
     var byId = new Map(projects.map(function entry(p) { return [String(p._id), p]; }));
     var scores = await Score.find({}).select("judge project").lean();
     var done = new Set(scores.map(function pair(s) { return String(s.judge) + ":" + String(s.project); }));
@@ -42,13 +42,16 @@ async function sheet(req, res) {
       roomViews[roomIndex].judgeCount++;
     });
     var team = await Team.findOne({ members: req.user.id }).select("_id").lean();
-    var own = team ? projects.find(function mine(p) { return String(p.team) === String(team._id); }) : null;
+    // A project is the caller's through their team, or directly as a member
+    // (imports match some members by email or name without a team link).
+    var own = (team && projects.find(function mine(p) { return String(p.team) === String(team._id); })) ||
+      projects.find(function member(p) { return (p.members || []).some(function same(id) { return String(id) === String(req.user.id); }); }) || null;
     var ownTeam = null;
     if (own) {
       var assigned = queues.filter(function includes(q) { return active.has(String(q.judge)) && q.projects.some(function same(p) { return String(p) === String(own._id); }); });
       var completed = assigned.filter(function scored(q) { return done.has(String(q.judge) + ":" + String(own._id)); }).length;
       var room = rooms.find(function same(r) { return String(r._id) === String(own.room); });
-      ownTeam = { table: own.tableNumber || null, room: room ? room.name : null, done: completed, assigned: assigned.length };
+      ownTeam = { table: own.tableNumber || null, room: room ? room.name : null, done: completed, assigned: assigned.length, mlh: Boolean(own.mlhTracks && own.mlhTracks.length) };
     }
     res.json({ open: true, software: roomViews.filter(function software(r) { return !r.hardware; }).map(clean), hardware: roomViews.filter(function hardware(r) { return r.hardware; }).map(clean), ownTeam: ownTeam });
   } catch (err) {

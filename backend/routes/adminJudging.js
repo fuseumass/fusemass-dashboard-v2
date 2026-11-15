@@ -21,6 +21,8 @@ router.get("/assignments", isAdmin, assignments.list);
 router.post("/assignments", isAdmin, assignments.generate);
 router.post("/assignments/:version/activate", isAdmin, assignments.activate);
 router.post("/assignments/judges", isAdmin, assignments.addJudge);
+router.post("/assignments/move/plan", isAdmin, assignments.movePlan);
+router.post("/assignments/move", isAdmin, assignments.moveApply);
 router.delete("/assignments/judges/:judgeId", isAdmin, assignments.removeJudge);
 router.post("/projects/:id/withdraw", isAdmin, assignments.withdraw);
 router.post("/close", isAdmin, assignments.setOpen);
