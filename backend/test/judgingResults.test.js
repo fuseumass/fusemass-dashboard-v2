@@ -87,6 +87,33 @@ test("judging reports API: active queues, retained scores, permissions and safe 
   var result = (await get("results", admin).expect(200)).body.results;
   assert.equal(result.find(function same(p) { return p._id === b.id; }).scoreCount, 1);
   assert.equal(result.find(function same(p) { return p._id === a.id; }).flags.noCalibration, true);
+  // Project detail: raw and bias-adjusted totals per judge, and who still has to judge.
+  var Profile = require("../schemas/judgeProfile");
+  await Profile.create({ user: judge.user._id, bias: { general: 0.5, category: -1, computedAt: new Date() } });
+  var detail = (await get("results/projects/" + a.id, admin).expect(200)).body;
+  assert.equal(detail.project.name, "=Project");
+  assert.equal(detail.project.tableNumber, 1);
+  assert.equal(detail.scores.length, 1);
+  var row = detail.scores[0];
+  assert.equal(row.judge, "=Judge");
+  assert.equal(row.comments, '+SUM(1,2)\n"Notes"');
+  var wg = detail.weights.general, wc = detail.weights.category;
+  assert.ok(wg > 0 && wc > 0);
+  var rawG = settings.criteria.filter(function g(c) { return c.kind === "general"; }).reduce(function sum(t, c) { return t + c.max * c.weight; }, 0);
+  assert.equal(row.rawGeneral, rawG);
+  assert.equal(row.adjustedGeneral, rawG - 0.5 * wg);
+  assert.equal(row.adjustedCategory, row.rawCategory + 1 * wc);
+  assert.deepEqual(row.bias, { general: 0.5, category: -1 });
+  assert.equal(detail.summary.adjustedGeneral, row.adjustedGeneral, "matches the ranking's total");
+  assert.deepEqual(detail.assigned.map(function s(x) { return [x.judge, x.status, x.position]; }), [["=Judge", "scored", 1]]);
+  var pendingDetail = (await get("results/projects/" + b.id, admin).expect(200)).body;
+  assert.deepEqual(pendingDetail.assigned.map(function s(x) { return x.status; }), ["pending"]);
+  assert.equal(pendingDetail.scores.length, 1, "retained score outside the queue still shows");
+  await get("results/projects/" + a.id, moderator).expect(403);
+  await get("results/projects/" + a.id).expect(401);
+  await get("results/projects/not-an-id", admin).expect(404);
+  await get("results/projects/" + admin.user.id, admin).expect(404);
+  assert.ok(!JSON.stringify(detail).includes("passwordHash"));
   var paths = ["progress", "results", "progress.csv", "results.csv", "scores.csv"];
   for (var path of paths) {
     await get(path).expect(401);

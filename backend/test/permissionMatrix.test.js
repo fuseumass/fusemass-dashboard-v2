@@ -89,6 +89,7 @@ var MATRIX = [
   row("POST", "/api/admin/teams/:id/unlock", "admin"),
   row("GET", "/api/admin/judging/progress", "moderator"),
   row("GET", "/api/admin/judging/results", "admin"),
+  row("GET", "/api/admin/judging/results/projects/:id", "admin"),
   row("GET", "/api/admin/judging/progress.csv", "moderator"),
   row("GET", "/api/admin/judging/results.csv", "admin"),
   row("GET", "/api/admin/judging/scores.csv", "admin"),
