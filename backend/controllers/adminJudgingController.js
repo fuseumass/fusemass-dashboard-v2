@@ -7,6 +7,7 @@ var JudgingTable = require("../schemas/judgingTable");
 var ProjectImport = require("../schemas/projectImport");
 var Team = require("../schemas/team");
 var User = require("../schemas/user");
+var tables = require("../utils/judging/tables");
 var normalizeUrl = require("./teamController").normalizeDevpostUrl;
 var overrideFields = ["category", "hardware", "needsPower", "withdrawn", "team"];
 
@@ -29,19 +30,38 @@ function validId(req, res) {
 /** @param {object} req - Request. @param {object} res - Response. @returns {Promise<void>} */
 async function listRooms(req, res) {
   try {
-    res.json({ rooms: await Room.find({}).sort({ order: 1, name: 1 }).lean() });
+    var rooms = await Room.find({}).sort({ order: 1, name: 1, _id: 1 }).lean();
+    // Every room reports its actual table numbers, including older rooms that
+    // only had a capacity (numbered after the previous room).
+    var next = 1;
+    rooms.forEach(function range(room) {
+      var numbers = tables.roomNumbers(room, next);
+      room.tableStart = numbers.length ? numbers[0] : null;
+      room.tableEnd = numbers.length ? numbers[numbers.length - 1] : null;
+      next = Math.max(next, (room.tableEnd || 0) + 1);
+    });
+    res.json({ rooms: rooms });
   } catch (err) {
     fail(res, err);
   }
 }
-/** @param {object} req - Request. @param {object} res - Response. @returns {Promise<void>} */
+/** @param {*} value - Candidate. @returns {boolean} Whole number at least 1. */
+function tableNumber(value) {
+  return Number.isInteger(value) && value >= 1 && value <= 100000;
+}
+/**
+ * Create or edit a room. Rooms take a table range (tableStart-tableEnd, e.g.
+ * 1-5 or 100-110); capacity follows from it. Ranges may not overlap.
+ * @param {object} req - Request. @param {object} res - Response. @returns {Promise<void>}
+ */
 async function saveRoom(req, res) {
   if (req.params.id && !validId(req, res)) return;
   var body = req.body || {};
   var values = {};
-  for (var field of ["name", "order", "capacity", "hardware"]) {
+  for (var field of ["name", "order", "capacity", "hardware", "tableStart", "tableEnd"]) {
     if (body[field] !== undefined) values[field] = body[field];
   }
+  var rangeGiven = values.tableStart !== undefined || values.tableEnd !== undefined;
   if (
     (values.name !== undefined &&
       (typeof values.name !== "string" ||
@@ -54,17 +74,48 @@ async function saveRoom(req, res) {
       );
     }) ||
     (values.hardware !== undefined && typeof values.hardware !== "boolean") ||
-    (!req.params.id && (!values.name || values.capacity === undefined))
+    (rangeGiven && (!tableNumber(values.tableStart) || !tableNumber(values.tableEnd) || values.tableEnd < values.tableStart || values.tableEnd - values.tableStart >= 2000)) ||
+    (!req.params.id && (!values.name || (!rangeGiven && values.capacity === undefined)))
   ) {
     res.status(400).json({
       error:
-        "Enter a name, whole nonnegative order and capacity, and a hardware flag.",
+        "Enter a name, a whole nonnegative order, the room's first and last table numbers (first ≤ last), and a hardware flag.",
     });
     return;
+  }
+  if (rangeGiven) values.capacity = values.tableEnd - values.tableStart + 1;
+  else if (values.capacity !== undefined) {
+    // A plain capacity (older clients) replaces any range.
+    values.tableStart = null;
+    values.tableEnd = null;
   }
   try {
     if (await JudgingTable.exists({}) || await Project.exists({ tableNumber: { $type: "number" } })) {
       return res.status(409).json({ error: "Room layout is locked after table signs or assignments are created." });
+    }
+    // No table number may belong to two rooms.
+    var others = await Room.find(req.params.id ? { _id: { $ne: req.params.id } } : {}).lean();
+    var current = req.params.id ? await Room.findById(req.params.id).lean() : {};
+    if (req.params.id && !current) {
+      res.status(404).json({ error: "Room not found." });
+      return;
+    }
+    var candidate = Object.assign({}, current, values, { _id: req.params.id || "new" });
+    var all = others.concat([candidate]).sort(function order(a, b) {
+      return (a.order || 0) - (b.order || 0) || String(a.name).localeCompare(String(b.name)) || String(a._id).localeCompare(String(b._id));
+    });
+    var mine = String(candidate._id);
+    var owners = new Map();
+    tables.layout(all).forEach(function own(slot) {
+      var list = owners.get(slot.number) || [];
+      list.push(String(slot.room));
+      owners.set(slot.number, list);
+    });
+    for (var [number, list] of owners) {
+      if (list.length < 2 || !list.includes(mine)) continue;
+      var clash = all.find(function other(r) { return list.includes(String(r._id)) && String(r._id) !== mine; });
+      res.status(409).json({ error: "Table " + number + " is already in " + (clash ? clash.name : "another room") + ". Choose table numbers that don't overlap." });
+      return;
     }
     var room = req.params.id
       ? await Room.findByIdAndUpdate(

@@ -55,7 +55,13 @@ import { notifySuccess } from "@/lib/notify";
 import { useUser } from "@/lib/userContext";
 
 const root = "/api/admin/judging";
-const roomDefaults = { name: "", order: 0, capacity: 0, hardware: false };
+const roomDefaults = {
+  name: "",
+  order: 0,
+  tableStart: "",
+  tableEnd: "",
+  hardware: false,
+};
 const projectDefaults = {
   team: "",
   category: "",
@@ -63,12 +69,24 @@ const projectDefaults = {
   needsPower: false,
   withdrawn: false,
 };
-const roomSchema = z.object({
-  name: z.string().trim().min(1, "Enter a name.").max(100),
-  order: z.coerce.number().int().min(0),
-  capacity: z.coerce.number().int().min(0),
-  hardware: z.boolean(),
-});
+const roomSchema = z
+  .object({
+    name: z.string().trim().min(1, "Enter a name.").max(100),
+    order: z.coerce.number().int().min(0),
+    tableStart: z.coerce
+      .number({ message: "Enter the first table number." })
+      .int()
+      .min(1, "Table numbers start at 1."),
+    tableEnd: z.coerce
+      .number({ message: "Enter the last table number." })
+      .int()
+      .min(1, "Table numbers start at 1."),
+    hardware: z.boolean(),
+  })
+  .refine((room) => room.tableEnd >= room.tableStart, {
+    path: ["tableEnd"],
+    message: "The last table must be the same as or after the first.",
+  });
 const projectSchema = z.object({
   team: z.string(),
   category: z.string(),
@@ -79,13 +97,14 @@ const projectSchema = z.object({
 
 function Fields({ form, room, teams }) {
   const fields = room
-    ? ["name", "order", "capacity", "hardware"]
+    ? ["name", "order", "tableStart", "tableEnd", "hardware"]
     : ["team", "category", "hardware", "needsPower", "withdrawn"];
   const labels = {
     team: "Dashboard team",
     name: "Name",
-    order: "Order",
-    capacity: "Capacity",
+    order: "Walking order (1 = first room)",
+    tableStart: "First table number",
+    tableEnd: "Last table number",
     hardware: "Hardware",
     category: "Category",
     needsPower: "Needs power",
@@ -127,9 +146,11 @@ function Fields({ form, room, teams }) {
                 : <Input
                     {...field}
                     type={
-                      ["order", "capacity"].includes(name) ? "number" : "text"
+                      ["order", "tableStart", "tableEnd"].includes(name)
+                        ? "number"
+                        : "text"
                     }
-                    min={0}
+                    min={name === "order" ? 0 : 1}
                   />}
           </FormControl>
           <FormMessage />
@@ -348,7 +369,14 @@ export default function JudgingAdminPage() {
   const roomColumns = [
     { accessorKey: "name", header: "Name" },
     { accessorKey: "order", header: "Order" },
-    { accessorKey: "capacity", header: "Capacity" },
+    {
+      id: "tables",
+      header: "Tables",
+      cell: ({ row }) =>
+        row.original.tableStart
+          ? `${row.original.tableStart}–${row.original.tableEnd} (${row.original.capacity})`
+          : "None",
+    },
     {
       accessorKey: "hardware",
       header: "Hardware",
@@ -552,7 +580,7 @@ export default function JudgingAdminPage() {
             emptyState={
               <EmptyState
                 title="No rooms yet"
-                description="Create a room to define table capacity."
+                description="Create rooms in walking order and give each its table numbers, e.g. 1–5."
               />
             }
           />
@@ -738,7 +766,7 @@ export default function JudgingAdminPage() {
             <DialogDescription>
               {editing?.kind === "project"
                 ? "These fields will be preserved on later imports."
-                : "Set room capacity and fill order."}
+                : "Give the room's table numbers (e.g. 1 to 5) and its place in the walking order. Teams get tables room by room in this order."}
             </DialogDescription>
           </DialogHeader>
           <Form {...form}>

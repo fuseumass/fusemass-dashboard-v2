@@ -4,14 +4,30 @@ var mongoose = require("mongoose");
 var Room = require("../../schemas/judgingRoom");
 var Project = require("../../schemas/project");
 
-/** @param {object[]} rooms - Ordered rooms. @returns {object[]} Global table layout. */
+/**
+ * A room's table numbers: its own range when set, otherwise `capacity` tables
+ * continuing after the highest number used so far.
+ * @param {object} room - Room. @param {number} next - First free number for a range-less room.
+ * @returns {number[]} Table numbers in walking order.
+ */
+function roomNumbers(room, next) {
+  var numbers = [];
+  if (Number.isInteger(room.tableStart) && Number.isInteger(room.tableEnd)) {
+    for (var n = room.tableStart; n <= room.tableEnd; n++) numbers.push(n);
+  } else {
+    for (var i = 0; i < (room.capacity || 0); i++) numbers.push(next + i);
+  }
+  return numbers;
+}
+/** @param {object[]} rooms - Rooms in walking order. @returns {object[]} Global table layout. */
 function layout(rooms) {
-  var number = 0;
+  var next = 1;
   var tables = [];
   rooms.forEach(function roomTables(room) {
-    for (var i = 0; i < room.capacity; i++) {
-      tables.push({ number: ++number, room: room._id, hardware: room.hardware });
-    }
+    roomNumbers(room, next).forEach(function add(number) {
+      tables.push({ number: number, room: room._id, hardware: room.hardware });
+      next = Math.max(next, number + 1);
+    });
   });
   return tables;
 }
@@ -80,4 +96,4 @@ function assign(id, both, actor) {
 function tableToken(number) {
   return crypto.createHash("sha256").update(String(number)).digest("hex");
 }
-module.exports = { layout: layout, assign: assign, tableToken: tableToken };
+module.exports = { roomNumbers: roomNumbers, layout: layout, assign: assign, tableToken: tableToken };
