@@ -7,6 +7,8 @@ var ProjectImport = require("../schemas/projectImport");
 var Team = require("../schemas/team");
 var User = require("../schemas/user");
 var tables = require("../utils/judging/tables");
+var JudgingAssignment = require("../schemas/judgingAssignment");
+var ROOMS_LOCKED = "Room setup is locked once judge assignments exist. Delete the assignments (Judging → Assignments) to change rooms.";
 var normalizeUrl = require("./teamController").normalizeDevpostUrl;
 var overrideFields = ["category", "hardware", "needsPower", "withdrawn", "team"];
 
@@ -89,6 +91,10 @@ async function saveRoom(req, res) {
     values.tableEnd = null;
   }
   try {
+    if (await JudgingAssignment.exists({})) {
+      res.status(409).json({ error: ROOMS_LOCKED });
+      return;
+    }
     // No table number may belong to two rooms.
     var others = await Room.find(req.params.id ? { _id: { $ne: req.params.id } } : {}).lean();
     var current = req.params.id ? await Room.findById(req.params.id).lean() : {};
@@ -163,6 +169,10 @@ async function keepsAssignedTables(rooms) {
 async function deleteRoom(req, res) {
   if (!validId(req, res)) return;
   try {
+    if (await JudgingAssignment.exists({})) {
+      res.status(409).json({ error: ROOMS_LOCKED });
+      return;
+    }
     if (
       await Project.exists({
         room: req.params.id,

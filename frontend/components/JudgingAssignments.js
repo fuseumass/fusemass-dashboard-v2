@@ -171,8 +171,29 @@ export default function JudgingAssignments({ projects, onChange }) {
       </form>
       <p className="text-xs text-muted-foreground">
         Only projects with both check-ins are included. Hardware judges form a
-        separate pool. Generation does not activate a version.
+        separate pool. Each judge gets a run of neighbouring tables in walking
+        order, so they change rooms as little as possible. Generation does not
+        activate a version. Rooms are locked while any version exists.
       </p>
+      {data?.versions.length
+        ? <div>
+            <Button
+              variant="outline"
+              disabled={busy || data.judgingOpen}
+              onClick={() =>
+                setConfirmation({
+                  path: "/assignments",
+                  method: "DELETE",
+                  title: "Delete all assignments",
+                  description:
+                    "Delete every assignment version so you can change judges or rooms and generate again. Only possible before any judge has scored and while judging is closed.",
+                })
+              }
+            >
+              Delete all assignments
+            </Button>
+          </div>
+        : null}
       {report && (
         <div className="space-y-2" aria-live="polite">
           {report.map((r) => (
