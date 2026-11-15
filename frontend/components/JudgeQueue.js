@@ -145,6 +145,14 @@ export default function JudgeQueue({ userId, view = "schedule" }) {
                         identity={`${userId}:${data.version}:${project._id}`}
                       />
                     )}
+                    {project.status === "done" && (
+                      <Alert>
+                        <AlertDescription>
+                          You already judged this project. Your saved scores are
+                          filled in; saving replaces them.
+                        </AlertDescription>
+                      </Alert>
+                    )}
                     {data.current && data.current._id !== project._id && (
                       <p className="text-sm text-muted-foreground">
                         Judge in any order. Your suggested next table is{" "}
