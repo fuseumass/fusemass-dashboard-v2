@@ -28,20 +28,22 @@ import { applyServerError, zodResolver } from "@/lib/forms";
 import { notifySuccess } from "@/lib/notify";
 
 const root = "/api/admin/judging";
+const practiceProjects = z
+  .array(
+    z.object({
+      title: z.string().trim().min(1).max(200),
+      description: z.string().max(5000),
+      link: z
+        .string()
+        .max(2000)
+        .refine((v) => !v || /^https:\/\//.test(v), "Use an HTTPS link."),
+    }),
+  )
+  .min(1)
+  .max(20);
 const schema = z.object({
-  calibrationProjects: z
-    .array(
-      z.object({
-        title: z.string().trim().min(1).max(200),
-        description: z.string().max(5000),
-        link: z
-          .string()
-          .max(2000)
-          .refine((v) => !v || /^https:\/\//.test(v), "Use an HTTPS link."),
-      }),
-    )
-    .min(1)
-    .max(20),
+  calibrationProjects: practiceProjects,
+  hardwareCalibrationProjects: practiceProjects,
   criteria: z
     .array(
       z.object({
@@ -65,12 +67,17 @@ function Editor({ settings, onSaved }) {
     resolver: zodResolver(schema),
     defaultValues: {
       calibrationProjects: settings.calibrationProjects,
+      hardwareCalibrationProjects: settings.hardwareCalibrationProjects,
       criteria: settings.criteria,
     },
   });
   const projects = useFieldArray({
     control: form.control,
     name: "calibrationProjects",
+  });
+  const hardwareProjects = useFieldArray({
+    control: form.control,
+    name: "hardwareCalibrationProjects",
   });
   const criteria = useFieldArray({ control: form.control, name: "criteria" });
   const locked = settings.judgingOpen || settings.criteriaLocked;
@@ -86,6 +93,59 @@ function Editor({ settings, onSaved }) {
     } catch (err) {
       applyServerError(form, err);
     }
+  }
+  function projectList(list, name, title, help) {
+    return (
+      <div className="space-y-4">
+        <h3 className="text-sm font-semibold">{title}</h3>
+        <p className="text-sm text-muted-foreground">{help}</p>
+        {list.fields.map((row, i) => (
+          <div key={row.id} className="space-y-4 border-b pb-4">
+            <h4 className="text-sm font-medium">Round {i + 1}</h4>
+            {field(`${name}.${i}.title`, "Title")}
+            {field(`${name}.${i}.description`, "Description")}
+            {field(`${name}.${i}.link`, "Link (optional)")}
+            <div className="flex flex-wrap gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                disabled={i === 0}
+                onClick={() => list.move(i, i - 1)}
+              >
+                Move earlier
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                disabled={i === list.fields.length - 1}
+                onClick={() => list.move(i, i + 1)}
+              >
+                Move later
+              </Button>
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                disabled={list.fields.length === 1}
+                onClick={() => list.remove(i)}
+              >
+                Remove round {i + 1}
+              </Button>
+            </div>
+          </div>
+        ))}
+        <Button
+          type="button"
+          variant="outline"
+          disabled={list.fields.length >= 20}
+          onClick={() => list.append({ title: "", description: "", link: "" })}
+        >
+          Add practice project
+        </Button>
+      </div>
+    );
   }
   function field(path, label, numeric = false) {
     return (
@@ -113,9 +173,10 @@ function Editor({ settings, onSaved }) {
     <Form {...form}>
       <form onSubmit={form.handleSubmit(save)} className="space-y-6">
         <p className="text-sm text-muted-foreground">
-          Projects run in the order below. Saving projects or criteria resets
-          all calibration scores and bias. Use one category criterion and at
-          least one general criterion.
+          Projects run in the order below. Changing the criteria resets every
+          judge's calibration; adding or removing rounds in one list resets only
+          that group. Use one category criterion and at least one general
+          criterion.
         </p>
         {locked && (
           <Alert>
@@ -129,53 +190,18 @@ function Editor({ settings, onSaved }) {
           className="space-y-6"
         >
           <legend className="text-base font-semibold">Practice projects</legend>
-          {projects.fields.map((row, i) => (
-            <div key={row.id} className="space-y-4 border-b pb-4">
-              <h3 className="text-sm font-medium">Round {i + 1}</h3>
-              {field(`calibrationProjects.${i}.title`, "Title")}
-              {field(`calibrationProjects.${i}.description`, "Description")}
-              {field(`calibrationProjects.${i}.link`, "Link (optional)")}
-              <div className="flex flex-wrap gap-2">
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  disabled={i === 0}
-                  onClick={() => projects.move(i, i - 1)}
-                >
-                  Move earlier
-                </Button>
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  disabled={i === projects.fields.length - 1}
-                  onClick={() => projects.move(i, i + 1)}
-                >
-                  Move later
-                </Button>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  disabled={projects.fields.length === 1}
-                  onClick={() => projects.remove(i)}
-                >
-                  Remove round {i + 1}
-                </Button>
-              </div>
-            </div>
-          ))}
-          <Button
-            type="button"
-            variant="outline"
-            disabled={projects.fields.length >= 20}
-            onClick={() =>
-              projects.append({ title: "", description: "", link: "" })
-            }
-          >
-            Add practice project
-          </Button>
+          {projectList(
+            projects,
+            "calibrationProjects",
+            "General (software) judges",
+            "Every judge who is not a hardware judge, admins included, calibrates on these.",
+          )}
+          {projectList(
+            hardwareProjects,
+            "hardwareCalibrationProjects",
+            "Hardware judges",
+            "Hardware judges calibrate on these instead, and their bias is compared only with other hardware judges.",
+          )}
           <h2 className="text-base font-semibold">Criteria</h2>
           {criteria.fields.map((row, i) => (
             <div
@@ -327,8 +353,10 @@ export default function AdminJudgingCalibration() {
         </Button>
       </div>
       <p className="text-sm text-muted-foreground">
-        Only judges who finished all rounds contribute. Recompute after scores
-        change. Positive bias means more generous scoring.
+        Only judges who finished all rounds contribute. Hardware judges are
+        compared only with hardware judges, everyone else with each other.
+        Recompute after scores change. Positive bias means more generous
+        scoring.
       </p>
       <DataTable
         loading={loading}
@@ -336,6 +364,11 @@ export default function AdminJudgingCalibration() {
         emptyState="No judges yet"
         columns={[
           { accessorKey: "name", header: "Name" },
+          {
+            id: "group",
+            header: "Group",
+            cell: ({ row }) => (row.original.hardware ? "Hardware" : "General"),
+          },
           {
             id: "done",
             header: "Calibration",

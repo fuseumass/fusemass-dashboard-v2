@@ -3,7 +3,8 @@
 var mongoose = require("mongoose");
 /**
  * @typedef {object} JudgingSettings
- * @property {Array<object>} calibrationProjects - Ordered practice projects.
+ * @property {Array<object>} calibrationProjects - Ordered practice projects for general (software) judges.
+ * @property {Array<object>} hardwareCalibrationProjects - Ordered practice projects for hardware judges.
  * @property {Array<object>} criteria - Scoring rubric, with one category criterion.
  * @property {boolean} judgingOpen - Locks rubric configuration once opened.
  * @property {Date|null} judgingOpenedAt - First opening time, retained on reopen.
@@ -27,6 +28,21 @@ var schema = new mongoose.Schema(
       default: function projects() {
         return [1, 2, 3].map(function project(n) {
           return { title: "Practice project " + n, description: "", link: "" };
+        });
+      },
+    },
+    hardwareCalibrationProjects: {
+      type: [
+        {
+          _id: false,
+          title: String,
+          description: { type: String, default: "" },
+          link: { type: String, default: "" },
+        },
+      ],
+      default: function hardwareProjects() {
+        return [1, 2, 3].map(function project(n) {
+          return { title: "Hardware practice project " + n, description: "", link: "" };
         });
       },
     },
