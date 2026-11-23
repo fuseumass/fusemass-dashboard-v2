@@ -92,6 +92,7 @@ var MATRIX = [
   row("GET", "/api/admin/judging/results/projects/:id", "admin"),
   row("GET", "/api/admin/judging/progress.csv", "moderator"),
   row("GET", "/api/admin/judging/results.csv", "admin"),
+  row("GET", "/api/admin/judging/rankings.csv", "admin"),
   row("GET", "/api/admin/judging/scores.csv", "admin"),
   row("GET", "/api/judging/queue", "judge"),
   row("POST", "/api/judging/scores", "judge"),
